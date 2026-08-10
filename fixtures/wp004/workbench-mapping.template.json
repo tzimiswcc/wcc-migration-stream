@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "mappingId": "synthetic.customer.workbench",
+  "version": "1.0.0",
+  "profile": {
+    "profileId": "synthetic.customer.readiness",
+    "version": "1.0.0",
+    "sha256": "__PROFILE_SHA256__"
+  },
+  "source": {
+    "packageSha256": "656ed753f1dd7973906f428f526d9069c00c60c84ddc490599328d2217746ca3",
+    "sourceFiles": [
+      "customer_accounts.csv"
+    ]
+  },
+  "rootEntityId": "Customer",
+  "bindings": [
+    {
+      "bindingId": "synthetic.customer.category",
+      "sourceFile": "customer_accounts.csv",
+      "sourceColumn": "category",
+      "sourceColumnOrdinal": 1,
+      "targetFieldId": "category",
+      "kind": "lookup",
+      "lookupTableId": "synthetic-category-map"
+    },
+    {
+      "bindingId": "synthetic.customer.duplicate-group",
+      "targetFieldId": "duplicateGroupKey",
+      "kind": "constant",
+      "constant": "SYNTHETIC-DUPLICATE"
+    },
+    {
+      "bindingId": "synthetic.customer.name",
+      "sourceFile": "customer_accounts.csv",
+      "sourceColumn": "organizationName1",
+      "sourceColumnOrdinal": 2,
+      "targetFieldId": "name",
+      "kind": "trim"
+    },
+    {
+      "bindingId": "synthetic.customer.notes",
+      "sourceFile": "customer_accounts.csv",
+      "sourceColumn": "notes",
+      "sourceColumnOrdinal": 3,
+      "targetFieldId": "notes",
+      "kind": "empty_as_null"
+    },
+    {
+      "bindingId": "synthetic.customer.source-id",
+      "sourceFile": "customer_accounts.csv",
+      "sourceColumn": "migrationPartnerId",
+      "sourceColumnOrdinal": 0,
+      "targetFieldId": "sourceCustomerId",
+      "kind": "direct"
+    }
+  ],
+  "referenceTables": [
+    {
+      "tableId": "synthetic-category-domain",
+      "version": "1.0.0",
+      "values": {
+        "ORGANIZATION": "ORGANIZATION"
+      }
+    },
+    {
+      "tableId": "synthetic-category-map",
+      "version": "1.0.0",
+      "values": {
+        "1": "PERSON",
+        "2": "ORGANIZATION"
+      }
+    }
+  ],
+  "author": "Migration Stream synthetic workbench proof",
+  "reviewer": "Synthetic review evidence only"
+}

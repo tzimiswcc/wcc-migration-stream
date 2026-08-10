@@ -1,0 +1,7 @@
+migrationPartnerId,category,organizationName1,notes
+000001,2,"Acme, S.A.","first line
+second line"
+000002,1,Αθήνα Α.Ε.,""
+000003,2,東京株式会社,leading zero 0007
+000004,2,,empty organization remains empty
+

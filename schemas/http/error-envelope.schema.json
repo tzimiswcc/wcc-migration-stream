@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/http/error-envelope.schema.json",
+  "title": "Migration Stream Local HTTP Error Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "ok", "error"],
+  "properties": {
+    "schema_version": {
+      "const": "migration-stream/http-error/v1"
+    },
+    "ok": {
+      "const": false
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message", "request_id", "retryable"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Z0-9_]+$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "retryable": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

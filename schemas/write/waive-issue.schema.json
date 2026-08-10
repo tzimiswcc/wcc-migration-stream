@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/write/waive-issue.schema.json",
+  "title": "Migration Stream Waive Exact Issue Command v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "validation_run_id",
+    "issue_hash",
+    "practitioner_identifier",
+    "reason",
+    "evidence_reference",
+    "expected_active_decision_id",
+    "expected_active_generation",
+    "acknowledge_not_migration_result_approval",
+    "acknowledge_waiver_limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": "migration-stream/write/waive-issue/v1" },
+    "validation_run_id": { "$ref": "#/$defs/identifier" },
+    "issue_hash": { "$ref": "#/$defs/sha256" },
+    "practitioner_identifier": { "$ref": "#/$defs/practitioner" },
+    "reason": { "$ref": "#/$defs/reason" },
+    "evidence_reference": {
+      "anyOf": [{ "$ref": "#/$defs/evidenceReference" }, { "type": "null" }]
+    },
+    "expected_active_decision_id": {
+      "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+    },
+    "expected_active_generation": { "type": "integer", "minimum": 0 },
+    "acknowledge_not_migration_result_approval": { "const": true },
+    "acknowledge_waiver_limitations": { "const": true }
+  },
+  "allOf": [{ "$ref": "#/$defs/headRelationship" }],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "practitioner": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+      "allOf": [{ "not": { "pattern": "^\\s|\\s$" } }],
+      "x-maximumUtf8Bytes": 256
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+      "x-maximumUtf8Bytes": 4096
+    },
+    "evidenceReference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+      "x-maximumUtf8Bytes": 2048
+    },
+    "headRelationship": {
+      "if": {
+        "properties": { "expected_active_generation": { "const": 0 } },
+        "required": ["expected_active_generation"]
+      },
+      "then": {
+        "properties": { "expected_active_decision_id": { "type": "null" } }
+      },
+      "else": {
+        "properties": {
+          "expected_active_decision_id": { "$ref": "#/$defs/identifier" }
+        }
+      }
+    }
+  }
+}

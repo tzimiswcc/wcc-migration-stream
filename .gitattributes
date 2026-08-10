@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.zip binary
+# This fidelity fixture intentionally retains a final blank record boundary.
+fixtures/packages/customer_accounts.csv whitespace=-blank-at-eof

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/row-detail.schema.json",
+  "title": "Migration Stream Exact Accepted Row Detail v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "data", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/row-detail/v1" },
+    "data": { "$ref": "#/$defs/detail" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "issueId": { "type": "string", "pattern": "^issue-[a-f0-9]{64}$" },
+    "sourceValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["column_ordinal", "column_name", "value"],
+      "properties": {
+        "column_ordinal": { "type": "integer", "minimum": 0, "maximum": 4095 },
+        "column_name": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "value": { "type": "string", "maxLength": 1048576 }
+      }
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "binding_id", "source_column_ordinal", "source_column_name", "lookup_table_id"],
+      "properties": {
+        "kind": { "enum": ["DIRECT", "CONSTANT", "EMPTY_AS_NULL", "TRIM", "UPPERCASE_ASCII", "LOWERCASE_ASCII", "LOOKUP"] },
+        "binding_id": { "$ref": "#/$defs/id" },
+        "source_column_ordinal": { "type": ["integer", "null"], "minimum": 0, "maximum": 4095 },
+        "source_column_name": { "type": ["string", "null"], "minLength": 1, "maxLength": 1024 },
+        "lookup_table_id": { "type": ["string", "null"], "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "canonicalValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity_id", "field_id", "value", "lineage"],
+      "properties": {
+        "entity_id": { "$ref": "#/$defs/id" },
+        "field_id": { "$ref": "#/$defs/id" },
+        "value": { "type": ["string", "null"], "maxLength": 1048576 },
+        "lineage": { "$ref": "#/$defs/lineage" }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["issue_id", "severity", "rule_id", "issue_code", "display_message", "entity_id", "field_id", "issue_hash"],
+      "properties": {
+        "issue_id": { "$ref": "#/$defs/issueId" },
+        "severity": { "enum": ["ERROR", "WARNING", "INFORMATION"] },
+        "rule_id": { "$ref": "#/$defs/id" },
+        "issue_code": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$" },
+        "display_message": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "entity_id": { "$ref": "#/$defs/id" },
+        "field_id": { "$ref": "#/$defs/id" },
+        "issue_hash": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id", "job_id", "source_hash", "source_file", "source_ordinal", "line_start",
+        "line_end", "source_values", "canonical_projection", "issues"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/id" },
+        "job_id": { "$ref": "#/$defs/id" },
+        "source_hash": { "$ref": "#/$defs/sha256" },
+        "source_file": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "source_ordinal": { "type": "integer", "minimum": 1 },
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end": { "type": "integer", "minimum": 1 },
+        "source_values": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/sourceValue" }
+        },
+        "canonical_projection": {
+          "type": "array",
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/canonicalValue" }
+        },
+        "issues": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/issue" }
+        }
+      }
+    }
+  }
+}

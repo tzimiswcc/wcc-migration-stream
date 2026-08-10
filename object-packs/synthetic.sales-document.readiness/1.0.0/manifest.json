@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "packId": "synthetic.sales-document.readiness",
+  "version": "1.0.0",
+  "title": "Synthetic basic sales document readiness pack",
+  "scope": "Synthetic target-neutral two-file sales-document readiness validation proof only.",
+  "rootEntityId": "SalesDocument",
+  "mappingMode": "OPERATOR_GOVERNED",
+  "profileFile": "synthetic-profile.reviewed.json",
+  "profileSha256": "aed6405128e0402b2e3b0d3efbfb9c0cd01610377d19543b87fd00b71e2f9000",
+  "mappingSuggestions": [],
+  "referenceTables": [
+    {
+      "entityId": "SalesDocument",
+      "tableId": "sales-document-type-domain",
+      "version": "1.0.0",
+      "values": {
+        "RETURN": "RETURN",
+        "STANDARD": "STANDARD"
+      }
+    },
+    {
+      "entityId": "SalesDocument",
+      "tableId": "sales-document-route-map",
+      "version": "1.0.0",
+      "values": {
+        "N": "STANDARD",
+        "R": "RETURN"
+      }
+    }
+  ],
+  "limitations": [
+    "Synthetic local proof material only; no received client data is included.",
+    "This target-neutral pack establishes no target-system compatibility, adapter authority, publication authority, or load compatibility.",
+    "The REVIEWED_DRAFT profile requires separate attributable local profile authority.",
+    "The operator must route files, bind every canonical slot, confirm the declared relationship key, and govern the bounded route-code lookup before freezing a mapping.",
+    "Multi-entity validation stops at First Issues; decisions, corrections, reconciliation, result approval, publication, transmission, and target actions remain disabled."
+  ]
+}

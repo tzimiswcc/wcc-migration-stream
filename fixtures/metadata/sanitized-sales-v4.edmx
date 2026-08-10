@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx
+  xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx"
+  Version="4.01">
+  <edmx:Reference Uri="https://example.invalid/synthetic-vocabulary.xml">
+    <edmx:Include Namespace="Synthetic.External.Vocabulary" Alias="External" />
+  </edmx:Reference>
+  <edmx:DataServices>
+    <Schema
+      xmlns="http://docs.oasis-open.org/odata/ns/edm"
+      Namespace="Synthetic.ODataV4.Sales"
+      Alias="Sales">
+      <ComplexType Name="AuditStamp">
+        <Property Name="CreatedBy" Type="Edm.String" Nullable="true" MaxLength="40" />
+        <Property Name="CreatedAt" Type="Edm.DateTimeOffset" Nullable="true" Precision="7" />
+      </ComplexType>
+      <EnumType Name="SyntheticPriority">
+        <Member Name="Normal" Value="0" />
+        <Member Name="Urgent" Value="1" />
+      </EnumType>
+      <TypeDefinition Name="SyntheticCode" UnderlyingType="Edm.String" MaxLength="8" />
+      <EntityType Name="SalesOrder">
+        <Key>
+          <PropertyRef Name="SalesOrder" />
+        </Key>
+        <Property Name="SalesOrder" Type="Edm.String" Nullable="false" MaxLength="10" />
+        <Property Name="SalesOrderType" Type="Edm.String" Nullable="false" MaxLength="4" />
+        <Property Name="SoldToParty" Type="Edm.String" Nullable="false" MaxLength="10" />
+        <Property Name="TransactionCurrency" Type="Edm.String" Nullable="false" MaxLength="5" />
+        <Property Name="PurchaseOrderByCustomer" Type="Edm.String" Nullable="true" MaxLength="35" />
+        <Property Name="RequestedDeliveryDate" Type="Edm.Date" Nullable="true" />
+        <Property Name="TotalNetAmount" Type="Edm.Decimal" Nullable="true" Precision="16" Scale="3" />
+        <NavigationProperty
+          Name="to_Items"
+          Type="Collection(Synthetic.ODataV4.Sales.SalesOrderItem)"
+          Partner="to_SalesOrder">
+          <ReferentialConstraint Property="SalesOrder" ReferencedProperty="SalesOrder" />
+        </NavigationProperty>
+        <NavigationProperty
+          Name="to_Attachments"
+          Type="Collection(Synthetic.ODataV4.Sales.Attachment)"
+          ContainsTarget="true" />
+      </EntityType>
+      <EntityType Name="SalesOrderItem">
+        <Key>
+          <PropertyRef Name="SalesOrder" />
+          <PropertyRef Name="SalesOrderItem" />
+        </Key>
+        <Property Name="SalesOrder" Type="Edm.String" Nullable="false" MaxLength="10" />
+        <Property Name="SalesOrderItem" Type="Edm.String" Nullable="false" MaxLength="6" />
+        <Property Name="Material" Type="Edm.String" Nullable="false" MaxLength="40" />
+        <Property Name="RequestedQuantity" Type="Edm.Decimal" Nullable="false" Precision="15" Scale="3" />
+        <Property Name="RequestedQuantityUnit" Type="Edm.String" Nullable="false" MaxLength="3" />
+        <Property Name="NetAmount" Type="Edm.Decimal" Nullable="true" Precision="16" Scale="3" />
+        <NavigationProperty
+          Name="to_SalesOrder"
+          Type="Synthetic.ODataV4.Sales.SalesOrder"
+          Nullable="false"
+          Partner="to_Items" />
+      </EntityType>
+      <EntityType Name="Attachment">
+        <Key>
+          <PropertyRef Name="AttachmentId" />
+        </Key>
+        <Property Name="AttachmentId" Type="Edm.Guid" Nullable="false" />
+        <Property Name="MediaType" Type="Edm.String" Nullable="true" MaxLength="128" />
+      </EntityType>
+      <EntityType Name="DerivedAudit" BaseType="Synthetic.ODataV4.Sales.Attachment">
+        <Property Name="AuditNote" Type="Edm.String" Nullable="true" MaxLength="80" />
+      </EntityType>
+      <Action Name="SyntheticCloseOrder" IsBound="true">
+        <Parameter Name="bindingParameter" Type="Synthetic.ODataV4.Sales.SalesOrder" />
+      </Action>
+      <Function Name="SyntheticHealth" IsBound="false" IsComposable="false">
+        <ReturnType Type="Edm.Boolean" Nullable="false" />
+      </Function>
+      <EntityContainer Name="SyntheticSalesService">
+        <EntitySet Name="SalesOrders" EntityType="Synthetic.ODataV4.Sales.SalesOrder">
+          <NavigationPropertyBinding Path="to_Items" Target="SalesOrderItems" />
+        </EntitySet>
+        <EntitySet Name="SalesOrderItems" EntityType="Synthetic.ODataV4.Sales.SalesOrderItem" />
+        <EntitySet Name="Attachments" EntityType="Synthetic.ODataV4.Sales.Attachment" />
+        <ActionImport Name="SyntheticCloseOrder" Action="Synthetic.ODataV4.Sales.SyntheticCloseOrder" />
+        <FunctionImport Name="SyntheticHealth" Function="Synthetic.ODataV4.Sales.SyntheticHealth" IncludeInServiceDocument="false" />
+      </EntityContainer>
+      <Annotations Target="Synthetic.ODataV4.Sales.SalesOrder">
+        <Annotation Term="External.NonAuthoritativeDescription" String="Synthetic annotation evidence only" />
+      </Annotations>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

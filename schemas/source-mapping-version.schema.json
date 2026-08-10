@@ -1,0 +1,428 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/source-mapping-version.schema.json",
+  "title": "Migration Stream Source Mapping Version",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "mappingId",
+    "version",
+    "profile",
+    "source",
+    "rootEntityId",
+    "bindings",
+    "referenceTables"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "mappingId": {
+      "$ref": "#/$defs/id"
+    },
+    "version": {
+      "$ref": "#/$defs/version"
+    },
+    "profile": {
+      "$ref": "#/$defs/profileIdentity"
+    },
+    "source": {
+      "$ref": "#/$defs/sourceIdentity"
+    },
+    "rootEntityId": {
+      "$ref": "#/$defs/domainId"
+    },
+    "sourceEntityAssignments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/sourceEntityAssignment"
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/binding"
+      }
+    },
+    "referenceTables": {
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/referenceTable"
+      }
+    },
+    "relationshipBindings": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/relationshipBinding"
+      }
+    },
+    "author": {
+      "$ref": "#/$defs/attribution"
+    },
+    "reviewer": {
+      "$ref": "#/$defs/attribution"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9.-]*$"
+    },
+    "domainId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 32,
+      "pattern": "^[0-9]+[.][0-9]+[.][0-9]+$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceFile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._ -]*(/[A-Za-z0-9][A-Za-z0-9._ -]*)*$"
+    },
+    "sourceColumn": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "textValue": {
+      "type": "string",
+      "maxLength": 4096
+    },
+    "attribution": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "profileIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profileId",
+        "version",
+        "sha256"
+      ],
+      "properties": {
+        "profileId": {
+          "$ref": "#/$defs/id"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "sourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packageSha256",
+        "sourceFiles"
+      ],
+      "properties": {
+        "packageSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "sourceFiles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sourceFile"
+          }
+        }
+      }
+    },
+    "sourceBindingFields": {
+      "required": [
+        "sourceFile",
+        "sourceColumn",
+        "sourceColumnOrdinal"
+      ]
+    },
+    "sourceEntityAssignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceFile",
+        "entityId"
+      ],
+      "properties": {
+        "sourceFile": {
+          "$ref": "#/$defs/sourceFile"
+        },
+        "entityId": {
+          "$ref": "#/$defs/domainId"
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bindingId",
+        "targetFieldId",
+        "kind"
+      ],
+      "properties": {
+        "bindingId": {
+          "$ref": "#/$defs/id"
+        },
+        "targetEntityId": {
+          "$ref": "#/$defs/domainId"
+        },
+        "sourceFile": {
+          "$ref": "#/$defs/sourceFile"
+        },
+        "sourceColumn": {
+          "$ref": "#/$defs/sourceColumn"
+        },
+        "sourceColumnOrdinal": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "targetFieldId": {
+          "$ref": "#/$defs/domainId"
+        },
+        "kind": {
+          "enum": [
+            "direct",
+            "constant",
+            "empty_as_null",
+            "trim",
+            "uppercase_ascii",
+            "lowercase_ascii",
+            "lookup"
+          ]
+        },
+        "constant": {
+          "$ref": "#/$defs/textValue"
+        },
+        "lookupTableId": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "constant"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "constant"
+            ],
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "sourceFile"
+                  ]
+                },
+                {
+                  "required": [
+                    "sourceColumn"
+                  ]
+                },
+                {
+                  "required": [
+                    "sourceColumnOrdinal"
+                  ]
+                },
+                {
+                  "required": [
+                    "lookupTableId"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "direct",
+                  "empty_as_null",
+                  "trim",
+                  "uppercase_ascii",
+                  "lowercase_ascii"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "$ref": "#/$defs/sourceBindingFields",
+            "not": {
+              "anyOf": [
+                {
+                  "required": [
+                    "constant"
+                  ]
+                },
+                {
+                  "required": [
+                    "lookupTableId"
+                  ]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "lookup"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/sourceBindingFields"
+              },
+              {
+                "required": [
+                  "lookupTableId"
+                ],
+                "not": {
+                  "required": [
+                    "constant"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "referenceTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tableId",
+        "version",
+        "values"
+      ],
+      "properties": {
+        "tableId": {
+          "$ref": "#/$defs/id"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "entityId": {
+          "$ref": "#/$defs/domainId"
+        },
+        "values": {
+          "type": "object",
+          "maxProperties": 10000,
+          "propertyNames": {
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/textValue"
+          }
+        }
+      }
+    },
+    "relationshipFieldPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fromFieldId",
+        "toFieldId"
+      ],
+      "properties": {
+        "fromFieldId": {
+          "$ref": "#/$defs/domainId"
+        },
+        "toFieldId": {
+          "$ref": "#/$defs/domainId"
+        }
+      }
+    },
+    "relationshipBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "relationshipId",
+        "fromEntityId",
+        "toEntityId",
+        "cardinality",
+        "keyPairs"
+      ],
+      "properties": {
+        "relationshipId": {
+          "$ref": "#/$defs/id"
+        },
+        "fromEntityId": {
+          "$ref": "#/$defs/domainId"
+        },
+        "toEntityId": {
+          "$ref": "#/$defs/domainId"
+        },
+        "cardinality": {
+          "enum": [
+            "0..1",
+            "1..1",
+            "0..*",
+            "1..*"
+          ]
+        },
+        "keyPairs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/relationshipFieldPair"
+          }
+        }
+      }
+    }
+  }
+}

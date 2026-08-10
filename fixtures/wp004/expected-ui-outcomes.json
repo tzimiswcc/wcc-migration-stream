@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "SYNTHETIC_ONLY",
+  "completeWorkspace": {
+    "jobState": "COMPLETE",
+    "rows": 4,
+    "files": 1,
+    "reconciliationClosed": true,
+    "validationState": "COMPLETE",
+    "issueCounts": {
+      "ERROR": 3,
+      "WARNING": 2,
+      "INFORMATION": 1
+    },
+    "explicitRowOrdinal": 4,
+    "leadingZeroText": "000001",
+    "numericLookingText": "0007"
+  },
+  "incompleteWorkspace": {
+    "jobState": "INTERRUPTED",
+    "errorCode": "COOPERATIVE_CANCELLED",
+    "mustAppearComplete": false
+  },
+  "boundedOperationalWarning": {
+    "state": "CLEANUP_PENDING",
+    "diagnosticPresent": true,
+    "tombstonePathExposed": false,
+    "actionAvailable": false
+  },
+  "claims": {
+    "clientData": false,
+    "externalSystemCompatibility": false,
+    "targetCompatibility": false,
+    "migrationResultApproval": false
+  }
+}

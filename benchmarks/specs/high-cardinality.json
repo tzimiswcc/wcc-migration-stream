@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "fixture_name": "high-cardinality",
+  "seed": 22002004,
+  "file_count": 1,
+  "rows_per_file": 250000,
+  "columns": 16,
+  "field_lengths": { "minimum": 8, "typical": 20, "maximum": 80 },
+  "compressibility": "low",
+  "empty_frequency": 0.01,
+  "cardinality": "high",
+  "duplicate_key_frequency": 0.005,
+  "multiline_frequency": 0.001,
+  "delimiter": ",",
+  "delimiter_in_field_frequency": 0.001,
+  "escaped_quote_frequency": 0.001,
+  "unicode_frequency": 0.02,
+  "leading_zero_id_frequency": 0.1,
+  "skew": { "hot_value_frequency": 0.0 },
+  "maximum_expanded_bytes": 134217728,
+  "maximum_output_bytes": 134217728
+}

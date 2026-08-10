@@ -1,0 +1,14 @@
+{
+  "spool_buffer_bytes": 65536,
+  "minimum_free_space_bytes": 67108864,
+  "maximum_source_bytes": 536870912,
+  "maximum_entries": 1000,
+  "maximum_entry_path_bytes": 1024,
+  "maximum_expanded_bytes": 268435456,
+  "maximum_compression_ratio": 100.0,
+  "maximum_csv_field_bytes": 1048576,
+  "maximum_csv_record_bytes": 4194304,
+  "maximum_csv_columns": 1024,
+  "maximum_csv_records": 1000000,
+  "transaction_batch_rows": 2000
+}

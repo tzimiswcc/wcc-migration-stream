@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/issue-list-page.schema.json",
+  "title": "Migration Stream Validation Issue List Page v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "filters", "items", "page", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/issue-list/v1" },
+    "scope": { "$ref": "#/$defs/scope" },
+    "filters": { "$ref": "#/$defs/filters" },
+    "items": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/issue" }
+    },
+    "page": { "$ref": "#/$defs/page" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "issueId": { "type": "string", "pattern": "^issue-[a-f0-9]{64}$" },
+    "nullableText": { "type": ["string", "null"], "minLength": 1, "maxLength": 1024 },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id", "identity_hash", "job_id", "source_hash", "profile_id", "profile_version",
+        "profile_hash", "mapping_id", "mapping_version", "mapping_hash", "state", "result_hash"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/id" },
+        "identity_hash": { "$ref": "#/$defs/sha256" },
+        "job_id": { "$ref": "#/$defs/id" },
+        "source_hash": { "$ref": "#/$defs/sha256" },
+        "profile_id": { "$ref": "#/$defs/id" },
+        "profile_version": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "profile_hash": { "$ref": "#/$defs/sha256" },
+        "mapping_id": { "$ref": "#/$defs/id" },
+        "mapping_version": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "mapping_hash": { "$ref": "#/$defs/sha256" },
+        "state": { "enum": ["RUNNING", "COMPLETE", "FAILED", "INTERRUPTED", "BOUND_EXCEEDED"] },
+        "result_hash": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "severity": { "type": ["string", "null"], "enum": ["ERROR", "WARNING", "INFORMATION", null] },
+        "rule_id": { "$ref": "#/$defs/nullableText" },
+        "entity_id": { "$ref": "#/$defs/nullableText" },
+        "field_id": { "$ref": "#/$defs/nullableText" },
+        "source_file": { "$ref": "#/$defs/nullableText" },
+        "source_ordinal": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_size", "returned", "next_cursor"],
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "returned": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "next_cursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 8192,
+          "pattern": "^v1[.][a-f0-9]+[.][a-f0-9]{64}$"
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_id", "severity", "rule_id", "issue_code", "display_message", "entity_id",
+        "field_id", "source_file", "source_ordinal", "line_start", "line_end", "issue_hash"
+      ],
+      "properties": {
+        "issue_id": { "$ref": "#/$defs/issueId" },
+        "severity": { "enum": ["ERROR", "WARNING", "INFORMATION"] },
+        "rule_id": { "$ref": "#/$defs/id" },
+        "issue_code": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$" },
+        "display_message": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "entity_id": { "$ref": "#/$defs/id" },
+        "field_id": { "$ref": "#/$defs/id" },
+        "source_file": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "source_ordinal": { "type": "integer", "minimum": 1 },
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end": { "type": "integer", "minimum": 1 },
+        "issue_hash": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

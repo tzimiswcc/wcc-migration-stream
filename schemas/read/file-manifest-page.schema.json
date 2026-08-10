@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/file-manifest-page.schema.json",
+  "title": "Migration Stream Accepted File Manifest Page v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "items", "page", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/file-manifest/v1" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_id", "source_hash"],
+      "properties": {
+        "job_id": { "$ref": "#/$defs/id" },
+        "source_hash": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/file" }
+    },
+    "page": { "$ref": "#/$defs/page" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_size", "returned", "next_cursor"],
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "returned": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "next_cursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 8192,
+          "pattern": "^v1[.][a-f0-9]+[.][a-f0-9]{64}$"
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "file_id", "path", "source_ordinal", "compressed_bytes", "expanded_bytes",
+        "row_count", "column_count", "ingestion_state", "profiling_state"
+      ],
+      "properties": {
+        "file_id": { "$ref": "#/$defs/id" },
+        "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "source_ordinal": { "type": "integer", "minimum": 1 },
+        "compressed_bytes": { "$ref": "#/$defs/count" },
+        "expanded_bytes": { "$ref": "#/$defs/count" },
+        "row_count": { "$ref": "#/$defs/count" },
+        "column_count": { "$ref": "#/$defs/count" },
+        "ingestion_state": { "enum": ["COMPLETE", "FAILED", "INTERRUPTED"] },
+        "profiling_state": { "enum": ["NOT_RUN", "RUNNING", "COMPLETE", "FAILED", "INTERRUPTED"] }
+      }
+    }
+  }
+}

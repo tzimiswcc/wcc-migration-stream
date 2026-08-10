@@ -1,0 +1,382 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/correction-overlay-detail.schema.json",
+  "title": "Migration Stream Exact Correction Overlay Detail v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "data", "canonical_hash"],
+  "properties": {
+    "schema_version": {
+      "const": "migration-stream/read/correction-overlay-detail/v1"
+    },
+    "data": { "$ref": "#/$defs/detail" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sourceFile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^/\\\\]+(?:/[^/\\\\]+)*$"
+    },
+    "operation": {
+      "enum": [
+        "REPLACE_EFFECTIVE_TEXT",
+        "SET_EFFECTIVE_EMPTY",
+        "SET_EFFECTIVE_NULL"
+      ]
+    },
+    "reevaluationState": {
+      "enum": [
+        "NOT_REQUIRED",
+        "PLANNED",
+        "RUNNING",
+        "COMPLETE",
+        "INTERRUPTED",
+        "FAILED",
+        "BOUND_EXCEEDED",
+        "INTEGRITY_BLOCKED",
+        "STALE_INPUT"
+      ]
+    },
+    "attemptState": {
+      "enum": [
+        "RECEIVED",
+        "VALIDATED",
+        "REJECTED",
+        "CONFLICT",
+        "OVERLAY_PERSISTED",
+        "REEVALUATION_PLANNED",
+        "REEVALUATION_RUNNING",
+        "REEVALUATION_COMPLETE",
+        "REEVALUATION_INTERRUPTED",
+        "REEVALUATION_FAILED",
+        "REEVALUATION_BOUND_EXCEEDED",
+        "REEVALUATION_INTEGRITY_BLOCKED",
+        "REEVALUATION_STALE_INPUT",
+        "EFFECTIVE"
+      ]
+    },
+    "lifecycleOutcome": {
+      "enum": [
+        "EFFECTIVE",
+        "PENDING_REEVALUATION",
+        "SUPERSEDED",
+        "FAILED",
+        "INTERRUPTED",
+        "STALE_REJECTED",
+        "INTEGRITY_BLOCKED"
+      ]
+    },
+    "integrityStatus": {
+      "enum": ["NOT_CHECKED", "VERIFIED", "FAILED", "INTEGRITY_BLOCKED"]
+    },
+    "lineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "binding_id",
+        "source_column_ordinal",
+        "source_column_name",
+        "lookup_table_id"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "DIRECT",
+            "CONSTANT",
+            "EMPTY_AS_NULL",
+            "TRIM",
+            "UPPERCASE_ASCII",
+            "LOWERCASE_ASCII",
+            "LOOKUP"
+          ]
+        },
+        "binding_id": { "$ref": "#/$defs/identifier" },
+        "source_column_ordinal": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 4095
+        },
+        "source_column_name": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "lookup_table_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        }
+      }
+    },
+    "detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "overlay_id",
+        "decision_attempt_id",
+        "decision_id",
+        "job_id",
+        "validation_run_id",
+        "issue_id",
+        "source_file",
+        "source_ordinal",
+        "entity_id",
+        "field_id",
+        "profile_id",
+        "profile_version",
+        "profile_hash",
+        "mapping_id",
+        "mapping_version",
+        "mapping_hash",
+        "operation",
+        "original_canonical_value",
+        "original_lineage",
+        "prior_effective_value",
+        "overlay_value",
+        "effective_canonical_value",
+        "effective_value_hash",
+        "practitioner_identifier",
+        "reason",
+        "attempted_at",
+        "applied_at",
+        "active",
+        "superseded_by_overlay_id",
+        "reevaluation_id",
+        "attempt_state",
+        "reevaluation_state",
+        "lifecycle_outcome",
+        "error_code",
+        "error_message",
+        "integrity_status"
+      ],
+      "properties": {
+        "overlay_id": { "$ref": "#/$defs/identifier" },
+        "decision_attempt_id": { "$ref": "#/$defs/identifier" },
+        "decision_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "job_id": { "$ref": "#/$defs/identifier" },
+        "validation_run_id": { "$ref": "#/$defs/identifier" },
+        "issue_id": { "$ref": "#/$defs/identifier" },
+        "source_file": { "$ref": "#/$defs/sourceFile" },
+        "source_ordinal": { "type": "integer", "minimum": 1 },
+        "entity_id": { "$ref": "#/$defs/identifier" },
+        "field_id": { "$ref": "#/$defs/identifier" },
+        "profile_id": { "$ref": "#/$defs/identifier" },
+        "profile_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "profile_hash": { "$ref": "#/$defs/sha256" },
+        "mapping_id": { "$ref": "#/$defs/identifier" },
+        "mapping_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "mapping_hash": { "$ref": "#/$defs/sha256" },
+        "operation": { "$ref": "#/$defs/operation" },
+        "original_canonical_value": {
+          "type": ["string", "null"],
+          "maxLength": 1048576
+        },
+        "original_lineage": { "$ref": "#/$defs/lineage" },
+        "prior_effective_value": {
+          "type": ["string", "null"],
+          "maxLength": 1048576
+        },
+        "overlay_value": { "type": ["string", "null"], "maxLength": 65536 },
+        "effective_canonical_value": {
+          "type": ["string", "null"],
+          "maxLength": 1048576
+        },
+        "effective_value_hash": {
+          "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        },
+        "practitioner_identifier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "attempted_at": {
+          "type": "string",
+          "maxLength": 64,
+          "format": "date-time"
+        },
+        "applied_at": {
+          "type": ["string", "null"],
+          "maxLength": 64,
+          "format": "date-time"
+        },
+        "active": { "type": "boolean" },
+        "superseded_by_overlay_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "reevaluation_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "attempt_state": { "$ref": "#/$defs/attemptState" },
+        "reevaluation_state": { "$ref": "#/$defs/reevaluationState" },
+        "lifecycle_outcome": { "$ref": "#/$defs/lifecycleOutcome" },
+        "error_code": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "error_message": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "integrity_status": { "$ref": "#/$defs/integrityStatus" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "decision_id": { "type": "null" } }
+          },
+          "then": {
+            "properties": {
+              "effective_canonical_value": { "type": "null" },
+              "effective_value_hash": { "type": "null" },
+              "applied_at": { "type": "null" },
+              "active": { "const": false },
+              "lifecycle_outcome": {
+                "enum": [
+                  "PENDING_REEVALUATION",
+                  "FAILED",
+                  "INTERRUPTED",
+                  "STALE_REJECTED",
+                  "INTEGRITY_BLOCKED"
+                ]
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "effective_value_hash": { "$ref": "#/$defs/sha256" },
+              "applied_at": {
+                "type": "string",
+                "maxLength": 64,
+                "format": "date-time"
+              },
+              "reevaluation_id": { "$ref": "#/$defs/identifier" },
+              "reevaluation_state": { "const": "COMPLETE" },
+              "lifecycle_outcome": {
+                "enum": ["EFFECTIVE", "SUPERSEDED"]
+              },
+              "error_code": { "type": "null" },
+              "error_message": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "properties": {
+                  "decision_id": { "$ref": "#/$defs/identifier" }
+                }
+              },
+              {
+                "properties": {
+                  "operation": { "const": "REPLACE_EFFECTIVE_TEXT" }
+                }
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "overlay_value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 65536
+              },
+              "effective_canonical_value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1048576
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "properties": {
+                  "decision_id": { "$ref": "#/$defs/identifier" }
+                }
+              },
+              {
+                "properties": {
+                  "operation": { "const": "SET_EFFECTIVE_EMPTY" }
+                }
+              }
+            ]
+          },
+          "then": {
+            "properties": {
+              "overlay_value": { "const": "" },
+              "effective_canonical_value": { "const": "" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "operation": { "const": "SET_EFFECTIVE_NULL" } }
+          },
+          "then": {
+            "properties": { "overlay_value": { "type": "null" } }
+          }
+        },
+        {
+          "if": {
+            "allOf": [
+              {
+                "properties": {
+                  "decision_id": { "$ref": "#/$defs/identifier" }
+                }
+              },
+              {
+                "properties": {
+                  "operation": { "const": "SET_EFFECTIVE_NULL" }
+                }
+              }
+            ]
+          },
+          "then": {
+            "properties": { "effective_canonical_value": { "type": "null" } }
+          }
+        },
+        {
+          "if": { "properties": { "active": { "const": true } } },
+          "then": {
+            "properties": {
+              "decision_id": { "$ref": "#/$defs/identifier" },
+              "reevaluation_state": { "const": "COMPLETE" },
+              "lifecycle_outcome": { "const": "EFFECTIVE" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

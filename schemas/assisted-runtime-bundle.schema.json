@@ -1,0 +1,370 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://migration-stream.local/schemas/assisted-runtime-bundle.schema.json",
+  "title": "Migration Stream assisted local runtime bundle manifest",
+  "description": "Portable shape contract. The bundled runtime verifier additionally enforces canonical bytes, strict path ordering and case-fold uniqueness, exact role inventories, graph identity, platform binaries, modes, sizes and hashes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "canonicalJsonVersion",
+    "manifestSha256",
+    "product",
+    "target",
+    "entrypoints",
+    "members"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "migration-stream/assisted-local-runtime-bundle/v2"
+    },
+    "canonicalJsonVersion": {
+      "const": "migration-stream-canonical-json/v1"
+    },
+    "manifestSha256": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/sha256"
+        },
+        {
+          "not": {
+            "const": "0000000000000000000000000000000000000000000000000000000000000000"
+          }
+        }
+      ]
+    },
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "commit",
+        "sourceState",
+        "sourceSnapshotSha256"
+      ],
+      "properties": {
+        "name": {
+          "const": "migration-stream"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "sourceState": {
+          "enum": [
+            "CLEAN",
+            "EXPLICIT_UNCOMMITTED_SNAPSHOT"
+          ]
+        },
+        "sourceSnapshotSha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "os",
+        "architecture",
+        "targetTriple"
+      ],
+      "properties": {
+        "os": {
+          "enum": ["macos", "windows", "linux"]
+        },
+        "architecture": {
+          "enum": ["x64", "arm64"]
+        },
+        "targetTriple": {
+          "enum": [
+            "aarch64-apple-darwin",
+            "x86_64-pc-windows-msvc",
+            "aarch64-pc-windows-msvc",
+            "x86_64-unknown-linux-gnu",
+            "aarch64-unknown-linux-gnu"
+          ]
+        },
+        "minimumOsVersion": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "properties": {
+                "os": { "const": "macos" },
+                "architecture": { "const": "arm64" },
+                "targetTriple": { "const": "aarch64-apple-darwin" }
+              }
+            },
+            {
+              "properties": {
+                "os": { "const": "windows" },
+                "architecture": { "const": "x64" },
+                "targetTriple": { "const": "x86_64-pc-windows-msvc" }
+              }
+            },
+            {
+              "properties": {
+                "os": { "const": "windows" },
+                "architecture": { "const": "arm64" },
+                "targetTriple": { "const": "aarch64-pc-windows-msvc" }
+              }
+            },
+            {
+              "properties": {
+                "os": { "const": "linux" },
+                "architecture": { "const": "x64" },
+                "targetTriple": { "const": "x86_64-unknown-linux-gnu" }
+              }
+            },
+            {
+              "properties": {
+                "os": { "const": "linux" },
+                "architecture": { "const": "arm64" },
+                "targetTriple": { "const": "aarch64-unknown-linux-gnu" }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "entrypoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "launcher",
+        "runtimeController",
+        "integrityCli",
+        "workbench"
+      ],
+      "properties": {
+        "launcher": {
+          "enum": ["migration-stream-local", "migration-stream-local.exe"]
+        },
+        "runtimeController": {
+          "enum": ["libexec/migration-stream-local-runtime", "libexec/migration-stream-local-runtime.exe"]
+        },
+        "integrityCli": {
+          "enum": ["bin/migration-stream", "bin/migration-stream.exe"]
+        },
+        "workbench": {
+          "enum": ["bin/migration-stream-workbench", "bin/migration-stream-workbench.exe"]
+        }
+      }
+    },
+    "members": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1024,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "memberType",
+          "role",
+          "mode",
+          "size",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*)*$"
+          },
+          "memberType": {
+            "const": "REGULAR_FILE"
+          },
+          "role": {
+            "enum": [
+              "PLATFORM_LAUNCHER",
+              "RUNTIME_CONTROLLER",
+              "INTEGRITY_CLI",
+              "WORKBENCH",
+              "FRONTEND_ASSET",
+              "POLICY",
+              "PROFILE_SCHEMA",
+              "MAPPING_SCHEMA",
+              "BUNDLE_SCHEMA",
+              "CONTROLLED_PACK",
+              "OPERATOR_GUIDE"
+            ]
+          },
+          "mode": {
+            "enum": [
+              "0444",
+              "0555"
+            ]
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 134217728
+          },
+          "sha256": {
+            "$ref": "#/$defs/sha256"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "role": {
+                  "enum": [
+                    "PLATFORM_LAUNCHER",
+                    "RUNTIME_CONTROLLER",
+                    "INTEGRITY_CLI",
+                    "WORKBENCH"
+                  ]
+                }
+              },
+              "required": [
+                "role"
+              ]
+            },
+            "then": {
+              "properties": {
+                "mode": {
+                  "const": "0555"
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "mode": {
+                  "const": "0444"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "target": {
+              "properties": {
+                "os": { "const": "macos" },
+                "architecture": { "const": "arm64" },
+                "targetTriple": { "const": "aarch64-apple-darwin" }
+              },
+              "required": ["minimumOsVersion"]
+            },
+            "entrypoints": {
+              "properties": {
+                "launcher": { "const": "migration-stream-local" },
+                "runtimeController": { "const": "libexec/migration-stream-local-runtime" },
+                "integrityCli": { "const": "bin/migration-stream" },
+                "workbench": { "const": "bin/migration-stream-workbench" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "target": {
+              "properties": {
+                "os": { "const": "windows" },
+                "architecture": { "const": "x64" },
+                "targetTriple": { "const": "x86_64-pc-windows-msvc" }
+              },
+              "not": { "required": ["minimumOsVersion"] }
+            },
+            "entrypoints": {
+              "properties": {
+                "launcher": { "const": "migration-stream-local.exe" },
+                "runtimeController": { "const": "libexec/migration-stream-local-runtime.exe" },
+                "integrityCli": { "const": "bin/migration-stream.exe" },
+                "workbench": { "const": "bin/migration-stream-workbench.exe" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "target": {
+              "properties": {
+                "os": { "const": "windows" },
+                "architecture": { "const": "arm64" },
+                "targetTriple": { "const": "aarch64-pc-windows-msvc" }
+              },
+              "not": { "required": ["minimumOsVersion"] }
+            },
+            "entrypoints": {
+              "properties": {
+                "launcher": { "const": "migration-stream-local.exe" },
+                "runtimeController": { "const": "libexec/migration-stream-local-runtime.exe" },
+                "integrityCli": { "const": "bin/migration-stream.exe" },
+                "workbench": { "const": "bin/migration-stream-workbench.exe" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "target": {
+              "properties": {
+                "os": { "const": "linux" },
+                "architecture": { "const": "x64" },
+                "targetTriple": { "const": "x86_64-unknown-linux-gnu" }
+              },
+              "not": { "required": ["minimumOsVersion"] }
+            },
+            "entrypoints": {
+              "properties": {
+                "launcher": { "const": "migration-stream-local" },
+                "runtimeController": { "const": "libexec/migration-stream-local-runtime" },
+                "integrityCli": { "const": "bin/migration-stream" },
+                "workbench": { "const": "bin/migration-stream-workbench" }
+              }
+            }
+          }
+        },
+        {
+          "properties": {
+            "target": {
+              "properties": {
+                "os": { "const": "linux" },
+                "architecture": { "const": "arm64" },
+                "targetTriple": { "const": "aarch64-unknown-linux-gnu" }
+              },
+              "not": { "required": ["minimumOsVersion"] }
+            },
+            "entrypoints": {
+              "properties": {
+                "launcher": { "const": "migration-stream-local" },
+                "runtimeController": { "const": "libexec/migration-stream-local-runtime" },
+                "integrityCli": { "const": "bin/migration-stream" },
+                "workbench": { "const": "bin/migration-stream-workbench" }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

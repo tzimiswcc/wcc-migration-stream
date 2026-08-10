@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "mappingId": "synthetic.customer.invalid-tombstone",
+  "version": "1.0.0",
+  "profile": {
+    "profileId": "synthetic.customer.readiness",
+    "version": "1.0.0",
+    "sha256": "__PROFILE_SHA256__"
+  },
+  "source": {
+    "packageSha256": "656ed753f1dd7973906f428f526d9069c00c60c84ddc490599328d2217746ca3",
+    "sourceFiles": [
+      "11111111-1111-4111-8111-111111111111.tombstone"
+    ]
+  },
+  "rootEntityId": "Customer",
+  "bindings": [
+    {
+      "bindingId": "synthetic.customer.tombstone-source",
+      "sourceFile": "11111111-1111-4111-8111-111111111111.tombstone",
+      "sourceColumn": "migrationPartnerId",
+      "sourceColumnOrdinal": 0,
+      "targetFieldId": "sourceCustomerId",
+      "kind": "direct"
+    }
+  ],
+  "referenceTables": []
+}

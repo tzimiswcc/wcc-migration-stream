@@ -1,0 +1,152 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "SYNTHETIC_ONLY",
+  "source": {
+    "packageSha256": "fb0d8fe0af53152634b168614c8e3fff98ff623c839bb8f28a1b78da6a06a07b",
+    "file": "customer_accounts.csv",
+    "rows": 7,
+    "columns": 4
+  },
+  "profile": {
+    "profileId": "synthetic.customer.readiness",
+    "version": "1.0.0",
+    "sha256": "6a9954b09614e99688375f9f62c1bd8b016e424eab256f3f90e1c6e73709571f"
+  },
+  "mapping": {
+    "mappingId": "synthetic.customer.all-rules-golden",
+    "version": "1.0.0",
+    "sha256": "9f2c326b1938d688e2df00827c4a74ad0e6c9d3b97a86c4924d804ba39d570ff",
+    "mappedCanonicalFields": [
+      "category",
+      "duplicateGroupKey",
+      "name",
+      "notes",
+      "sourceCustomerId"
+    ],
+    "defaultedCanonicalFields": [
+      "duplicateGroupKey"
+    ],
+    "unmappedSourceColumns": [],
+    "requiredCanonicalFieldsWithoutCoverage": [],
+    "invalidBindings": []
+  },
+  "validation": {
+    "identitySha256": "b3b267a7447641eaee355ae850b98601dcda9e433136a510ee6557ce72e93cb1",
+    "resultSha256": "24d049280793dec42c19a5de4cdb0594c021e242a280f4032603cc0afb6f8d4e",
+    "rowsProcessed": 7,
+    "issueCount": 10,
+    "severityCounts": {
+      "ERROR": 8,
+      "INFORMATION": 1,
+      "WARNING": 1
+    },
+    "ruleCounts": {
+      "SYN-ALLOWED-001": 1,
+      "SYN-CONDITIONAL-001": 1,
+      "SYN-LEN-001": 1,
+      "SYN-LOOKUP-001": 1,
+      "SYN-PATTERN-001": 1,
+      "SYN-REQ-001": 1,
+      "SYN-UNIQUE-001": 4
+    },
+    "issueHashes": [
+      "244067fe36729e11a9f2a3b5b945f178eb4b0116887c4d1a69eef9f186fa2ffc",
+      "38dd1d7aa683f8b56a8601c2ef3983363f077d1b8a0cb789c804fff7dafcb35d",
+      "3b7d0b8d4387aa1a7bc43ea755a09f2945ff4accb3b57f27c31cc97d4c89fe92",
+      "56443a241d2e458633452e389ba9b1ca89aa78eab15d4c80d82d2823e7f0bcf9",
+      "69d8e4be56a9d920ad4af60a5f03fcd46cc21798a9bd82a1826080d181e3fff3",
+      "8f4817495f95efaf2da683689e1a619d0182a697ee389fefab9faaee23a33c5f",
+      "93b81f90389a3a14edbb0cfe00355b581f7e6b67f81388389f59283058614253",
+      "b82b09e74e143dc4812eaf8868993a2bf7d41ef0ec842c156d811fbf06019bf2",
+      "e3ba9c637b228eef2242c6259632d5adfb450afeb1d2ed5383503a52adbdb127",
+      "fbcc5cf05fdc22a9a28305c6a55ef027ba27daa5118c0f1e4f4ef9ebf79ca76b"
+    ],
+    "issues": [
+      {
+        "sourceOrdinal": 2,
+        "severity": "ERROR",
+        "ruleId": "SYN-ALLOWED-001",
+        "issueCode": "ALLOWED_VALUE_MISMATCH",
+        "issueId": "issue-56443a241d2e458633452e389ba9b1ca89aa78eab15d4c80d82d2823e7f0bcf9",
+        "issueSha256": "56443a241d2e458633452e389ba9b1ca89aa78eab15d4c80d82d2823e7f0bcf9"
+      },
+      {
+        "sourceOrdinal": 2,
+        "severity": "INFORMATION",
+        "ruleId": "SYN-LOOKUP-001",
+        "issueCode": "REFERENCE_LOOKUP_MISSING",
+        "issueId": "issue-38dd1d7aa683f8b56a8601c2ef3983363f077d1b8a0cb789c804fff7dafcb35d",
+        "issueSha256": "38dd1d7aa683f8b56a8601c2ef3983363f077d1b8a0cb789c804fff7dafcb35d"
+      },
+      {
+        "sourceOrdinal": 2,
+        "severity": "ERROR",
+        "ruleId": "SYN-REQ-001",
+        "issueCode": "REQUIRED_MISSING",
+        "issueId": "issue-b82b09e74e143dc4812eaf8868993a2bf7d41ef0ec842c156d811fbf06019bf2",
+        "issueSha256": "b82b09e74e143dc4812eaf8868993a2bf7d41ef0ec842c156d811fbf06019bf2"
+      },
+      {
+        "sourceOrdinal": 3,
+        "severity": "ERROR",
+        "ruleId": "SYN-LEN-001",
+        "issueCode": "MAX_LENGTH_EXCEEDED",
+        "issueId": "issue-fbcc5cf05fdc22a9a28305c6a55ef027ba27daa5118c0f1e4f4ef9ebf79ca76b",
+        "issueSha256": "fbcc5cf05fdc22a9a28305c6a55ef027ba27daa5118c0f1e4f4ef9ebf79ca76b"
+      },
+      {
+        "sourceOrdinal": 3,
+        "severity": "ERROR",
+        "ruleId": "SYN-UNIQUE-001",
+        "issueCode": "UNIQUE_DUPLICATE",
+        "issueId": "issue-244067fe36729e11a9f2a3b5b945f178eb4b0116887c4d1a69eef9f186fa2ffc",
+        "issueSha256": "244067fe36729e11a9f2a3b5b945f178eb4b0116887c4d1a69eef9f186fa2ffc"
+      },
+      {
+        "sourceOrdinal": 4,
+        "severity": "WARNING",
+        "ruleId": "SYN-PATTERN-001",
+        "issueCode": "PATTERN_MISMATCH",
+        "issueId": "issue-69d8e4be56a9d920ad4af60a5f03fcd46cc21798a9bd82a1826080d181e3fff3",
+        "issueSha256": "69d8e4be56a9d920ad4af60a5f03fcd46cc21798a9bd82a1826080d181e3fff3"
+      },
+      {
+        "sourceOrdinal": 4,
+        "severity": "ERROR",
+        "ruleId": "SYN-UNIQUE-001",
+        "issueCode": "UNIQUE_DUPLICATE",
+        "issueId": "issue-e3ba9c637b228eef2242c6259632d5adfb450afeb1d2ed5383503a52adbdb127",
+        "issueSha256": "e3ba9c637b228eef2242c6259632d5adfb450afeb1d2ed5383503a52adbdb127"
+      },
+      {
+        "sourceOrdinal": 6,
+        "severity": "ERROR",
+        "ruleId": "SYN-UNIQUE-001",
+        "issueCode": "UNIQUE_DUPLICATE",
+        "issueId": "issue-93b81f90389a3a14edbb0cfe00355b581f7e6b67f81388389f59283058614253",
+        "issueSha256": "93b81f90389a3a14edbb0cfe00355b581f7e6b67f81388389f59283058614253"
+      },
+      {
+        "sourceOrdinal": 7,
+        "severity": "ERROR",
+        "ruleId": "SYN-CONDITIONAL-001",
+        "issueCode": "CONDITIONAL_REQUIRED_MISSING",
+        "issueId": "issue-3b7d0b8d4387aa1a7bc43ea755a09f2945ff4accb3b57f27c31cc97d4c89fe92",
+        "issueSha256": "3b7d0b8d4387aa1a7bc43ea755a09f2945ff4accb3b57f27c31cc97d4c89fe92"
+      },
+      {
+        "sourceOrdinal": 7,
+        "severity": "ERROR",
+        "ruleId": "SYN-UNIQUE-001",
+        "issueCode": "UNIQUE_DUPLICATE",
+        "issueId": "issue-8f4817495f95efaf2da683689e1a619d0182a697ee389fefab9faaee23a33c5f",
+        "issueSha256": "8f4817495f95efaf2da683689e1a619d0182a697ee389fefab9faaee23a33c5f"
+      }
+    ]
+  },
+  "claims": {
+    "externalSystemCompatibility": false,
+    "targetCompatibility": false,
+    "clientData": false
+  }
+}

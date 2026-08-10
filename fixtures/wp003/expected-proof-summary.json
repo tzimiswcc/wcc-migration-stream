@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "fixtureKind": "SYNTHETIC_ONLY",
+  "source": {
+    "packageSha256": "656ed753f1dd7973906f428f526d9069c00c60c84ddc490599328d2217746ca3",
+    "file": "customer_accounts.csv",
+    "rows": 4,
+    "columns": 4
+  },
+  "profile": {
+    "profileId": "synthetic.customer.readiness",
+    "version": "1.0.0",
+    "declaredStatus": "REVIEWED_DRAFT",
+    "requiresExplicitLocalApproval": true
+  },
+  "mapping": {
+    "mappedCanonicalFields": 5,
+    "unmappedSourceColumns": 0,
+    "requiredCanonicalFieldsWithoutCoverage": 0,
+    "kindsExercised": [
+      "constant",
+      "direct",
+      "empty_as_null",
+      "lookup",
+      "trim"
+    ]
+  },
+  "validation": {
+    "rulesExecuted": 7,
+    "rowsEvaluated": 4,
+    "expectedIssueCount": 5,
+    "expectedSeverityCounts": {
+      "ERROR": 3,
+      "WARNING": 2,
+      "INFORMATION": 0
+    },
+    "expectedRuleCounts": {
+      "SYN-CONDITIONAL-001": 1,
+      "SYN-PATTERN-001": 2,
+      "SYN-UNIQUE-001": 2
+    },
+    "expectedRowOutcomes": [
+      {
+        "sourceOrdinal": 1,
+        "outcome": "PASS",
+        "issueCodes": []
+      },
+      {
+        "sourceOrdinal": 2,
+        "outcome": "WARNING",
+        "issueCodes": [
+          "PATTERN_MISMATCH"
+        ]
+      },
+      {
+        "sourceOrdinal": 3,
+        "outcome": "FAIL",
+        "issueCodes": [
+          "PATTERN_MISMATCH",
+          "UNIQUE_DUPLICATE"
+        ]
+      },
+      {
+        "sourceOrdinal": 4,
+        "outcome": "FAIL",
+        "issueCodes": [
+          "CONDITIONAL_REQUIRED_MISSING",
+          "UNIQUE_DUPLICATE"
+        ]
+      }
+    ],
+    "canonicalResultSha256": null,
+    "canonicalResultHashDisposition": "record only after exact approved-profile and finalized-mapping execution"
+  },
+  "claims": {
+    "externalSystemCompatibility": false,
+    "targetCompatibility": false,
+    "clientData": false
+  }
+}

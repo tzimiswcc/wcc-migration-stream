@@ -1,0 +1,152 @@
+{
+  "profileId": "synthetic.customer-account.readiness",
+  "version": "0.1.0",
+  "status": "REVIEWED_DRAFT",
+  "title": "Synthetic customer-account canonical readiness profile",
+  "owner": "Synthetic fixture holder",
+  "technicalSources": [
+    {
+      "kind": "odata_edmx",
+      "artifact": "technical-sources/synthetic-customer-account-metadata.xml",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "system": "SAMPLE",
+      "client": "SYNTHETIC",
+      "release": "SYNTHETIC SAMPLE",
+      "extractedAt": "2026-07-21T00:00:00Z"
+    }
+  ],
+  "entities": [
+    {
+      "entityId": "CustomerAccount",
+      "root": true,
+      "technicalEntity": "CustomerAccountRecord",
+      "key": [
+        "migrationPartnerId"
+      ],
+      "fields": [
+        {
+          "fieldId": "migrationPartnerId",
+          "label": "Migration customer-account ID",
+          "logicalType": "identifier",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "category",
+          "label": "Customer-account category",
+          "logicalType": "code",
+          "required": true,
+          "sensitive": false,
+          "technicalProperty": "AccountCategoryCode"
+        },
+        {
+          "fieldId": "accountName",
+          "label": "Customer-account name",
+          "logicalType": "text",
+          "required": false,
+          "sensitive": true,
+          "technicalProperty": "AccountDisplayName"
+        }
+      ]
+    },
+    {
+      "entityId": "Address",
+      "root": false,
+      "technicalEntity": "CustomerAccountAddressRecord",
+      "key": [
+        "addressSequence"
+      ],
+      "fields": [
+        {
+          "fieldId": "addressSequence",
+          "logicalType": "integer",
+          "required": true
+        },
+        {
+          "fieldId": "country",
+          "logicalType": "country_code",
+          "required": true,
+          "technicalProperty": "CountryCode"
+        },
+        {
+          "fieldId": "city",
+          "logicalType": "text",
+          "required": false,
+          "sensitive": true,
+          "technicalProperty": "City"
+        },
+        {
+          "fieldId": "postalCode",
+          "logicalType": "text",
+          "required": false,
+          "sensitive": true,
+          "technicalProperty": "PostalCode"
+        }
+      ]
+    },
+    {
+      "entityId": "CustomerMarketSegment",
+      "root": false,
+      "technicalEntity": "CustomerMarketSegmentRecord",
+      "key": [
+        "marketCode",
+        "channelCode",
+        "segmentCode"
+      ],
+      "fields": [
+        {
+          "fieldId": "marketCode",
+          "logicalType": "code",
+          "required": true,
+          "technicalProperty": "MarketCode"
+        },
+        {
+          "fieldId": "channelCode",
+          "logicalType": "code",
+          "required": true,
+          "technicalProperty": "ChannelCode"
+        },
+        {
+          "fieldId": "segmentCode",
+          "logicalType": "code",
+          "required": true,
+          "technicalProperty": "SegmentCode"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "from": "CustomerAccount",
+      "to": "Address",
+      "cardinality": "0..*",
+      "technicalNavigation": "addresses"
+    },
+    {
+      "from": "CustomerAccount",
+      "to": "CustomerMarketSegment",
+      "cardinality": "0..*",
+      "technicalNavigation": "marketSegments"
+    }
+  ],
+  "rules": [
+    {
+      "ruleId": "ACCOUNT-001",
+      "severity": "error",
+      "kind": "required",
+      "target": "CustomerAccount.category",
+      "message": "Customer-account category is required."
+    }
+  ],
+  "publicationAdapters": [
+    {
+      "adapterId": "canonical-customer-account-readiness",
+      "version": "0.1.0",
+      "status": "active"
+    },
+    {
+      "adapterId": "external-customer-account-api",
+      "status": "future"
+    }
+  ]
+}

@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/profiling-result.schema.json",
+  "title": "Migration Stream bounded textual profiling result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "profiler",
+    "job_id",
+    "source_hash",
+    "policy_hash",
+    "file_count",
+    "row_count",
+    "column_count",
+    "files"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "profiler": {
+      "$ref": "#/$defs/profiler"
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_hash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "policy_hash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "file_count": {
+      "$ref": "#/$defs/count"
+    },
+    "row_count": {
+      "$ref": "#/$defs/count"
+    },
+    "column_count": {
+      "$ref": "#/$defs/count"
+    },
+    "files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/file"
+      }
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nullableCount": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/count"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "profiler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version"
+      ],
+      "properties": {
+        "name": {
+          "const": "migration-stream-text-profiler"
+        },
+        "version": {
+          "const": "1"
+        }
+      }
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sha256",
+        "utf8_bytes",
+        "decoded_length",
+        "value"
+      ],
+      "properties": {
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "utf8_bytes": {
+          "$ref": "#/$defs/count"
+        },
+        "decoded_length": {
+          "$ref": "#/$defs/count"
+        },
+        "value": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Local-only decoded text, omitted above the policy byte cap."
+        }
+      }
+    },
+    "distinct": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "count"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "EXACT",
+            "NOT_COMPUTED_DUE_TO_BOUND"
+          ]
+        },
+        "count": {
+          "$ref": "#/$defs/nullableCount"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "mode": {
+                "const": "EXACT"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "count": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "count": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ordinal",
+        "name",
+        "empty_count",
+        "nonempty_count",
+        "min_decoded_length",
+        "max_decoded_length",
+        "oversized_count",
+        "distinct",
+        "samples"
+      ],
+      "properties": {
+        "ordinal": {
+          "$ref": "#/$defs/count"
+        },
+        "name": {
+          "type": "string"
+        },
+        "empty_count": {
+          "$ref": "#/$defs/count"
+        },
+        "nonempty_count": {
+          "$ref": "#/$defs/count"
+        },
+        "min_decoded_length": {
+          "$ref": "#/$defs/nullableCount"
+        },
+        "max_decoded_length": {
+          "$ref": "#/$defs/nullableCount"
+        },
+        "oversized_count": {
+          "$ref": "#/$defs/count"
+        },
+        "distinct": {
+          "$ref": "#/$defs/distinct"
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sample"
+          }
+        }
+      }
+    },
+    "duplicateKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "columns",
+        "status",
+        "distinct_key_count",
+        "duplicate_row_count"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "status": {
+          "enum": [
+            "EXACT",
+            "NOT_COMPUTED_MISSING_OR_AMBIGUOUS_COLUMNS"
+          ]
+        },
+        "distinct_key_count": {
+          "$ref": "#/$defs/nullableCount"
+        },
+        "duplicate_row_count": {
+          "$ref": "#/$defs/nullableCount"
+        }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "row_count",
+        "column_count",
+        "duplicate_keys",
+        "columns"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "row_count": {
+          "$ref": "#/$defs/count"
+        },
+        "column_count": {
+          "$ref": "#/$defs/count"
+        },
+        "duplicate_keys": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/duplicateKey"
+          }
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/column"
+          }
+        }
+      }
+    }
+  }
+}

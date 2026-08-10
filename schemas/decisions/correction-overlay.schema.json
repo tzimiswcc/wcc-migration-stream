@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/decisions/correction-overlay.schema.json",
+  "title": "Migration Stream Immutable Correction Overlay",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "overlayId",
+    "decisionRequestHash",
+    "scope",
+    "priorEffectiveValueHash",
+    "operation",
+    "practitionerId",
+    "reason",
+    "createdAt",
+    "overlayHash"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "overlayId": {
+      "$ref": "#/$defs/identity"
+    },
+    "decisionRequestHash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "priorEffectiveValueHash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "operation": {
+      "enum": [
+        "REPLACE_EFFECTIVE_TEXT",
+        "SET_EFFECTIVE_EMPTY",
+        "SET_EFFECTIVE_NULL"
+      ]
+    },
+    "replacementText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1048576
+    },
+    "practitionerId": {
+      "$ref": "#/$defs/practitioner"
+    },
+    "reason": {
+      "$ref": "#/$defs/reason"
+    },
+    "createdAt": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "overlayHash": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "operation": {
+            "const": "REPLACE_EFFECTIVE_TEXT"
+          }
+        },
+        "required": [
+          "operation"
+        ]
+      },
+      "then": {
+        "required": [
+          "replacementText"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "replacementText"
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "sourceFile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^/\\\\]+(?:/[^/\\\\]+)*$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "(^|/)(?:\\.|\\.\\.)(?:/|$)"
+          },
+          {
+            "pattern": "(^|/)[^/]*\\.(?:[Pp][Aa][Rr][Tt]|[Tt][Oo][Mm][Bb][Ss][Tt][Oo][Nn][Ee])(?:/|$)"
+          },
+          {
+            "pattern": "(^|/)[ \\t]|[ \\t](?:/|$)"
+          },
+          {
+            "pattern": "[\\u0000-\\u001F\\u007F]"
+          }
+        ]
+      }
+    },
+    "practitioner": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "format": "date-time"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "jobId",
+        "validationRunId",
+        "issueId",
+        "issueHash",
+        "acceptedSourceFile",
+        "sourceOrdinal",
+        "lineStart",
+        "lineEnd",
+        "canonicalEntityId",
+        "canonicalFieldId",
+        "profileId",
+        "profileVersion",
+        "profileHash",
+        "mappingId",
+        "mappingVersion",
+        "mappingHash"
+      ],
+      "properties": {
+        "jobId": {
+          "$ref": "#/$defs/identity"
+        },
+        "validationRunId": {
+          "$ref": "#/$defs/identity"
+        },
+        "issueId": {
+          "$ref": "#/$defs/identity"
+        },
+        "issueHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "acceptedSourceFile": {
+          "$ref": "#/$defs/sourceFile"
+        },
+        "sourceOrdinal": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lineStart": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lineEnd": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "canonicalEntityId": {
+          "$ref": "#/$defs/identity"
+        },
+        "canonicalFieldId": {
+          "$ref": "#/$defs/identity"
+        },
+        "profileId": {
+          "$ref": "#/$defs/identity"
+        },
+        "profileVersion": {
+          "$ref": "#/$defs/version"
+        },
+        "profileHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "mappingId": {
+          "$ref": "#/$defs/identity"
+        },
+        "mappingVersion": {
+          "$ref": "#/$defs/version"
+        },
+        "mappingHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    }
+  }
+}

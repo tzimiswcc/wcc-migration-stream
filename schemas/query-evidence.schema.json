@@ -1,0 +1,792 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/query-evidence.schema.json",
+  "title": "Migration Stream Practitioner Query Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "recorded_at_utc",
+    "execution_context",
+    "subject",
+    "method",
+    "contracts",
+    "index_decisions"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "migration-stream-query-evidence/v1"
+    },
+    "recorded_at_utc": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 64
+    },
+    "execution_context": {
+      "$ref": "#/$defs/executionContext"
+    },
+    "subject": {
+      "$ref": "#/$defs/subject"
+    },
+    "method": {
+      "$ref": "#/$defs/method"
+    },
+    "contracts": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/contractEvidence"
+      }
+    },
+    "index_decisions": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/indexDecision"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/shortText"
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "shortText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "nonnegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "executionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "git_revision",
+        "git_clean",
+        "executable_sha256",
+        "executable_bytes",
+        "executable_format",
+        "executable_platform",
+        "executable_architectures",
+        "binary_revision_binding",
+        "process_platform",
+        "process_architecture",
+        "host_platform",
+        "host_architecture",
+        "native_execution_verified",
+        "rustc_release",
+        "rustc_host_triple",
+        "rustc_default_target_triple",
+        "rustc_target_platform",
+        "rustc_target_architecture",
+        "rustc_target_basis",
+        "evidence_schema_path",
+        "evidence_schema_sha256",
+        "context_sha256"
+      ],
+      "properties": {
+        "git_revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+        },
+        "git_clean": {
+          "type": "boolean"
+        },
+        "executable_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "executable_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1073741824
+        },
+        "executable_format": {
+          "enum": [
+            "elf",
+            "macho",
+            "pe"
+          ]
+        },
+        "executable_platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "executable_architectures": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "x86_64",
+              "aarch64"
+            ]
+          }
+        },
+        "binary_revision_binding": {
+          "const": "co-recorded-no-embedded-attestation"
+        },
+        "process_platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "process_architecture": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "host_platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "host_architecture": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "native_execution_verified": {
+          "const": true
+        },
+        "rustc_release": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "rustc_host_triple": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "rustc_default_target_triple": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "rustc_target_platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "rustc_target_architecture": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "rustc_target_basis": {
+          "const": "rustc-default-cfg"
+        },
+        "evidence_schema_path": {
+          "const": "schemas/query-evidence.schema.json"
+        },
+        "evidence_schema_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "context_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "git_revision",
+        "git_clean",
+        "platform",
+        "architecture",
+        "host_label",
+        "fixture_shape",
+        "database_bytes",
+        "database_sha256",
+        "wal_bytes",
+        "row_count",
+        "file_count",
+        "issue_count"
+      ],
+      "properties": {
+        "git_revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+        },
+        "git_clean": {
+          "type": "boolean"
+        },
+        "platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "architecture": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "host_label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "fixture_shape": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "database_bytes": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "database_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "wal_bytes": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "row_count": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "file_count": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "issue_count": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        }
+      }
+    },
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clock",
+        "warmup_executions",
+        "measured_executions",
+        "page_size",
+        "query_guard_milliseconds"
+        ,
+        "outer_timeout_seconds",
+        "maximum_database_bytes",
+        "maximum_temporary_bytes",
+        "sqlite_measurement_source",
+        "source_was_declared_isolated_copy"
+      ],
+      "properties": {
+        "clock": {
+          "const": "monotonic"
+        },
+        "warmup_executions": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "measured_executions": {
+          "type": "integer",
+          "minimum": 3,
+          "maximum": 50
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "query_guard_milliseconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30000
+        },
+        "outer_timeout_seconds": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 900
+        },
+        "maximum_database_bytes": {
+          "type": "integer",
+          "minimum": 1048576,
+          "maximum": 68719476736
+        },
+        "maximum_temporary_bytes": {
+          "type": "integer",
+          "minimum": 1048576,
+          "maximum": 68719476736
+        },
+        "sqlite_measurement_source": {
+          "const": "shared-lock-no-follow-zero-wal-private-immutable-copy"
+        },
+        "source_was_declared_isolated_copy": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/shortText"
+          }
+        }
+      }
+    },
+    "queryPlanRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "parent",
+        "detail"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "parent": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        }
+      }
+    },
+    "latency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "observations",
+        "minimum",
+        "median",
+        "maximum"
+      ],
+      "properties": {
+        "unit": {
+          "const": "microseconds"
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/nonnegativeInteger"
+          }
+        },
+        "minimum": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "median": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "maximum": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        }
+      }
+    },
+    "indexLatency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "observations",
+        "minimum",
+        "median",
+        "maximum",
+        "completed_within_guard",
+        "result_count",
+        "result_sha256",
+        "stable_result"
+      ],
+      "properties": {
+        "unit": {
+          "const": "microseconds"
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 50,
+          "items": {
+            "$ref": "#/$defs/nonnegativeInteger"
+          }
+        },
+        "minimum": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "median": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "maximum": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "completed_within_guard": {
+          "type": "boolean"
+        },
+        "result_count": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "result_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "stable_result": {
+          "type": "boolean"
+        }
+      }
+    },
+    "contractEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "request_hash",
+        "result_count",
+        "page_size",
+        "plan",
+        "latency",
+        "completed_within_guard"
+      ],
+      "properties": {
+        "contract": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z0-9.-]+$"
+        },
+        "request_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "result_count": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "page_size": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "plan": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/queryPlanRow"
+          }
+        },
+        "latency": {
+          "$ref": "#/$defs/latency"
+        },
+        "completed_within_guard": {
+          "type": "boolean"
+        },
+        "indexes_used": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_]+$"
+          }
+        },
+        "limitations": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/shortText"
+          }
+        }
+      }
+    },
+    "indexDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "decision": {
+                "const": "retain"
+              }
+            },
+            "required": [
+              "decision"
+            ]
+          },
+          "then": {
+            "properties": {
+              "retention_facts": {
+                "properties": {
+                  "planner_selected_named_index": {
+                    "const": true
+                  },
+                  "plan_changed_without_index": {
+                    "const": true
+                  },
+                  "recreated_plan_matches_retained": {
+                    "const": true
+                  },
+                  "results_stable": {
+                    "const": true
+                  },
+                  "results_equivalent": {
+                    "const": true
+                  },
+                  "all_queries_completed_within_guard": {
+                    "const": true
+                  },
+                  "transactional_create_rollback_removed_index": {
+                    "const": true
+                  },
+                  "transactional_drop_rollback_restored_index": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "required": [
+        "index_name",
+        "supported_contracts",
+        "plans",
+        "plan_hashes",
+        "latency",
+        "retention_facts",
+        "storage_cost_bytes",
+        "write_cost",
+        "migration",
+        "rollback",
+        "decision",
+        "reason"
+      ],
+      "properties": {
+        "index_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_]+$"
+        },
+        "supported_contracts": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 32,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[a-z0-9.-]+$"
+          }
+        },
+        "plans": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "without_index",
+            "retained",
+            "recreated"
+          ],
+          "properties": {
+            "without_index": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "items": {
+                "$ref": "#/$defs/queryPlanRow"
+              }
+            },
+            "retained": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "items": {
+                "$ref": "#/$defs/queryPlanRow"
+              }
+            },
+            "recreated": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 256,
+              "items": {
+                "$ref": "#/$defs/queryPlanRow"
+              }
+            }
+          }
+        },
+        "plan_hashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "without_index",
+            "retained",
+            "recreated"
+          ],
+          "properties": {
+            "without_index": {
+              "$ref": "#/$defs/sha256"
+            },
+            "retained": {
+              "$ref": "#/$defs/sha256"
+            },
+            "recreated": {
+              "$ref": "#/$defs/sha256"
+            }
+          }
+        },
+        "latency": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "without_index",
+            "retained",
+            "recreated"
+          ],
+          "properties": {
+            "without_index": {
+              "$ref": "#/$defs/indexLatency"
+            },
+            "retained": {
+              "$ref": "#/$defs/indexLatency"
+            },
+            "recreated": {
+              "$ref": "#/$defs/indexLatency"
+            }
+          }
+        },
+        "retention_facts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "planner_selected_named_index",
+            "plan_changed_without_index",
+            "recreated_plan_matches_retained",
+            "results_stable",
+            "results_equivalent",
+            "all_queries_completed_within_guard",
+            "transactional_create_rollback_removed_index",
+            "transactional_drop_rollback_restored_index"
+          ],
+          "properties": {
+            "planner_selected_named_index": {
+              "type": "boolean"
+            },
+            "plan_changed_without_index": {
+              "type": "boolean"
+            },
+            "recreated_plan_matches_retained": {
+              "type": "boolean"
+            },
+            "results_stable": {
+              "type": "boolean"
+            },
+            "results_equivalent": {
+              "type": "boolean"
+            },
+            "all_queries_completed_within_guard": {
+              "type": "boolean"
+            },
+            "transactional_create_rollback_removed_index": {
+              "type": "boolean"
+            },
+            "transactional_drop_rollback_restored_index": {
+              "type": "boolean"
+            }
+          }
+        },
+        "storage_cost_bytes": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "write_cost": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operation",
+            "elapsed_us",
+            "completed_within_outer_deadline"
+          ],
+          "properties": {
+            "operation": {
+              "const": "temporary-copy-reindex"
+            },
+            "elapsed_us": {
+              "$ref": "#/$defs/nonnegativeInteger"
+            },
+            "completed_within_outer_deadline": {
+              "const": true
+            }
+          }
+        },
+        "migration": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "operation",
+            "elapsed_us",
+            "recreated_plan_matches_retained"
+          ],
+          "properties": {
+            "operation": {
+              "const": "temporary-copy-create-index"
+            },
+            "elapsed_us": {
+              "$ref": "#/$defs/nonnegativeInteger"
+            },
+            "recreated_plan_matches_retained": {
+              "type": "boolean"
+            }
+          }
+        },
+        "rollback": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "transactional_create_removed_index",
+            "transactional_drop_restored_index"
+          ],
+          "properties": {
+            "transactional_create_removed_index": {
+              "type": "boolean"
+            },
+            "transactional_drop_restored_index": {
+              "type": "boolean"
+            }
+          }
+        },
+        "decision": {
+          "enum": [
+            "retain",
+            "reject"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/shortText"
+        }
+      }
+    }
+  }
+}

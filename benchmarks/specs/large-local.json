@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "fixture_name": "large-local",
+  "seed": 22002002,
+  "file_count": 1,
+  "rows_per_file": 800000,
+  "columns": 16,
+  "field_lengths": { "minimum": 4, "typical": 12, "maximum": 64 },
+  "compressibility": "medium",
+  "empty_frequency": 0.05,
+  "cardinality": "medium",
+  "duplicate_key_frequency": 0.02,
+  "multiline_frequency": 0.002,
+  "delimiter": ",",
+  "delimiter_in_field_frequency": 0.002,
+  "escaped_quote_frequency": 0.002,
+  "unicode_frequency": 0.01,
+  "leading_zero_id_frequency": 0.25,
+  "skew": { "hot_value_frequency": 0.15 },
+  "maximum_expanded_bytes": 251658240,
+  "maximum_output_bytes": 251658240
+}

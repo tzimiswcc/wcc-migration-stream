@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://migration-stream.local/schemas/benchmark-evidence.schema.json",
+  "title": "Migration Stream benchmark evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "case_id",
+    "recorded_at_utc",
+    "subject",
+    "application",
+    "platform",
+    "limits",
+    "fixture",
+    "intake",
+    "profiling",
+    "timing",
+    "memory",
+    "throughput",
+    "storage",
+    "outcome",
+    "warnings",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": "migration-stream-benchmark-evidence/v1" },
+    "case_id": { "$ref": "#/$defs/token" },
+    "recorded_at_utc": { "type": "string", "format": "date-time" },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["git_commit", "git_clean"],
+      "properties": {
+        "git_commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "git_clean": { "type": "boolean" }
+      }
+    },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "rustc_version"],
+      "properties": {
+        "name": { "const": "migration-stream" },
+        "version": { "type": "string", "minLength": 1 },
+        "rustc_version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "platform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "architecture", "host_label"],
+      "properties": {
+        "os": { "type": "string", "minLength": 1 },
+        "architecture": { "type": "string", "minLength": 1 },
+        "host_label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "maximum_expanded_bytes",
+        "minimum_free_space_bytes",
+        "maximum_peak_rss_bytes",
+        "maximum_wall_seconds",
+        "require_external_rss"
+      ],
+      "properties": {
+        "maximum_expanded_bytes": { "$ref": "#/$defs/nonnegativeInteger" },
+        "minimum_free_space_bytes": { "$ref": "#/$defs/nonnegativeInteger" },
+        "maximum_peak_rss_bytes": { "$ref": "#/$defs/nonnegativeInteger" },
+        "maximum_wall_seconds": { "$ref": "#/$defs/nonnegativeInteger" },
+        "require_external_rss": { "type": "boolean" }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_id",
+        "generator_version",
+        "seed",
+        "parameters",
+        "zip_bytes",
+        "expanded_bytes",
+        "file_count",
+        "row_count",
+        "column_count",
+        "field_count",
+        "zip_sha256"
+      ],
+      "properties": {
+        "fixture_id": { "$ref": "#/$defs/sha256" },
+        "generator_version": { "type": "string", "minLength": 1 },
+        "seed": { "type": "integer", "minimum": 0 },
+        "parameters": { "type": "object" },
+        "zip_bytes": { "$ref": "#/$defs/nonnegativeInteger" },
+        "expanded_bytes": { "$ref": "#/$defs/nonnegativeInteger" },
+        "file_count": { "type": "integer", "minimum": 1 },
+        "row_count": { "$ref": "#/$defs/nonnegativeInteger" },
+        "column_count": { "type": "integer", "minimum": 1 },
+        "field_count": { "$ref": "#/$defs/nonnegativeInteger" },
+        "zip_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "intake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "elapsed_ms",
+        "job_id",
+        "job_state",
+        "source_records",
+        "stored_records",
+        "pending_records"
+      ],
+      "properties": {
+        "policy": { "type": "object" },
+        "elapsed_ms": { "$ref": "#/$defs/nonnegativeInteger" },
+        "job_id": { "type": "string", "format": "uuid" },
+        "job_state": { "const": "COMPLETE" },
+        "source_records": { "$ref": "#/$defs/nonnegativeInteger" },
+        "stored_records": { "$ref": "#/$defs/nonnegativeInteger" },
+        "pending_records": { "$ref": "#/$defs/nonnegativeInteger" }
+      }
+    },
+    "profiling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "elapsed_ms",
+        "run_id",
+        "state",
+        "result_sha256",
+        "reused_complete"
+      ],
+      "properties": {
+        "policy": { "type": "object" },
+        "elapsed_ms": { "$ref": "#/$defs/nonnegativeInteger" },
+        "run_id": { "type": "string", "format": "uuid" },
+        "state": { "const": "COMPLETE" },
+        "result_sha256": { "$ref": "#/$defs/sha256" },
+        "reused_complete": { "type": "boolean" }
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["end_to_end_elapsed_ms", "cpu_seconds", "cpu_method"],
+      "properties": {
+        "end_to_end_elapsed_ms": { "$ref": "#/$defs/nonnegativeInteger" },
+        "cpu_seconds": {
+          "oneOf": [
+            { "type": "number", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "cpu_method": { "type": "string", "minLength": 1 }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["peak_rss_bytes", "method", "configured_ceiling_bytes"],
+      "properties": {
+        "peak_rss_bytes": { "$ref": "#/$defs/nullableNonnegativeInteger" },
+        "method": { "type": "string", "minLength": 1 },
+        "configured_ceiling_bytes": { "$ref": "#/$defs/nonnegativeInteger" }
+      }
+    },
+    "throughput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows_per_second", "expanded_bytes_per_second"],
+      "properties": {
+        "rows_per_second": { "type": "number", "minimum": 0 },
+        "expanded_bytes_per_second": { "type": "number", "minimum": 0 }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sqlite_final_bytes",
+        "wal_final_bytes",
+        "shm_final_bytes",
+        "sqlite_peak_bytes",
+        "wal_peak_bytes",
+        "shm_peak_bytes",
+        "workspace_peak_bytes",
+        "temporary_peak_bytes",
+        "bytes_per_row",
+        "bytes_per_field",
+        "allocations_bytes"
+      ],
+      "properties": {
+        "sqlite_final_bytes": { "$ref": "#/$defs/nonnegativeInteger" },
+        "wal_final_bytes": { "$ref": "#/$defs/nonnegativeInteger" },
+        "shm_final_bytes": { "$ref": "#/$defs/nonnegativeInteger" },
+        "sqlite_peak_bytes": { "$ref": "#/$defs/nullableNonnegativeInteger" },
+        "wal_peak_bytes": { "$ref": "#/$defs/nullableNonnegativeInteger" },
+        "shm_peak_bytes": { "$ref": "#/$defs/nullableNonnegativeInteger" },
+        "workspace_peak_bytes": { "$ref": "#/$defs/nullableNonnegativeInteger" },
+        "temporary_peak_bytes": { "$ref": "#/$defs/nullableNonnegativeInteger" },
+        "bytes_per_row": { "type": "number", "minimum": 0 },
+        "bytes_per_field": { "type": "number", "minimum": 0 },
+        "allocations_bytes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/nonnegativeInteger" }
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reconciliation_ok",
+        "integrity_ok",
+        "integrity_elapsed_ms",
+        "integrity_checked_jobs",
+        "integrity_checked_packages",
+        "integrity_checked_profiling_runs"
+      ],
+      "properties": {
+        "reconciliation_ok": { "type": "boolean" },
+        "integrity_ok": { "type": "boolean" },
+        "integrity_elapsed_ms": { "$ref": "#/$defs/nonnegativeInteger" },
+        "integrity_checked_jobs": { "$ref": "#/$defs/nonnegativeInteger" },
+        "integrity_checked_packages": { "$ref": "#/$defs/nonnegativeInteger" },
+        "integrity_checked_profiling_runs": { "$ref": "#/$defs/nonnegativeInteger" }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "nonnegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "nullableNonnegativeInteger": {
+      "oneOf": [
+        { "$ref": "#/$defs/nonnegativeInteger" },
+        { "type": "null" }
+      ]
+    }
+  }
+}

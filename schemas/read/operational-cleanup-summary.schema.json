@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/operational-cleanup-summary.schema.json",
+  "title": "Migration Stream Operational Cleanup Summary Page v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "items", "page", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/operational-cleanup/v1" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["states"],
+      "properties": {
+        "states": {
+          "type": "array",
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/state" }
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/cleanup" }
+    },
+    "page": { "$ref": "#/$defs/page" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "timestamp": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "state": { "enum": ["PLANNED", "QUARANTINED", "CLEANUP_PENDING", "CLEANED", "CONFLICT"] },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_size", "returned", "next_cursor"],
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "returned": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "next_cursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 8192,
+          "pattern": "^v1[.][a-f0-9]+[.][a-f0-9]{64}$"
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cleanup_id", "namespace", "job_id", "state", "cleanup_attempts", "last_error_code",
+        "diagnostic_present", "created_at", "updated_at", "quarantined_at", "cleaned_at"
+      ],
+      "properties": {
+        "cleanup_id": { "$ref": "#/$defs/id" },
+        "namespace": { "enum": ["packages", "metadata", "catalogues"] },
+        "job_id": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] },
+        "state": { "$ref": "#/$defs/state" },
+        "cleanup_attempts": { "type": "integer", "minimum": 0 },
+        "last_error_code": { "type": ["string", "null"], "minLength": 1, "maxLength": 128 },
+        "diagnostic_present": { "type": "boolean" },
+        "created_at": { "$ref": "#/$defs/timestamp" },
+        "updated_at": { "$ref": "#/$defs/timestamp" },
+        "quarantined_at": { "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] },
+        "cleaned_at": { "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] }
+      }
+    }
+  }
+}

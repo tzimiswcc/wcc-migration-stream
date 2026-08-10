@@ -1,0 +1,5 @@
+case_ref,party_ref,booked_on,route_code,money_iso,buy_ref,owning_desk
+SD-1003,CUST-0105,2026-09-03,N,usd,PO-8800,west
+SD-1001,CUST-0042,2026-09-01,N,eur,PO-7781,north
+SD-1004,CUST-0099,2026-09-04,N,gbp,PO-NEW,south
+SD-1002,CUST-0088,2026-09-02,R,gbp,,south

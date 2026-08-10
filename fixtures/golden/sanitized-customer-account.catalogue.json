@@ -1,0 +1,144 @@
+{
+  "catalogue": {
+    "formatVersion": "1.0.0",
+    "status": "GENERATED_DRAFT",
+    "snapshot": {
+      "sha256": "393b3740cc8dc6195633dd52b44f5a2d5a5dab30f12ce1ed0a66aaf5500118aa",
+      "byteLength": 1816,
+      "context": {
+        "artifact": "fixtures/metadata/sanitized-customer-account.edmx",
+        "system": "SYNTHETIC_ODATA_V4",
+        "client": "SYNTHETIC",
+        "release": "SYNTHETIC_SAMPLE"
+      }
+    },
+    "parser": {
+      "name": "migration-stream-edmx",
+      "version": "1.1.0",
+      "options": {
+        "offline": true,
+        "namespacePrefixAgnostic": true,
+        "rejectDocumentType": true,
+        "externalResolution": false,
+        "limits": {
+          "maxInputBytes": 8388608,
+          "maxDepth": 64,
+          "maxEvents": 250000,
+          "maxAttributesPerElement": 64,
+          "maxAttributeBytes": 65536,
+          "maxTextBytes": 1048576
+        }
+      }
+    },
+    "schemas": [
+      {
+        "namespace": "Synthetic.CustomerAccount",
+        "entityTypes": [
+          {
+            "name": "Address",
+            "key": [
+              "AddressId",
+              "CustomerAccount"
+            ],
+            "properties": [
+              {
+                "name": "AddressId",
+                "type": "Edm.String",
+                "nullable": false,
+                "maxLength": "10"
+              },
+              {
+                "name": "City",
+                "type": "Edm.String",
+                "nullable": true,
+                "maxLength": "40"
+              },
+              {
+                "name": "CustomerAccount",
+                "type": "Edm.String",
+                "nullable": false,
+                "maxLength": "10"
+              }
+            ],
+            "navigationProperties": [
+              {
+                "name": "CustomerAccount",
+                "type": "Synthetic.CustomerAccount.CustomerAccount",
+                "nullable": false,
+                "partner": "Addresses",
+                "collection": false,
+                "cardinality": "1"
+              }
+            ]
+          },
+          {
+            "name": "CustomerAccount",
+            "key": [
+              "CustomerAccount"
+            ],
+            "properties": [
+              {
+                "name": "CreditAmount",
+                "type": "Edm.Decimal",
+                "nullable": true,
+                "precision": "16",
+                "scale": "3"
+              },
+              {
+                "name": "CustomerAccount",
+                "type": "Edm.String",
+                "nullable": false,
+                "maxLength": "10"
+              },
+              {
+                "name": "DisplayName",
+                "type": "Edm.String",
+                "nullable": true,
+                "maxLength": "80"
+              }
+            ],
+            "navigationProperties": [
+              {
+                "name": "Addresses",
+                "type": "Collection(Synthetic.CustomerAccount.Address)",
+                "partner": "CustomerAccount",
+                "collection": true,
+                "cardinality": "0..*"
+              },
+              {
+                "name": "PrimaryAddress",
+                "type": "Synthetic.CustomerAccount.Address",
+                "nullable": true,
+                "partner": "CustomerAccount",
+                "collection": false,
+                "cardinality": "0..1"
+              }
+            ]
+          }
+        ],
+        "associations": [],
+        "entityContainers": [
+          {
+            "name": "SyntheticService",
+            "entitySets": [
+              {
+                "name": "Addresses",
+                "entityType": "Synthetic.CustomerAccount.Address"
+              },
+              {
+                "name": "CustomerAccounts",
+                "entityType": "Synthetic.CustomerAccount.CustomerAccount"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "evidence": {
+    "algorithm": "SHA-256",
+    "sha256": "0e4089ab45a4b8316c2386d4449c6fa2befbc5fce2d257ce931e8035d6f40292",
+    "serialization": "migration-stream-technical-catalogue-json-v1",
+    "scope": "compact JSON serialization of catalogue; evidence excluded"
+  }
+}

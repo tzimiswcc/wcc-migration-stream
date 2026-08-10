@@ -1,0 +1,7 @@
+case_link,seq_ref,offer_ref,demand_qty,measure,net_rate,need_by
+SD-1001,0010, SKU-A ,2,ea,15.00,2026-09-10
+SD-1001,0020,SKU-B,1,ea,8.50,
+SD-1002,0010,SKU-C,5,box,12.00,2026-09-15
+SD-1002,0010,SKU-D,1,ea,5.00,2026-09-15
+SD-9999,0010,SKU-X,3,ea,9.00,2026-09-18
+SD-1001,0030,SKU-E,0,ea,10.00,2026-09-20

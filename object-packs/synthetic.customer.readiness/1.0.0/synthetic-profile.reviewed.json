@@ -1,0 +1,135 @@
+{
+  "profileId": "synthetic.customer.readiness",
+  "version": "1.0.0",
+  "status": "REVIEWED_DRAFT",
+  "title": "Synthetic customer readiness validation proof profile",
+  "owner": "Synthetic test fixture",
+  "technicalSources": [],
+  "entities": [
+    {
+      "entityId": "Customer",
+      "root": true,
+      "key": [
+        "sourceCustomerId"
+      ],
+      "fields": [
+        {
+          "fieldId": "sourceCustomerId",
+          "label": "Synthetic received customer identifier",
+          "logicalType": "identifier",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "duplicateGroupKey",
+          "label": "Synthetic duplicate proof key",
+          "logicalType": "text",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "category",
+          "label": "Synthetic customer category",
+          "logicalType": "code",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "name",
+          "label": "Synthetic customer name",
+          "logicalType": "text",
+          "required": false,
+          "sensitive": false,
+          "maxLength": 64
+        },
+        {
+          "fieldId": "notes",
+          "label": "Synthetic notes",
+          "logicalType": "text",
+          "required": false,
+          "sensitive": false
+        }
+      ]
+    }
+  ],
+  "relationships": [],
+  "rules": [
+    {
+      "ruleId": "SYN-REQ-001",
+      "severity": "error",
+      "kind": "required",
+      "target": "Customer.sourceCustomerId",
+      "parameters": {},
+      "message": "Synthetic source customer identifier is required."
+    },
+    {
+      "ruleId": "SYN-LEN-001",
+      "severity": "error",
+      "kind": "max_length",
+      "target": "Customer.name",
+      "parameters": {
+        "maximum": 64
+      },
+      "message": "Synthetic customer name exceeds the bounded proof length."
+    },
+    {
+      "ruleId": "SYN-ALLOWED-001",
+      "severity": "error",
+      "kind": "allowed_values",
+      "target": "Customer.category",
+      "parameters": {
+        "values": [
+          "PERSON",
+          "ORGANIZATION"
+        ]
+      },
+      "message": "Synthetic category is outside the approved proof domain."
+    },
+    {
+      "ruleId": "SYN-PATTERN-001",
+      "severity": "warning",
+      "kind": "pattern",
+      "target": "Customer.name",
+      "parameters": {
+        "pattern": "^[ -~]*$"
+      },
+      "message": "Synthetic name contains non-ASCII text for the warning proof."
+    },
+    {
+      "ruleId": "SYN-UNIQUE-001",
+      "severity": "error",
+      "kind": "unique",
+      "target": "Customer.duplicateGroupKey",
+      "parameters": {
+        "scopeFields": [
+          "duplicateGroupKey",
+          "category"
+        ]
+      },
+      "message": "Synthetic duplicate group and category must be unique."
+    },
+    {
+      "ruleId": "SYN-CONDITIONAL-001",
+      "severity": "error",
+      "kind": "conditional_required",
+      "target": "Customer.name",
+      "parameters": {
+        "whenField": "Customer.category",
+        "equals": "ORGANIZATION"
+      },
+      "message": "Synthetic organization category requires a name."
+    },
+    {
+      "ruleId": "SYN-LOOKUP-001",
+      "severity": "information",
+      "kind": "reference_lookup",
+      "target": "Customer.category",
+      "parameters": {
+        "tableId": "synthetic-category-domain",
+        "tableVersion": "1.0.0"
+      },
+      "message": "Synthetic category is absent from the versioned local reference table."
+    }
+  ],
+  "publicationAdapters": []
+}

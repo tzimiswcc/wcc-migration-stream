@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/mapping-coverage-page.schema.json",
+  "title": "Migration Stream Mapping Coverage Page v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "mapping", "items", "page", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/mapping-coverage/v1" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mapping_id", "mapping_version", "mapping_hash"],
+      "properties": {
+        "mapping_id": { "$ref": "#/$defs/id" },
+        "mapping_version": { "$ref": "#/$defs/version" },
+        "mapping_hash": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "mapping": { "$ref": "#/$defs/mapping" },
+    "items": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/coverage" }
+    },
+    "page": { "$ref": "#/$defs/page" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "version": { "type": "string", "minLength": 1, "maxLength": 32 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "optionalText": { "type": ["string", "null"], "minLength": 1, "maxLength": 4096 },
+    "optionalOrdinal": { "type": ["integer", "null"], "minimum": 0, "maximum": 4095 },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_size", "returned", "next_cursor"],
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "returned": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "next_cursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 8192,
+          "pattern": "^v1[.][a-f0-9]+[.][a-f0-9]{64}$"
+        }
+      }
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mapping_id", "mapping_version", "mapping_hash", "profile_id", "profile_version",
+        "profile_hash", "source_hash", "validated_job_id"
+      ],
+      "properties": {
+        "mapping_id": { "$ref": "#/$defs/id" },
+        "mapping_version": { "$ref": "#/$defs/version" },
+        "mapping_hash": { "$ref": "#/$defs/sha256" },
+        "profile_id": { "$ref": "#/$defs/id" },
+        "profile_version": { "$ref": "#/$defs/version" },
+        "profile_hash": { "$ref": "#/$defs/sha256" },
+        "source_hash": { "$ref": "#/$defs/sha256" },
+        "validated_job_id": { "$ref": "#/$defs/id" }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind", "mapping_kind", "source_file", "source_column_ordinal", "source_column_name", "entity_id",
+        "field_id", "binding_id", "issue_code", "detail"
+      ],
+      "properties": {
+        "kind": { "enum": ["MAPPED", "UNMAPPED_SOURCE", "REQUIRED_UNCOVERED", "DEFAULTED", "INVALID"] },
+        "mapping_kind": {
+          "type": ["string", "null"],
+          "enum": ["direct", "constant", "empty_as_null", "trim", "uppercase_ascii", "lowercase_ascii", "lookup", null]
+        },
+        "source_file": { "$ref": "#/$defs/optionalText" },
+        "source_column_ordinal": { "$ref": "#/$defs/optionalOrdinal" },
+        "source_column_name": { "$ref": "#/$defs/optionalText" },
+        "entity_id": { "$ref": "#/$defs/optionalText" },
+        "field_id": { "$ref": "#/$defs/optionalText" },
+        "binding_id": { "$ref": "#/$defs/optionalText" },
+        "issue_code": { "$ref": "#/$defs/optionalText" },
+        "detail": { "$ref": "#/$defs/optionalText" }
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "columns_per_pass": 8,
+  "row_batch_size": 1000,
+  "maximum_profiled_files": 256,
+  "maximum_profiled_columns": 4096,
+  "maximum_exact_distinct_values_per_column": 100000,
+  "maximum_exact_distinct_bytes_per_column": 8388608,
+  "maximum_exact_distinct_values_per_pass": 400000,
+  "maximum_exact_distinct_bytes_per_pass": 33554432,
+  "maximum_samples_per_column": 0,
+  "maximum_sample_value_bytes": 0,
+  "oversized_field_bytes": 4096,
+  "duplicate_keys": []
+}

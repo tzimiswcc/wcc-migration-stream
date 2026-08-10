@@ -1,0 +1,84 @@
+name: Bug report
+description: Report a reproducible Migration Stream defect
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a defect. Issues are not a support channel.
+
+        Do not use this form for a security vulnerability. Report one privately through the repository's Security tab. Never include client data, credentials, tokens, workspace files or databases, raw logs, production metadata, screenshots, exports, generated reports, or other confidential material.
+
+  - type: checkboxes
+    id: safe_material
+    attributes:
+      label: Safe reporting boundary
+      options:
+        - label: I confirm this report and every attachment use only synthetic or deliberately sanitized material and contain none of the prohibited material listed above.
+          required: true
+
+  - type: checkboxes
+    id: existing_reports
+    attributes:
+      label: Existing reports
+      options:
+        - label: I searched existing issues and did not find this defect already reported.
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Give the release version or full commit hash where the defect occurs.
+      placeholder: v0.1.0 or a full commit hash
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: State the operating system, architecture, and relevant toolchain versions. This does not imply platform support.
+      placeholder: Windows 11 ARM64, Rust 1.x, Node 24.x
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Minimal reproduction
+      description: Provide numbered steps using only synthetic or deliberately sanitized inputs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Describe what happened. Quote only the smallest sanitized error excerpt needed; do not attach raw logs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Describe the expected result and why.
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional sanitized context
+      description: Add only information needed to reproduce or assess the defect. Do not attach private workspaces or data-bearing artifacts.
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to prepare a focused pull request under the contribution terms.
+          required: false

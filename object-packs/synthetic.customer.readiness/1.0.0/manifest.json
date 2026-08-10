@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "packId": "synthetic.customer.readiness",
+  "version": "1.0.0",
+  "title": "Synthetic customer readiness proof pack",
+  "scope": "Synthetic local customer-readiness validation proof only.",
+  "rootEntityId": "Customer",
+  "profileFile": "synthetic-profile.reviewed.json",
+  "profileSha256": "6a9954b09614e99688375f9f62c1bd8b016e424eab256f3f90e1c6e73709571f",
+  "mappingSuggestions": [
+    {
+      "suggestionId": "synthetic.customer.source-id",
+      "sourceFile": "customer_accounts.csv",
+      "sourceColumn": "migrationPartnerId",
+      "sourceColumnOrdinal": 0,
+      "targetFieldId": "sourceCustomerId",
+      "kind": "direct"
+    },
+    {
+      "suggestionId": "synthetic.customer.category",
+      "sourceFile": "customer_accounts.csv",
+      "sourceColumn": "category",
+      "sourceColumnOrdinal": 1,
+      "targetFieldId": "category",
+      "kind": "lookup",
+      "lookupTableId": "synthetic-category-map"
+    },
+    {
+      "suggestionId": "synthetic.customer.name",
+      "sourceFile": "customer_accounts.csv",
+      "sourceColumn": "organizationName1",
+      "sourceColumnOrdinal": 2,
+      "targetFieldId": "name",
+      "kind": "trim"
+    },
+    {
+      "suggestionId": "synthetic.customer.notes",
+      "sourceFile": "customer_accounts.csv",
+      "sourceColumn": "notes",
+      "sourceColumnOrdinal": 3,
+      "targetFieldId": "notes",
+      "kind": "empty_as_null"
+    },
+    {
+      "suggestionId": "synthetic.customer.duplicate-group",
+      "targetFieldId": "duplicateGroupKey",
+      "kind": "constant",
+      "constant": "SYNTHETIC-DUPLICATE"
+    }
+  ],
+  "referenceTables": [
+    {
+      "tableId": "synthetic-category-domain",
+      "version": "1.0.0",
+      "values": {
+        "ORGANIZATION": "ORGANIZATION",
+        "PERSON": "PERSON"
+      }
+    },
+    {
+      "tableId": "synthetic-category-map",
+      "version": "1.0.0",
+      "values": {
+        "1": "PERSON",
+        "2": "ORGANIZATION"
+      }
+    }
+  ],
+  "limitations": [
+    "Synthetic local proof material only.",
+    "This pack does not establish external target-system compatibility.",
+    "The included profile remains REVIEWED_DRAFT and requires a separate explicit local mapping/validation approval action.",
+    "Mapping suggestions are non-authoritative and require exact-source review and immutable mapping validation.",
+    "Embedded reference tables are bounded local synthetic proof values, not remote or target-system master data."
+  ]
+}

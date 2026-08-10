@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/reconciliation-summary.schema.json",
+  "title": "Migration Stream Reconciliation Summary Page v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "aggregate", "items", "page", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/reconciliation-summary/v1" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_id", "source_hash", "validation_run_id"],
+      "properties": {
+        "job_id": { "$ref": "#/$defs/id" },
+        "source_hash": { "$ref": "#/$defs/sha256" },
+        "validation_run_id": { "anyOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }] }
+      }
+    },
+    "aggregate": { "$ref": "#/$defs/aggregate" },
+    "items": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/file" }
+    },
+    "page": { "$ref": "#/$defs/page" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "aggregate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_records", "stored_records", "pending_records", "closed", "validation_rows_processed", "validation_issue_count"],
+      "properties": {
+        "source_records": { "$ref": "#/$defs/count" },
+        "stored_records": { "$ref": "#/$defs/count" },
+        "pending_records": { "$ref": "#/$defs/count" },
+        "closed": { "type": "boolean" },
+        "validation_rows_processed": { "anyOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }] },
+        "validation_issue_count": { "anyOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }] }
+      }
+    },
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "source_records", "stored_records", "pending_records", "closed", "validation_issue_count"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "source_records": { "$ref": "#/$defs/count" },
+        "stored_records": { "$ref": "#/$defs/count" },
+        "pending_records": { "$ref": "#/$defs/count" },
+        "closed": { "type": "boolean" },
+        "validation_issue_count": { "anyOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }] }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_size", "returned", "next_cursor"],
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "returned": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "next_cursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 8192,
+          "pattern": "^v1[.][a-f0-9]+[.][a-f0-9]{64}$"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/write/exclude-issue-row.schema.json",
+  "title": "Migration Stream Exclude Exact Accepted Row Command v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "validation_run_id",
+    "issue_hash",
+    "practitioner_identifier",
+    "reason",
+    "evidence_reference",
+    "expected_active_decision_id",
+    "expected_active_generation",
+    "acknowledge_not_migration_result_approval",
+    "source_file",
+    "source_ordinal",
+    "acknowledge_row_scope"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "migration-stream/write/exclude-issue-row/v1"
+    },
+    "validation_run_id": { "$ref": "#/$defs/identifier" },
+    "issue_hash": { "$ref": "#/$defs/sha256" },
+    "practitioner_identifier": { "$ref": "#/$defs/practitioner" },
+    "reason": { "$ref": "#/$defs/reason" },
+    "evidence_reference": {
+      "anyOf": [{ "$ref": "#/$defs/evidenceReference" }, { "type": "null" }]
+    },
+    "expected_active_decision_id": {
+      "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+    },
+    "expected_active_generation": { "type": "integer", "minimum": 0 },
+    "acknowledge_not_migration_result_approval": { "const": true },
+    "source_file": { "$ref": "#/$defs/sourceFile" },
+    "source_ordinal": { "type": "integer", "minimum": 1 },
+    "acknowledge_row_scope": { "const": true }
+  },
+  "allOf": [{ "$ref": "#/$defs/headRelationship" }],
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "practitioner": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+      "allOf": [{ "not": { "pattern": "^\\s|\\s$" } }],
+      "x-maximumUtf8Bytes": 256
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+      "x-maximumUtf8Bytes": 4096
+    },
+    "evidenceReference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F-\\u009F]+$",
+      "x-maximumUtf8Bytes": 2048
+    },
+    "sourceFile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^/\\\\\\u0000-\\u001F\\u007F-\\u009F]+(?:/[^/\\\\\\u0000-\\u001F\\u007F-\\u009F]+)*$",
+      "allOf": [
+        { "not": { "pattern": "(?:^|/)(?:[.]|[.][.])(?:/|$)" } },
+        { "not": { "pattern": "(?:^|/)\\s|\\s(?:/|$)" } },
+        {
+          "not": {
+            "pattern": "(?:^|/)[^/]*[.](?:[Pp][Aa][Rr][Tt]|[Tt][Oo][Mm][Bb][Ss][Tt][Oo][Nn][Ee])(?:/|$)"
+          }
+        }
+      ],
+      "x-maximumUtf8Bytes": 1024
+    },
+    "headRelationship": {
+      "if": {
+        "properties": { "expected_active_generation": { "const": 0 } },
+        "required": ["expected_active_generation"]
+      },
+      "then": {
+        "properties": { "expected_active_decision_id": { "type": "null" } }
+      },
+      "else": {
+        "properties": {
+          "expected_active_decision_id": { "$ref": "#/$defs/identifier" }
+        }
+      }
+    }
+  }
+}

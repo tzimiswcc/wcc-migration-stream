@@ -1,0 +1,416 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/decisions/issue-decision.schema.json",
+  "title": "Migration Stream Immutable Issue Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "decisionId",
+    "requestHash",
+    "idempotencyKey",
+    "disposition",
+    "scope",
+    "concurrency",
+    "practitionerId",
+    "applicationTimestamp",
+    "reason",
+    "authoritySeparationAcknowledged",
+    "rowScopeExclusionAcknowledged",
+    "activeGeneration",
+    "lifecycleOutcome",
+    "decisionHash"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "decisionId": {
+      "$ref": "#/$defs/identity"
+    },
+    "requestHash": {
+      "$ref": "#/$defs/sha256"
+    },
+    "idempotencyKey": {
+      "$ref": "#/$defs/idempotencyKey"
+    },
+    "disposition": {
+      "enum": [
+        "CORRECTED",
+        "WAIVED",
+        "ACCEPTED_AS_IS",
+        "EXCLUDED"
+      ]
+    },
+    "scope": {
+      "$ref": "#/$defs/scope"
+    },
+    "concurrency": {
+      "$ref": "#/$defs/concurrency"
+    },
+    "practitionerId": {
+      "$ref": "#/$defs/practitioner"
+    },
+    "applicationTimestamp": {
+      "$ref": "#/$defs/timestamp"
+    },
+    "reason": {
+      "$ref": "#/$defs/reason"
+    },
+    "evidenceReference": {
+      "$ref": "#/$defs/evidenceReference"
+    },
+    "authoritySeparationAcknowledged": {
+      "const": true
+    },
+    "rowScopeExclusionAcknowledged": {
+      "type": "boolean"
+    },
+    "activeGeneration": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "correctionOverlayId": {
+      "$ref": "#/$defs/identity"
+    },
+    "reevaluationId": {
+      "$ref": "#/$defs/identity"
+    },
+    "lifecycleOutcome": {
+      "const": "EFFECTIVE"
+    },
+    "decisionHash": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "disposition": {
+            "const": "CORRECTED"
+          }
+        },
+        "required": [
+          "disposition"
+        ]
+      },
+      "then": {
+        "required": [
+          "correctionOverlayId",
+          "reevaluationId"
+        ],
+        "properties": {
+          "rowScopeExclusionAcknowledged": {
+            "const": false
+          },
+          "concurrency": {
+            "required": [
+              "expectedEffectiveValueHash"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "disposition": {
+            "const": "ACCEPTED_AS_IS"
+          }
+        },
+        "required": [
+          "disposition"
+        ]
+      },
+      "then": {
+        "properties": {
+          "rowScopeExclusionAcknowledged": {
+            "const": false
+          },
+          "concurrency": {
+            "required": [
+              "expectedEffectiveValueHash"
+            ]
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "correctionOverlayId"
+              ]
+            },
+            {
+              "required": [
+                "reevaluationId"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "disposition": {
+            "enum": [
+              "WAIVED",
+              "EXCLUDED"
+            ]
+          }
+        },
+        "required": [
+          "disposition"
+        ]
+      },
+      "then": {
+        "properties": {
+          "concurrency": {
+            "not": {
+              "required": [
+                "expectedEffectiveValueHash"
+              ]
+            }
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "correctionOverlayId"
+              ]
+            },
+            {
+              "required": [
+                "reevaluationId"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "disposition": {
+            "const": "WAIVED"
+          }
+        },
+        "required": [
+          "disposition"
+        ]
+      },
+      "then": {
+        "properties": {
+          "rowScopeExclusionAcknowledged": {
+            "const": false
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "disposition": {
+            "const": "EXCLUDED"
+          }
+        },
+        "required": [
+          "disposition"
+        ]
+      },
+      "then": {
+        "properties": {
+          "rowScopeExclusionAcknowledged": {
+            "const": true
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "identity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sourceFile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^/\\\\]+(?:/[^/\\\\]+)*$",
+      "not": {
+        "anyOf": [
+          {
+            "pattern": "(^|/)(?:\\.|\\.\\.)(?:/|$)"
+          },
+          {
+            "pattern": "(^|/)[^/]*\\.(?:[Pp][Aa][Rr][Tt]|[Tt][Oo][Mm][Bb][Ss][Tt][Oo][Nn][Ee])(?:/|$)"
+          },
+          {
+            "pattern": "(^|/)[ \\t]|[ \\t](?:/|$)"
+          },
+          {
+            "pattern": "[\\u0000-\\u001F\\u007F]"
+          }
+        ]
+      }
+    },
+    "practitioner": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "evidenceReference": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048
+    },
+    "timestamp": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "format": "date-time"
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "jobId",
+        "validationRunId",
+        "issueId",
+        "issueHash",
+        "acceptedSourceFile",
+        "sourceOrdinal",
+        "lineStart",
+        "lineEnd",
+        "canonicalEntityId",
+        "canonicalFieldId",
+        "profileId",
+        "profileVersion",
+        "profileHash",
+        "mappingId",
+        "mappingVersion",
+        "mappingHash"
+      ],
+      "properties": {
+        "jobId": {
+          "$ref": "#/$defs/identity"
+        },
+        "validationRunId": {
+          "$ref": "#/$defs/identity"
+        },
+        "issueId": {
+          "$ref": "#/$defs/identity"
+        },
+        "issueHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "acceptedSourceFile": {
+          "$ref": "#/$defs/sourceFile"
+        },
+        "sourceOrdinal": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lineStart": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "lineEnd": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "canonicalEntityId": {
+          "$ref": "#/$defs/identity"
+        },
+        "canonicalFieldId": {
+          "$ref": "#/$defs/identity"
+        },
+        "profileId": {
+          "$ref": "#/$defs/identity"
+        },
+        "profileVersion": {
+          "$ref": "#/$defs/version"
+        },
+        "profileHash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "mappingId": {
+          "$ref": "#/$defs/identity"
+        },
+        "mappingVersion": {
+          "$ref": "#/$defs/version"
+        },
+        "mappingHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "concurrency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expectedActiveDecisionGeneration"
+      ],
+      "properties": {
+        "expectedActiveDecisionId": {
+          "$ref": "#/$defs/identity"
+        },
+        "expectedActiveDecisionGeneration": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expectedEffectiveValueHash": {
+          "$ref": "#/$defs/sha256"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "expectedActiveDecisionId"
+            ]
+          },
+          "then": {
+            "properties": {
+              "expectedActiveDecisionGeneration": {
+                "minimum": 1
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "expectedActiveDecisionGeneration": {
+                "const": 0
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

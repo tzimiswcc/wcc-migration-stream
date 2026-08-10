@@ -1,0 +1,1446 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/wp003-governed-evidence-v2.schema.json",
+  "title": "Migration Stream WP-003 Governed End-to-End and Storage Evidence v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "recorded_at_utc",
+    "execution_context",
+    "subject",
+    "method",
+    "end_to_end",
+    "storage",
+    "fixed_sql_access_path",
+    "assertions",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "migration-stream-governed-evidence/v2"
+    },
+    "recorded_at_utc": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 64
+    },
+    "execution_context": {
+      "$ref": "#/$defs/executionContext"
+    },
+    "subject": {
+      "$ref": "#/$defs/subject"
+    },
+    "method": {
+      "$ref": "#/$defs/method"
+    },
+    "end_to_end": {
+      "$ref": "#/$defs/endToEnd"
+    },
+    "storage": {
+      "$ref": "#/$defs/storage"
+    },
+    "fixed_sql_access_path": {
+      "$ref": "#/$defs/fixedSql"
+    },
+    "assertions": {
+      "$ref": "#/$defs/textList"
+    },
+    "limitations": {
+      "$ref": "#/$defs/textList"
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "shortText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "nonnegativeInteger": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "executionContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "git_revision",
+        "git_clean",
+        "executable_sha256",
+        "executable_bytes",
+        "executable_format",
+        "executable_platform",
+        "executable_architectures",
+        "binary_revision_binding",
+        "process_platform",
+        "process_architecture",
+        "host_platform",
+        "host_architecture",
+        "native_execution_verified",
+        "rustc_release",
+        "rustc_host_triple",
+        "rustc_default_target_triple",
+        "rustc_target_platform",
+        "rustc_target_architecture",
+        "rustc_target_basis",
+        "evidence_schema_path",
+        "evidence_schema_sha256",
+        "context_sha256"
+      ],
+      "properties": {
+        "git_revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+        },
+        "git_clean": {
+          "type": "boolean"
+        },
+        "executable_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "executable_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1073741824
+        },
+        "executable_format": {
+          "enum": [
+            "elf",
+            "macho",
+            "pe"
+          ]
+        },
+        "executable_platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "executable_architectures": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "x86_64",
+              "aarch64"
+            ]
+          }
+        },
+        "binary_revision_binding": {
+          "const": "co-recorded-no-embedded-attestation"
+        },
+        "process_platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "process_architecture": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "host_platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "host_architecture": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "native_execution_verified": {
+          "const": true
+        },
+        "rustc_release": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "rustc_host_triple": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "rustc_default_target_triple": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "rustc_target_platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "rustc_target_architecture": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "rustc_target_basis": {
+          "const": "rustc-default-cfg"
+        },
+        "evidence_schema_path": {
+          "const": "schemas/wp003-governed-evidence.schema.json"
+        },
+        "evidence_schema_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "context_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "signedInteger": {
+      "type": "integer"
+    },
+    "textList": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/$defs/shortText"
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archive_sha256",
+        "archive_bytes",
+        "csv_sha256",
+        "csv_bytes",
+        "row_count",
+        "file_count",
+        "column_count",
+        "format"
+      ],
+      "properties": {
+        "archive_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "archive_bytes": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "csv_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "csv_bytes": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "row_count": {
+          "type": "integer",
+          "minimum": 1000,
+          "maximum": 50000
+        },
+        "file_count": {
+          "const": 1
+        },
+        "column_count": {
+          "const": 5
+        },
+        "format": {
+          "const": "deterministic-zip-stored-utf8-csv-lf"
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "git_revision",
+        "git_clean",
+        "platform",
+        "architecture",
+        "host_label",
+        "synthetic_only",
+        "fixture",
+        "job_id",
+        "source_hash",
+        "profile_hash",
+        "mapping_hash",
+        "validation_result_hash"
+      ],
+      "properties": {
+        "git_revision": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}([a-f0-9]{24})?$"
+        },
+        "git_clean": {
+          "type": "boolean"
+        },
+        "platform": {
+          "enum": [
+            "linux",
+            "macos",
+            "windows"
+          ]
+        },
+        "architecture": {
+          "enum": [
+            "x86_64",
+            "aarch64"
+          ]
+        },
+        "host_label": {
+          "$ref": "#/$defs/identifier"
+        },
+        "synthetic_only": {
+          "const": true
+        },
+        "fixture": {
+          "$ref": "#/$defs/fixture"
+        },
+        "job_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "source_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "profile_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "mapping_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "validation_result_hash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "method": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "end_to_end_scope",
+        "read_warmups",
+        "read_measurements",
+        "product_query_guard_ms",
+        "command_timeout_seconds",
+        "outer_timeout_seconds",
+        "maximum_database_bytes",
+        "maximum_wal_bytes",
+        "maximum_output_tree_bytes",
+        "maximum_captured_output_bytes",
+        "page_size",
+        "sqlite_source_strategy",
+        "child_process_containment",
+        "storage_method",
+        "fixed_sql_separate"
+      ],
+      "properties": {
+        "end_to_end_scope": {
+          "$ref": "#/$defs/shortText"
+        },
+        "read_warmups": {
+          "const": 1
+        },
+        "read_measurements": {
+          "const": 3
+        },
+        "product_query_guard_ms": {
+          "const": 5000
+        },
+        "command_timeout_seconds": {
+          "const": 180
+        },
+        "outer_timeout_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 900
+        },
+        "maximum_database_bytes": {
+          "const": 4294967296
+        },
+        "maximum_wal_bytes": {
+          "const": 0
+        },
+        "maximum_output_tree_bytes": {
+          "const": 8589934592
+        },
+        "maximum_captured_output_bytes": {
+          "const": 16777216
+        },
+        "page_size": {
+          "const": 50
+        },
+        "sqlite_source_strategy": {
+          "const": "shared-lock-no-follow-zero-wal-private-immutable-copy"
+        },
+        "child_process_containment": {
+          "enum": [
+            "posix-process-group",
+            "windows-job-object-gated-bootstrap"
+          ]
+        },
+        "storage_method": {
+          "$ref": "#/$defs/shortText"
+        },
+        "fixed_sql_separate": {
+          "const": true
+        }
+      }
+    },
+    "measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "scope",
+        "observations_us",
+        "minimum_us",
+        "median_us",
+        "maximum_us",
+        "response_sha256",
+        "response_bytes"
+      ],
+      "properties": {
+        "operation": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z0-9.-]+$"
+        },
+        "scope": {
+          "const": "end-to-end-cli"
+        },
+        "observations_us": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1000,
+          "items": {
+            "$ref": "#/$defs/nonnegativeInteger"
+          }
+        },
+        "minimum_us": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "median_us": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "maximum_us": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "response_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "response_bytes": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        }
+      }
+    },
+    "ruleEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_kind",
+        "rule_id",
+        "rows_processed",
+        "issue_count",
+        "result_hash",
+        "end_to_end_us"
+      ],
+      "properties": {
+        "rule_kind": {
+          "enum": [
+            "required",
+            "max_length",
+            "allowed_values",
+            "pattern",
+            "unique",
+            "conditional_required",
+            "reference_lookup"
+          ]
+        },
+        "rule_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "rows_processed": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "issue_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "result_hash": {
+          "$ref": "#/$defs/sha256"
+        },
+        "end_to_end_us": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        }
+      }
+    },
+    "aggregateValidation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rows_processed",
+        "issue_count",
+        "severity_counts",
+        "rules_observed",
+        "result_hash"
+      ],
+      "properties": {
+        "rows_processed": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "issue_count": {
+          "type": "integer",
+          "minimum": 7
+        },
+        "severity_counts": {
+          "type": "object"
+        },
+        "rules_observed": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "result_hash": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "endToEnd": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lifecycle_stages",
+        "practitioner_reads",
+        "per_rule_validation",
+        "aggregate_validation",
+        "reconciliation_closed",
+        "integrity"
+      ],
+      "properties": {
+        "lifecycle_stages": {
+          "type": "array",
+          "minItems": 25,
+          "maxItems": 128,
+          "items": {
+            "$ref": "#/$defs/measurement"
+          }
+        },
+        "practitioner_reads": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": {
+            "$ref": "#/$defs/measurement"
+          }
+        },
+        "per_rule_validation": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "$ref": "#/$defs/ruleEvidence"
+          }
+        },
+        "aggregate_validation": {
+          "$ref": "#/$defs/aggregateValidation"
+        },
+        "reconciliation_closed": {
+          "const": true
+        },
+        "integrity": {
+          "$ref": "#/$defs/measurement"
+        }
+      }
+    },
+    "tableStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "rows",
+        "measurement_method",
+        "dbstat_bytes",
+        "payload_bytes"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "rows": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "measurement_method": {
+          "enum": [
+            "sqlite-dbstat-private-copy",
+            "unavailable-component-marginal-only"
+          ]
+        },
+        "dbstat_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "payload_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "measurement_method": {
+                "const": "sqlite-dbstat-private-copy"
+              }
+            },
+            "required": [
+              "measurement_method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "dbstat_bytes": {
+                "$ref": "#/$defs/nonnegativeInteger"
+              },
+              "payload_bytes": {
+                "$ref": "#/$defs/nonnegativeInteger"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "dbstat_bytes": {
+                "type": "null"
+              },
+              "payload_bytes": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "indexStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "measurement_method",
+        "dbstat_bytes",
+        "payload_bytes"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "measurement_method": {
+          "enum": [
+            "sqlite-dbstat-private-copy",
+            "unavailable-component-marginal-only"
+          ]
+        },
+        "dbstat_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "payload_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "measurement_method": {
+                "const": "sqlite-dbstat-private-copy"
+              }
+            },
+            "required": [
+              "measurement_method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "dbstat_bytes": {
+                "$ref": "#/$defs/nonnegativeInteger"
+              },
+              "payload_bytes": {
+                "$ref": "#/$defs/nonnegativeInteger"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "dbstat_bytes": {
+                "type": "null"
+              },
+              "payload_bytes": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "componentStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component",
+        "measurement_method",
+        "measurement_basis",
+        "row_count",
+        "table_bytes",
+        "table_payload_bytes",
+        "index_bytes",
+        "index_payload_bytes",
+        "total_bytes",
+        "total_payload_bytes",
+        "tables",
+        "indexes"
+      ],
+      "properties": {
+        "component": {
+          "enum": [
+            "profile",
+            "mapping",
+            "validation_run_event",
+            "validation_issue"
+          ]
+        },
+        "measurement_method": {
+          "enum": [
+            "sqlite-dbstat-private-copy",
+            "sqlite-private-copy-drop-vacuum-marginal-pages"
+          ]
+        },
+        "measurement_basis": {
+          "$ref": "#/$defs/shortText"
+        },
+        "row_count": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "table_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "table_payload_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "index_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "index_payload_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "total_bytes": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "total_payload_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "tables": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/tableStorage"
+          }
+        },
+        "indexes": {
+          "type": "array",
+          "maxItems": 32,
+          "items": {
+            "$ref": "#/$defs/indexStorage"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "measurement_method": {
+                "const": "sqlite-dbstat-private-copy"
+              }
+            },
+            "required": [
+              "measurement_method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "table_bytes": {
+                "$ref": "#/$defs/nonnegativeInteger"
+              },
+              "table_payload_bytes": {
+                "$ref": "#/$defs/nonnegativeInteger"
+              },
+              "index_bytes": {
+                "$ref": "#/$defs/nonnegativeInteger"
+              },
+              "index_payload_bytes": {
+                "$ref": "#/$defs/nonnegativeInteger"
+              },
+              "total_payload_bytes": {
+                "$ref": "#/$defs/nonnegativeInteger"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "table_bytes": {
+                "type": "null"
+              },
+              "table_payload_bytes": {
+                "type": "null"
+              },
+              "index_bytes": {
+                "type": "null"
+              },
+              "index_payload_bytes": {
+                "type": "null"
+              },
+              "total_payload_bytes": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "canonicalProjection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "persisted_rows",
+        "table_bytes",
+        "index_bytes",
+        "total_bytes",
+        "matched_tables",
+        "basis"
+      ],
+      "properties": {
+        "persisted_rows": {
+          "const": 0
+        },
+        "table_bytes": {
+          "const": 0
+        },
+        "index_bytes": {
+          "const": 0
+        },
+        "total_bytes": {
+          "const": 0
+        },
+        "matched_tables": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "basis": {
+          "$ref": "#/$defs/shortText"
+        }
+      }
+    },
+    "checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "checkpoint",
+        "database_bytes",
+        "database_sha256",
+        "wal_bytes",
+        "component_storage_method",
+        "components",
+        "canonical_projection"
+      ],
+      "properties": {
+        "checkpoint": {
+          "$ref": "#/$defs/identifier"
+        },
+        "database_bytes": {
+          "$ref": "#/$defs/nonnegativeInteger"
+        },
+        "database_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "wal_bytes": {
+          "const": 0
+        },
+        "component_storage_method": {
+          "enum": [
+            "sqlite-dbstat-private-copy",
+            "sqlite-private-copy-drop-vacuum-marginal-pages"
+          ]
+        },
+        "components": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/componentStorage"
+          }
+        },
+        "canonical_projection": {
+          "$ref": "#/$defs/canonicalProjection"
+        }
+      }
+    },
+    "componentDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component",
+        "measurement_method",
+        "row_count",
+        "table_bytes",
+        "table_payload_bytes",
+        "index_bytes",
+        "index_payload_bytes",
+        "total_bytes",
+        "total_payload_bytes"
+      ],
+      "properties": {
+        "component": {
+          "enum": [
+            "profile",
+            "mapping",
+            "validation_run_event",
+            "validation_issue"
+          ]
+        },
+        "measurement_method": {
+          "enum": [
+            "sqlite-dbstat-private-copy",
+            "sqlite-private-copy-drop-vacuum-marginal-pages"
+          ]
+        },
+        "row_count": {
+          "$ref": "#/$defs/signedInteger"
+        },
+        "table_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "table_payload_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "index_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "index_payload_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "total_bytes": {
+          "$ref": "#/$defs/signedInteger"
+        },
+        "total_payload_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "measurement_method": {
+                "const": "sqlite-dbstat-private-copy"
+              }
+            },
+            "required": [
+              "measurement_method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "table_bytes": {
+                "$ref": "#/$defs/signedInteger"
+              },
+              "table_payload_bytes": {
+                "$ref": "#/$defs/signedInteger"
+              },
+              "index_bytes": {
+                "$ref": "#/$defs/signedInteger"
+              },
+              "index_payload_bytes": {
+                "$ref": "#/$defs/signedInteger"
+              },
+              "total_payload_bytes": {
+                "$ref": "#/$defs/signedInteger"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "table_bytes": {
+                "type": "null"
+              },
+              "table_payload_bytes": {
+                "type": "null"
+              },
+              "index_bytes": {
+                "type": "null"
+              },
+              "index_payload_bytes": {
+                "type": "null"
+              },
+              "total_payload_bytes": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "storageDelta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_checkpoint",
+        "to_checkpoint",
+        "database_bytes",
+        "wal_bytes",
+        "components"
+      ],
+      "properties": {
+        "from_checkpoint": {
+          "$ref": "#/$defs/identifier"
+        },
+        "to_checkpoint": {
+          "$ref": "#/$defs/identifier"
+        },
+        "database_bytes": {
+          "$ref": "#/$defs/signedInteger"
+        },
+        "wal_bytes": {
+          "const": 0
+        },
+        "components": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/componentDelta"
+          }
+        }
+      }
+    },
+    "normalizedStorage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "measurement_method",
+        "allocated_delta_bytes",
+        "payload_delta_bytes",
+        "record_count_delta",
+        "allocated_bytes_per_record",
+        "payload_bytes_per_record",
+        "basis"
+      ],
+      "properties": {
+        "metric": {
+          "enum": [
+            "validation-run-event-bytes-per-run",
+            "validation-issue-bytes-per-issue"
+          ]
+        },
+        "measurement_method": {
+          "enum": [
+            "sqlite-dbstat-allocated-payload-delta",
+            "sqlite-drop-vacuum-marginal-component-delta"
+          ]
+        },
+        "allocated_delta_bytes": {
+          "$ref": "#/$defs/signedInteger"
+        },
+        "payload_delta_bytes": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "record_count_delta": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "allocated_bytes_per_record": {
+          "type": "number"
+        },
+        "payload_bytes_per_record": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "basis": {
+          "$ref": "#/$defs/shortText"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "measurement_method": {
+                "const": "sqlite-dbstat-allocated-payload-delta"
+              }
+            },
+            "required": [
+              "measurement_method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "payload_delta_bytes": {
+                "$ref": "#/$defs/signedInteger"
+              },
+              "payload_bytes_per_record": {
+                "type": "number"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "payload_delta_bytes": {
+                "type": "null"
+              },
+              "payload_bytes_per_record": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_storage_method",
+        "normalized_storage_method",
+        "checkpoints",
+        "deltas",
+        "normalized",
+        "canonical_projection"
+      ],
+      "properties": {
+        "component_storage_method": {
+          "enum": [
+            "sqlite-dbstat-private-copy",
+            "sqlite-private-copy-drop-vacuum-marginal-pages"
+          ]
+        },
+        "normalized_storage_method": {
+          "enum": [
+            "sqlite-dbstat-allocated-payload-delta",
+            "sqlite-drop-vacuum-marginal-component-delta"
+          ]
+        },
+        "checkpoints": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/checkpoint"
+          }
+        },
+        "deltas": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": {
+            "$ref": "#/$defs/storageDelta"
+          }
+        },
+        "normalized": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "$ref": "#/$defs/normalizedStorage"
+          }
+        },
+        "canonical_projection": {
+          "$ref": "#/$defs/canonicalProjection"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "component_storage_method": {
+                "const": "sqlite-dbstat-private-copy"
+              }
+            },
+            "required": [
+              "component_storage_method"
+            ]
+          },
+          "then": {
+            "properties": {
+              "normalized_storage_method": {
+                "const": "sqlite-dbstat-allocated-payload-delta"
+              },
+              "checkpoints": {
+                "items": {
+                  "properties": {
+                    "component_storage_method": {
+                      "const": "sqlite-dbstat-private-copy"
+                    },
+                    "components": {
+                      "items": {
+                        "properties": {
+                          "measurement_method": {
+                            "const": "sqlite-dbstat-private-copy"
+                          },
+                          "tables": {
+                            "items": {
+                              "properties": {
+                                "measurement_method": {
+                                  "const": "sqlite-dbstat-private-copy"
+                                }
+                              }
+                            }
+                          },
+                          "indexes": {
+                            "items": {
+                              "properties": {
+                                "measurement_method": {
+                                  "const": "sqlite-dbstat-private-copy"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "deltas": {
+                "items": {
+                  "properties": {
+                    "components": {
+                      "items": {
+                        "properties": {
+                          "measurement_method": {
+                            "const": "sqlite-dbstat-private-copy"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "normalized": {
+                "items": {
+                  "properties": {
+                    "measurement_method": {
+                      "const": "sqlite-dbstat-allocated-payload-delta"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "normalized_storage_method": {
+                "const": "sqlite-drop-vacuum-marginal-component-delta"
+              },
+              "checkpoints": {
+                "items": {
+                  "properties": {
+                    "component_storage_method": {
+                      "const": "sqlite-private-copy-drop-vacuum-marginal-pages"
+                    },
+                    "components": {
+                      "items": {
+                        "properties": {
+                          "measurement_method": {
+                            "const": "sqlite-private-copy-drop-vacuum-marginal-pages"
+                          },
+                          "tables": {
+                            "items": {
+                              "properties": {
+                                "measurement_method": {
+                                  "const": "unavailable-component-marginal-only"
+                                }
+                              }
+                            }
+                          },
+                          "indexes": {
+                            "items": {
+                              "properties": {
+                                "measurement_method": {
+                                  "const": "unavailable-component-marginal-only"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "deltas": {
+                "items": {
+                  "properties": {
+                    "components": {
+                      "items": {
+                        "properties": {
+                          "measurement_method": {
+                            "const": "sqlite-private-copy-drop-vacuum-marginal-pages"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "normalized": {
+                "items": {
+                  "properties": {
+                    "measurement_method": {
+                      "const": "sqlite-drop-vacuum-marginal-component-delta"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fixedSql": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact",
+        "schema_version",
+        "sha256",
+        "execution_context_sha256",
+        "evidence_schema_path",
+        "evidence_schema_sha256",
+        "contract_count",
+        "index_decision_count",
+        "all_guards_passed",
+        "timings_are_not_end_to_end"
+      ],
+      "properties": {
+        "artifact": {
+          "const": "fixed-sql-access-path.json"
+        },
+        "schema_version": {
+          "const": "migration-stream-query-evidence/v1"
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "execution_context_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evidence_schema_path": {
+          "const": "schemas/query-evidence.schema.json"
+        },
+        "evidence_schema_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "contract_count": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 64
+        },
+        "index_decision_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "all_guards_passed": {
+          "const": true
+        },
+        "timings_are_not_end_to_end": {
+          "const": true
+        }
+      }
+    }
+  }
+}

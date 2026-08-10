@@ -1,0 +1,322 @@
+{
+  "profileId": "synthetic.sales-document.readiness",
+  "version": "1.0.0",
+  "status": "REVIEWED_DRAFT",
+  "title": "Synthetic basic sales document readiness profile",
+  "owner": "Synthetic test fixture",
+  "technicalSources": [],
+  "entities": [
+    {
+      "entityId": "SalesDocument",
+      "root": true,
+      "key": [
+        "sourceDocumentId"
+      ],
+      "fields": [
+        {
+          "fieldId": "sourceDocumentId",
+          "label": "Source document identifier",
+          "logicalType": "identifier",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "customerId",
+          "label": "Customer identifier",
+          "logicalType": "identifier",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "documentDate",
+          "label": "Document date",
+          "logicalType": "date",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "documentType",
+          "label": "Document type",
+          "logicalType": "code",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "currency",
+          "label": "Currency",
+          "logicalType": "currency",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "sellingUnit",
+          "label": "Selling unit",
+          "logicalType": "code",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "customerReference",
+          "label": "Customer reference",
+          "logicalType": "text",
+          "required": false,
+          "sensitive": false
+        }
+      ]
+    },
+    {
+      "entityId": "SalesDocumentItem",
+      "root": false,
+      "key": [
+        "parentDocumentId",
+        "sourceItemId"
+      ],
+      "fields": [
+        {
+          "fieldId": "parentDocumentId",
+          "label": "Parent document identifier",
+          "logicalType": "identifier",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "sourceItemId",
+          "label": "Source item identifier",
+          "logicalType": "identifier",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "productId",
+          "label": "Product identifier",
+          "logicalType": "identifier",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "quantity",
+          "label": "Quantity",
+          "logicalType": "decimal",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "unitOfMeasure",
+          "label": "Unit of measure",
+          "logicalType": "code",
+          "required": true,
+          "sensitive": false
+        },
+        {
+          "fieldId": "unitPrice",
+          "label": "Unit price",
+          "logicalType": "decimal",
+          "required": false,
+          "sensitive": false
+        },
+        {
+          "fieldId": "requestedDate",
+          "label": "Requested date",
+          "logicalType": "date",
+          "required": false,
+          "sensitive": false
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "relationshipId": "sales-document.items",
+      "from": "SalesDocument",
+      "to": "SalesDocumentItem",
+      "cardinality": "1..*",
+      "keyPairs": [
+        {
+          "fromFieldId": "sourceDocumentId",
+          "toFieldId": "parentDocumentId"
+        }
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "ruleId": "SD-HDR-REQ-ID",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocument.sourceDocumentId",
+      "parameters": {},
+      "message": "A source document identifier is required."
+    },
+    {
+      "ruleId": "SD-HDR-REQ-CUSTOMER",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocument.customerId",
+      "parameters": {},
+      "message": "A customer identifier is required."
+    },
+    {
+      "ruleId": "SD-HDR-REQ-DATE",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocument.documentDate",
+      "parameters": {},
+      "message": "A document date is required."
+    },
+    {
+      "ruleId": "SD-HDR-REQ-TYPE",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocument.documentType",
+      "parameters": {},
+      "message": "A governed document type is required."
+    },
+    {
+      "ruleId": "SD-HDR-REQ-CURRENCY",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocument.currency",
+      "parameters": {},
+      "message": "A currency is required."
+    },
+    {
+      "ruleId": "SD-HDR-REQ-SELLING-UNIT",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocument.sellingUnit",
+      "parameters": {},
+      "message": "A selling unit is required."
+    },
+    {
+      "ruleId": "SD-HDR-UNIQUE-ID",
+      "severity": "error",
+      "kind": "unique",
+      "target": "SalesDocument.sourceDocumentId",
+      "parameters": {
+        "scopeFields": [
+          "sourceDocumentId"
+        ]
+      },
+      "message": "The source document identifier must be unique within headers."
+    },
+    {
+      "ruleId": "SD-HDR-DATE-SHAPE",
+      "severity": "error",
+      "kind": "pattern",
+      "target": "SalesDocument.documentDate",
+      "parameters": {
+        "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1])$"
+      },
+      "message": "The document date must use the bounded YYYY-MM-DD shape."
+    },
+    {
+      "ruleId": "SD-HDR-DOCUMENT-TYPE",
+      "severity": "error",
+      "kind": "reference_lookup",
+      "target": "SalesDocument.documentType",
+      "parameters": {
+        "tableId": "sales-document-type-domain",
+        "tableVersion": "1.0.0"
+      },
+      "message": "The document type is outside the reviewed local domain."
+    },
+    {
+      "ruleId": "SD-HDR-CURRENCY",
+      "severity": "error",
+      "kind": "allowed_values",
+      "target": "SalesDocument.currency",
+      "parameters": {
+        "values": [
+          "EUR",
+          "GBP",
+          "USD"
+        ]
+      },
+      "message": "The currency is outside the bounded synthetic fixture domain."
+    },
+    {
+      "ruleId": "SD-ITEM-REQ-PARENT",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocumentItem.parentDocumentId",
+      "parameters": {},
+      "message": "An item parent document identifier is required."
+    },
+    {
+      "ruleId": "SD-ITEM-REQ-ID",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocumentItem.sourceItemId",
+      "parameters": {},
+      "message": "A source item identifier is required."
+    },
+    {
+      "ruleId": "SD-ITEM-REQ-PRODUCT",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocumentItem.productId",
+      "parameters": {},
+      "message": "A product identifier is required."
+    },
+    {
+      "ruleId": "SD-ITEM-REQ-QUANTITY",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocumentItem.quantity",
+      "parameters": {},
+      "message": "A quantity is required."
+    },
+    {
+      "ruleId": "SD-ITEM-REQ-UOM",
+      "severity": "error",
+      "kind": "required",
+      "target": "SalesDocumentItem.unitOfMeasure",
+      "parameters": {},
+      "message": "A unit of measure is required."
+    },
+    {
+      "ruleId": "SD-ITEM-UNIQUE-KEY",
+      "severity": "error",
+      "kind": "unique",
+      "target": "SalesDocumentItem.sourceItemId",
+      "parameters": {
+        "scopeFields": [
+          "parentDocumentId",
+          "sourceItemId"
+        ]
+      },
+      "message": "The parent and item identifiers must form a unique item key."
+    },
+    {
+      "ruleId": "SD-ITEM-POSITIVE-QUANTITY",
+      "severity": "error",
+      "kind": "pattern",
+      "target": "SalesDocumentItem.quantity",
+      "parameters": {
+        "pattern": "^(?:[1-9][0-9]*(?:\\.[0-9]+)?|0\\.[0-9]*[1-9][0-9]*)$"
+      },
+      "message": "The quantity must be a positive bounded decimal value."
+    },
+    {
+      "ruleId": "SD-ITEM-UNIT-PRICE-SHAPE",
+      "severity": "error",
+      "kind": "pattern",
+      "target": "SalesDocumentItem.unitPrice",
+      "parameters": {
+        "pattern": "^(?:[0-9]+(?:\\.[0-9]+)?)?$"
+      },
+      "message": "The optional unit price must use a non-negative decimal shape."
+    },
+    {
+      "ruleId": "SD-ITEM-REQUESTED-DATE-SHAPE",
+      "severity": "error",
+      "kind": "pattern",
+      "target": "SalesDocumentItem.requestedDate",
+      "parameters": {
+        "pattern": "^(?:[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[0-1]))?$"
+      },
+      "message": "The optional requested date must use the bounded YYYY-MM-DD shape."
+    }
+  ],
+  "publicationAdapters": []
+}

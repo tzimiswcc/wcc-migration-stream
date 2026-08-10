@@ -1,0 +1,166 @@
+{
+  "schema_version": "migration-stream-benchmark-matrix/v1",
+  "evidence_schema": "../schemas/benchmark-evidence.schema.json",
+  "cases": [
+    {
+      "id": "smoke",
+      "class": "smoke",
+      "description": "Fast deterministic CI proof of generation, ingestion, profiling, and integrity.",
+      "fixture_spec": "specs/smoke.json",
+      "intake_policy": "../config/intake-policy.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": true,
+      "limits": {
+        "maximum_expanded_bytes": 8388608,
+        "minimum_free_space_bytes": 134217728,
+        "maximum_peak_rss_bytes": 536870912,
+        "maximum_wall_seconds": 180,
+        "require_external_rss": false
+      }
+    },
+    {
+      "id": "small-reference",
+      "class": "small-reference",
+      "description": "Controlled row-series reference using the same field profile as medium and large.",
+      "fixture_spec": "specs/small-reference.json",
+      "intake_policy": "../config/intake-policy.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": false,
+      "limits": {
+        "maximum_expanded_bytes": 33554432,
+        "minimum_free_space_bytes": 536870912,
+        "maximum_peak_rss_bytes": 805306368,
+        "maximum_wall_seconds": 600,
+        "require_external_rss": false
+      }
+    },
+    {
+      "id": "medium-representative",
+      "class": "medium-representative",
+      "description": "Sustained controlled row-series workload at the default 500-row transaction batch.",
+      "fixture_spec": "specs/medium-representative.json",
+      "intake_policy": "../config/intake-policy.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": false,
+      "limits": {
+        "maximum_expanded_bytes": 134217728,
+        "minimum_free_space_bytes": 2952790016,
+        "maximum_peak_rss_bytes": 1073741824,
+        "maximum_wall_seconds": 1800,
+        "require_external_rss": true
+      }
+    },
+    {
+      "id": "medium-batch-100",
+      "class": "batch-variant",
+      "description": "Medium representative fixture with 100-row transactions.",
+      "fixture_spec": "specs/medium-representative.json",
+      "intake_policy": "../config/intake-policy-batch-100.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": false,
+      "limits": {
+        "maximum_expanded_bytes": 134217728,
+        "minimum_free_space_bytes": 2952790016,
+        "maximum_peak_rss_bytes": 1073741824,
+        "maximum_wall_seconds": 1800,
+        "require_external_rss": true
+      }
+    },
+    {
+      "id": "medium-batch-2000",
+      "class": "batch-variant",
+      "description": "Medium representative fixture with 2,000-row transactions.",
+      "fixture_spec": "specs/medium-representative.json",
+      "intake_policy": "../config/intake-policy-batch-2000.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": false,
+      "limits": {
+        "maximum_expanded_bytes": 134217728,
+        "minimum_free_space_bytes": 2952790016,
+        "maximum_peak_rss_bytes": 1073741824,
+        "maximum_wall_seconds": 1800,
+        "require_external_rss": true
+      }
+    },
+    {
+      "id": "large-local",
+      "class": "large-local-evidence",
+      "description": "Largest controlled row-series case, bounded below current 256 MiB and one-million-row intake limits.",
+      "fixture_spec": "specs/large-local.json",
+      "intake_policy": "../config/intake-policy.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": false,
+      "limits": {
+        "maximum_expanded_bytes": 251658240,
+        "minimum_free_space_bytes": 3657433088,
+        "maximum_peak_rss_bytes": 1073741824,
+        "maximum_wall_seconds": 1800,
+        "require_external_rss": true
+      }
+    },
+    {
+      "id": "wide-row",
+      "class": "wide-row",
+      "description": "Two-file, 256-column workload with bounded long textual fields.",
+      "fixture_spec": "specs/wide-row.json",
+      "intake_policy": "../config/intake-policy.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": false,
+      "limits": {
+        "maximum_expanded_bytes": 167772160,
+        "minimum_free_space_bytes": 3154116608,
+        "maximum_peak_rss_bytes": 1073741824,
+        "maximum_wall_seconds": 1800,
+        "require_external_rss": true
+      }
+    },
+    {
+      "id": "high-cardinality",
+      "class": "high-cardinality",
+      "description": "Weakly compressible values force explicit distinct-count bound behavior.",
+      "fixture_spec": "specs/high-cardinality.json",
+      "intake_policy": "../config/intake-policy.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": false,
+      "limits": {
+        "maximum_expanded_bytes": 167772160,
+        "minimum_free_space_bytes": 3154116608,
+        "maximum_peak_rss_bytes": 1073741824,
+        "maximum_wall_seconds": 1800,
+        "require_external_rss": true
+      }
+    },
+    {
+      "id": "multi-file",
+      "class": "multi-file",
+      "description": "Thirty-two CSV files exercise per-file and aggregate reconciliation.",
+      "fixture_spec": "specs/multi-file.json",
+      "intake_policy": "../config/intake-policy.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": false,
+      "limits": {
+        "maximum_expanded_bytes": 100663296,
+        "minimum_free_space_bytes": 2751463424,
+        "maximum_peak_rss_bytes": 1073741824,
+        "maximum_wall_seconds": 1800,
+        "require_external_rss": true
+      }
+    },
+    {
+      "id": "cancellation-recovery",
+      "class": "cancellation-recovery",
+      "description": "Sustained fixture for deterministic cooperative cancellation and hard-abort recovery experiments.",
+      "fixture_spec": "specs/cancellation-recovery.json",
+      "intake_policy": "../config/intake-policy-batch-100.json",
+      "profiling_policy": "../config/profiling-policy.json",
+      "run_in_hosted_ci": false,
+      "limits": {
+        "maximum_expanded_bytes": 201326592,
+        "minimum_free_space_bytes": 3355443200,
+        "maximum_peak_rss_bytes": 1073741824,
+        "maximum_wall_seconds": 1800,
+        "require_external_rss": true
+      }
+    }
+  ]
+}

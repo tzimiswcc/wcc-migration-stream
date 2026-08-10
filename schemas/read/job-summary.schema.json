@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/job-summary.schema.json",
+  "title": "Migration Stream Job Summary Read Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "data", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/job-summary/v1" },
+    "data": { "$ref": "#/$defs/job" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "selectedGovernance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id", "profile_version", "profile_hash", "mapping_id", "mapping_version",
+        "mapping_hash", "validation_run_id", "validation_state"
+      ],
+      "properties": {
+        "profile_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "profile_version": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "profile_hash": { "$ref": "#/$defs/sha256" },
+        "mapping_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "mapping_version": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "mapping_hash": { "$ref": "#/$defs/sha256" },
+        "validation_run_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "validation_state": { "enum": ["RUNNING", "COMPLETE", "FAILED", "INTERRUPTED", "BOUND_EXCEEDED"] }
+      }
+    },
+    "acceptedSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_name", "source_hash", "source_size", "stored_archive"],
+      "properties": {
+        "source_name": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "source_hash": { "$ref": "#/$defs/sha256" },
+        "source_size": { "$ref": "#/$defs/count" },
+        "stored_archive": { "type": "string", "minLength": 1, "maxLength": 1024 }
+      }
+    },
+    "timestamps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["created_at", "updated_at", "completed_at"],
+      "properties": {
+        "created_at": { "$ref": "#/$defs/timestamp" },
+        "updated_at": { "$ref": "#/$defs/timestamp" },
+        "completed_at": {
+          "anyOf": [
+            { "$ref": "#/$defs/timestamp" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted_file_count", "accepted_row_count", "accepted_field_count",
+        "pending_row_count", "profiling_run_count"
+      ],
+      "properties": {
+        "accepted_file_count": { "$ref": "#/$defs/count" },
+        "accepted_row_count": { "$ref": "#/$defs/count" },
+        "accepted_field_count": { "$ref": "#/$defs/count" },
+        "pending_row_count": { "$ref": "#/$defs/count" },
+        "profiling_run_count": { "$ref": "#/$defs/count" }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_records", "stored_records", "pending_records", "closed"],
+      "properties": {
+        "source_records": { "$ref": "#/$defs/count" },
+        "stored_records": { "$ref": "#/$defs/count" },
+        "pending_records": { "$ref": "#/$defs/count" },
+        "closed": { "type": "boolean" }
+      }
+    },
+    "warning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "count"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Z0-9_]+$" },
+        "count": { "$ref": "#/$defs/count" }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "job_id", "state", "accepted_source", "timestamps", "counts",
+        "reconciliation", "integrity_status", "selected_governance", "warnings"
+      ],
+      "properties": {
+        "job_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "state": {
+          "enum": ["SPOOLING", "INSPECTING", "INGESTING", "RECONCILING", "COMPLETE", "FAILED", "INTERRUPTED"]
+        },
+        "accepted_source": {
+          "anyOf": [{ "$ref": "#/$defs/acceptedSource" }, { "type": "null" }]
+        },
+        "timestamps": { "$ref": "#/$defs/timestamps" },
+        "counts": { "$ref": "#/$defs/counts" },
+        "reconciliation": { "$ref": "#/$defs/reconciliation" },
+        "integrity_status": { "const": "NOT_CHECKED" },
+        "selected_governance": { "anyOf": [{ "$ref": "#/$defs/selectedGovernance" }, { "type": "null" }] },
+        "warnings": {
+          "type": "array",
+          "maxItems": 100,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/warning" }
+        }
+      }
+    }
+  }
+}

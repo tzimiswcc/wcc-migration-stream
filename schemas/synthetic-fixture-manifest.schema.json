@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/synthetic-fixture-manifest.schema.json",
+  "title": "Migration Stream Synthetic Fixture Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generator_name",
+    "generator_version",
+    "fixture_identity",
+    "seed",
+    "spec",
+    "valid_archive",
+    "total_expanded_bytes",
+    "total_output_bytes"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generator_name": { "const": "migration-stream-synthetic-fixture" },
+    "generator_version": { "const": "wp-002-v1" },
+    "fixture_identity": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "spec": { "$ref": "#/$defs/fixtureSpec" },
+    "valid_archive": { "$ref": "#/$defs/archiveManifest" },
+    "malformed_archive": { "$ref": "#/$defs/archiveManifest" },
+    "total_expanded_bytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "total_output_bytes": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "$defs": {
+    "fixtureSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "fixture_name",
+        "seed",
+        "file_count",
+        "rows_per_file",
+        "columns",
+        "field_lengths",
+        "compressibility",
+        "empty_frequency",
+        "cardinality",
+        "duplicate_key_frequency",
+        "multiline_frequency",
+        "delimiter",
+        "delimiter_in_field_frequency",
+        "escaped_quote_frequency",
+        "unicode_frequency",
+        "leading_zero_id_frequency",
+        "skew",
+        "maximum_expanded_bytes",
+        "maximum_output_bytes"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "fixture_name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "file_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "rows_per_file": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000000
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4096
+        },
+        "field_lengths": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["minimum", "typical", "maximum"],
+          "properties": {
+            "minimum": { "type": "integer", "minimum": 0, "maximum": 1048576 },
+            "typical": { "type": "integer", "minimum": 0, "maximum": 1048576 },
+            "maximum": { "type": "integer", "minimum": 0, "maximum": 1048576 }
+          }
+        },
+        "compressibility": { "$ref": "#/$defs/level" },
+        "empty_frequency": { "$ref": "#/$defs/frequency" },
+        "cardinality": { "$ref": "#/$defs/level" },
+        "duplicate_key_frequency": { "$ref": "#/$defs/frequency" },
+        "multiline_frequency": { "$ref": "#/$defs/frequency" },
+        "delimiter": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1
+        },
+        "delimiter_in_field_frequency": { "$ref": "#/$defs/frequency" },
+        "escaped_quote_frequency": { "$ref": "#/$defs/frequency" },
+        "unicode_frequency": { "$ref": "#/$defs/frequency" },
+        "leading_zero_id_frequency": { "$ref": "#/$defs/frequency" },
+        "skew": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hot_value_frequency"],
+          "properties": {
+            "hot_value_frequency": { "$ref": "#/$defs/frequency" }
+          }
+        },
+        "malformed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": {
+              "enum": ["inconsistent_columns", "unterminated_quote", "invalid_utf8"]
+            }
+          }
+        },
+        "maximum_expanded_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maximum_output_bytes": {
+          "type": "integer",
+          "minimum": 256
+        }
+      }
+    },
+    "level": {
+      "enum": ["low", "medium", "high"]
+    },
+    "frequency": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "archiveManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file_name", "size_bytes", "sha256", "files"],
+      "properties": {
+        "file_name": { "type": "string", "minLength": 1 },
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fileManifest" }
+        }
+      }
+    },
+    "fileManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "rows",
+        "columns",
+        "expanded_bytes",
+        "sha256",
+        "intentionally_malformed"
+      ],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "rows": { "type": "integer", "minimum": 1 },
+        "columns": { "type": "integer", "minimum": 1 },
+        "expanded_bytes": { "type": "integer", "minimum": 1 },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "intentionally_malformed": { "type": "boolean" }
+      }
+    }
+  }
+}

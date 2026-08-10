@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/decision-counts.schema.json",
+  "title": "Migration Stream Governed Decision Counts v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "groups", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/decision-counts/v1" },
+    "scope": { "$ref": "#/$defs/scope" },
+    "groups": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "by_disposition",
+        "by_severity",
+        "by_entity",
+        "by_field",
+        "by_rule",
+        "by_source_file",
+        "by_reevaluation_state"
+      ],
+      "properties": {
+        "by_disposition": { "$ref": "#/$defs/group" },
+        "by_severity": { "$ref": "#/$defs/group" },
+        "by_entity": { "$ref": "#/$defs/group" },
+        "by_field": { "$ref": "#/$defs/group" },
+        "by_rule": { "$ref": "#/$defs/group" },
+        "by_source_file": { "$ref": "#/$defs/group" },
+        "by_reevaluation_state": { "$ref": "#/$defs/group" }
+      }
+    },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_id", "validation_run_id"],
+      "properties": {
+        "job_id": { "$ref": "#/$defs/identifier" },
+        "validation_run_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "truncated"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "count"],
+            "properties": {
+              "key": { "type": "string", "minLength": 1, "maxLength": 1024 },
+              "count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "truncated": { "type": "boolean" }
+      }
+    }
+  }
+}

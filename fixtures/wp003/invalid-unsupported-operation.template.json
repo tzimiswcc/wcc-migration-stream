@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "mappingId": "synthetic.customer.invalid-operation",
+  "version": "1.0.0",
+  "profile": {
+    "profileId": "synthetic.customer.readiness",
+    "version": "1.0.0",
+    "sha256": "__PROFILE_SHA256__"
+  },
+  "source": {
+    "packageSha256": "656ed753f1dd7973906f428f526d9069c00c60c84ddc490599328d2217746ca3",
+    "sourceFiles": [
+      "customer_accounts.csv"
+    ]
+  },
+  "rootEntityId": "Customer",
+  "bindings": [
+    {
+      "bindingId": "synthetic.customer.unsafe-expression",
+      "sourceFile": "customer_accounts.csv",
+      "sourceColumn": "migrationPartnerId",
+      "sourceColumnOrdinal": 0,
+      "targetFieldId": "sourceCustomerId",
+      "kind": "sql_expression"
+    }
+  ],
+  "referenceTables": []
+}

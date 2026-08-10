@@ -1,0 +1,74 @@
+name: Bounded proposal
+description: Propose a focused product or engineering improvement
+title: "[Proposal]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for a bounded improvement, not a support question or delivery-date request. Substantial work should be discussed here before implementation. Acknowledgement does not promise acceptance or a roadmap position.
+
+        Never include client data, credentials, tokens, workspace files or databases, raw logs, production metadata, screenshots, exports, generated reports, or other confidential material. Report security vulnerabilities privately through the repository's Security tab.
+
+  - type: checkboxes
+    id: safe_material
+    attributes:
+      label: Safe reporting boundary
+      options:
+        - label: I confirm this proposal and every attachment use only synthetic or deliberately sanitized material and contain none of the prohibited material listed above.
+          required: true
+
+  - type: checkboxes
+    id: existing_work
+    attributes:
+      label: Existing work
+      options:
+        - label: I searched existing issues and pull requests and did not find an equivalent proposal.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the specific user or engineering problem without including sensitive material.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the smallest change that would address the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Scope and exclusions
+      description: State what the proposal includes and deliberately does not include.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe reasonable alternatives or workarounds considered.
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Acceptance evidence
+      description: Describe the synthetic tests or observable results that would demonstrate completion.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to prepare a focused pull request under the contribution terms if the maintainer accepts this direction.
+          required: false

@@ -1,0 +1,39 @@
+name: Private source-candidate validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-source-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-contract:
+    name: Candidate-compatible source checks — Ubuntu runner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: web/.node-version
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt,clippy
+      - name: Select pinned Rust
+        run: rustup default 1.97.1
+      - name: Run candidate-compatible source gates
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ci.sh
+          python3 -B scripts/markdown-link-check.py --self-test
+          python3 -B scripts/markdown-link-check.py
+          test -z "$(git status --porcelain --untracked-files=all)"

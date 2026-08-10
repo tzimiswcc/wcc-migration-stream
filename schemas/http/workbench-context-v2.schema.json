@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/http/workbench-context-v2.schema.json",
+  "title": "Migration Stream Governed Workbench Startup Context v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "read_only",
+    "workspace_label",
+    "job_id",
+    "profiling_run_id",
+    "selected_governance",
+    "supported_contracts",
+    "capabilities"
+  ],
+  "properties": {
+    "schema_version": { "const": "migration-stream/workbench/context/v2" },
+    "read_only": { "const": false },
+    "workspace_label": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "job_id": { "$ref": "#/$defs/identifier" },
+    "profiling_run_id": {
+      "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+    },
+    "selected_governance": {
+      "anyOf": [{ "$ref": "#/$defs/governance" }, { "type": "null" }]
+    },
+    "supported_contracts": {
+      "type": "array",
+      "minItems": 20,
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "migration-stream/workbench/context/v1",
+          "migration-stream/workbench/context/v2",
+          "migration-stream/read/job-summary/v1",
+          "migration-stream/read/file-manifest/v1",
+          "migration-stream/read/profiling-summary/v1",
+          "migration-stream/read/profile-view/v1",
+          "migration-stream/read/mapping-coverage/v1",
+          "migration-stream/read/validation-summary/v1",
+          "migration-stream/read/issue-list/v1",
+          "migration-stream/read/row-detail/v1",
+          "migration-stream/read/reconciliation-summary/v1",
+          "migration-stream/read/operational-cleanup/v1",
+          "migration-stream/read/decision-queue/v1",
+          "migration-stream/read/decision-counts/v1",
+          "migration-stream/read/decision-aware-issue-detail/v1",
+          "migration-stream/read/decision-history/v1",
+          "migration-stream/read/correction-overlay-detail/v1",
+          "migration-stream/read/decision-result/v1",
+          "migration-stream/write/decision-command-result/v1",
+          "migration-stream/http-error/v1"
+        ]
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "governed_issue_decisions",
+        "correction_overlays",
+        "authenticated_practitioner_identity",
+        "source_mutation",
+        "original_projection_mutation",
+        "profile_mutation",
+        "mapping_mutation",
+        "migration_result_approval",
+        "target_write",
+        "publication"
+      ],
+      "properties": {
+        "governed_issue_decisions": { "const": true },
+        "correction_overlays": { "const": true },
+        "authenticated_practitioner_identity": { "const": false },
+        "source_mutation": { "const": false },
+        "original_projection_mutation": { "const": false },
+        "profile_mutation": { "const": false },
+        "mapping_mutation": { "const": false },
+        "migration_result_approval": { "const": false },
+        "target_write": { "const": false },
+        "publication": { "const": false }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "profile_version",
+        "profile_hash",
+        "mapping_id",
+        "mapping_version",
+        "mapping_hash",
+        "validation_run_id",
+        "validation_state"
+      ],
+      "properties": {
+        "profile_id": { "$ref": "#/$defs/identifier" },
+        "profile_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "profile_hash": { "$ref": "#/$defs/sha256" },
+        "mapping_id": { "$ref": "#/$defs/identifier" },
+        "mapping_version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "mapping_hash": { "$ref": "#/$defs/sha256" },
+        "validation_run_id": { "$ref": "#/$defs/identifier" },
+        "validation_state": {
+          "enum": [
+            "RUNNING",
+            "COMPLETE",
+            "FAILED",
+            "INTERRUPTED",
+            "BOUND_EXCEEDED"
+          ]
+        }
+      }
+    }
+  }
+}

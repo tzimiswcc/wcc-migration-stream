@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx
+  xmlns:edmx="http://schemas.microsoft.com/ado/2007/06/edmx"
+  xmlns:m="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata"
+  xmlns:ext="urn:migration-stream:synthetic:edmx:extensions"
+  Version="1.0">
+  <edmx:DataServices m:DataServiceVersion="2.0">
+    <Schema
+      xmlns="http://schemas.microsoft.com/ado/2008/09/edm"
+      Namespace="Synthetic.VendorExtended.Sales"
+      ext:schema-version="2">
+      <EntityType Name="SalesOrder" ext:label="Synthetic sales order">
+        <Key>
+          <PropertyRef Name="SalesOrder" />
+        </Key>
+        <Property Name="SalesOrder" Type="Edm.String" Nullable="false" MaxLength="10" ext:label="Sales order" ext:display-format="UpperCase" />
+        <Property Name="SalesOrderType" Type="Edm.String" Nullable="false" MaxLength="4" ext:label="Order type" />
+        <Property Name="SoldToParty" Type="Edm.String" Nullable="false" MaxLength="10" ext:label="Sold-to party" />
+        <Property Name="TransactionCurrency" Type="Edm.String" Nullable="false" MaxLength="5" ext:semantics="currency-code" />
+        <Property Name="SalesOrganization" Type="Edm.String" Nullable="false" MaxLength="4" />
+        <Property Name="DistributionChannel" Type="Edm.String" Nullable="true" MaxLength="2" />
+        <Property Name="OrganizationDivision" Type="Edm.String" Nullable="true" MaxLength="2" />
+        <Property Name="PurchaseOrderByCustomer" Type="Edm.String" Nullable="true" MaxLength="35" />
+        <Property Name="CustomerPurchaseOrderType" Type="Edm.String" Nullable="true" MaxLength="4" />
+        <Property Name="RequestedDeliveryDate" Type="Edm.DateTime" Nullable="true" Precision="0" ext:display-format="Date" />
+        <Property Name="TotalNetAmount" Type="Edm.Decimal" Nullable="true" Precision="16" Scale="3" ext:unit="TransactionCurrency" />
+        <Property Name="IncotermsClassification" Type="Edm.String" Nullable="true" MaxLength="3" />
+        <Property Name="CustomerPaymentTerms" Type="Edm.String" Nullable="true" MaxLength="4" />
+        <Property Name="CreatedByUser" Type="Edm.String" Nullable="true" MaxLength="12" />
+        <Property Name="CreationDate" Type="Edm.DateTime" Nullable="true" Precision="0" />
+        <Property Name="LastChangeDateTime" Type="Edm.DateTimeOffset" Nullable="true" Precision="7" />
+        <Property Name="extensionReference" Type="Edm.String" Nullable="true" MaxLength="30" ext:label="Synthetic extension reference" />
+        <NavigationProperty
+          Name="to_Item"
+          Relationship="Synthetic.VendorExtended.Sales.SalesOrderItemAssociation"
+          FromRole="SalesOrder"
+          ToRole="SalesOrderItem"
+          ext:label="Items" />
+      </EntityType>
+      <EntityType Name="SalesOrderItem" ext:label="Synthetic sales order item">
+        <Key>
+          <PropertyRef Name="SalesOrder" />
+          <PropertyRef Name="SalesOrderItem" />
+        </Key>
+        <Property Name="SalesOrder" Type="Edm.String" Nullable="false" MaxLength="10" />
+        <Property Name="SalesOrderItem" Type="Edm.String" Nullable="false" MaxLength="6" ext:display-format="NonNegative" />
+        <Property Name="Material" Type="Edm.String" Nullable="false" MaxLength="40" />
+        <Property Name="RequestedQuantity" Type="Edm.Decimal" Nullable="false" Precision="15" Scale="3" ext:unit="RequestedQuantityUnit" />
+        <Property Name="RequestedQuantityUnit" Type="Edm.String" Nullable="false" MaxLength="3" ext:semantics="unit-of-measure" />
+        <Property Name="NetAmount" Type="Edm.Decimal" Nullable="true" Precision="16" Scale="3" ext:unit="TransactionCurrency" />
+        <Property Name="TransactionCurrency" Type="Edm.String" Nullable="true" MaxLength="5" ext:semantics="currency-code" />
+        <Property Name="Plant" Type="Edm.String" Nullable="true" MaxLength="4" />
+        <Property Name="StorageLocation" Type="Edm.String" Nullable="true" MaxLength="4" />
+        <Property Name="SalesOrderItemCategory" Type="Edm.String" Nullable="true" MaxLength="4" />
+        <Property Name="RequestedDeliveryDate" Type="Edm.DateTime" Nullable="true" Precision="0" />
+        <Property Name="BillingBlockReason" Type="Edm.String" Nullable="true" MaxLength="2" />
+        <Property Name="ProductTaxClassification" Type="Edm.String" Nullable="true" MaxLength="1" />
+        <NavigationProperty
+          Name="to_SalesOrder"
+          Relationship="Synthetic.VendorExtended.Sales.SalesOrderItemAssociation"
+          FromRole="SalesOrderItem"
+          ToRole="SalesOrder"
+          ext:label="Header" />
+      </EntityType>
+      <Association Name="SalesOrderItemAssociation">
+        <End Role="SalesOrder" Type="Synthetic.VendorExtended.Sales.SalesOrder" Multiplicity="1" />
+        <End Role="SalesOrderItem" Type="Synthetic.VendorExtended.Sales.SalesOrderItem" Multiplicity="*" />
+        <ReferentialConstraint>
+          <Principal Role="SalesOrder">
+            <PropertyRef Name="SalesOrder" />
+          </Principal>
+          <Dependent Role="SalesOrderItem">
+            <PropertyRef Name="SalesOrder" />
+          </Dependent>
+        </ReferentialConstraint>
+      </Association>
+      <EntityContainer Name="SyntheticSalesService" m:IsDefaultEntityContainer="true">
+        <EntitySet
+          Name="SalesOrderSet"
+          EntityType="Synthetic.VendorExtended.Sales.SalesOrder"
+          ext:creatable="true"
+          ext:updatable="false"
+          ext:deletable="false" />
+        <EntitySet
+          Name="SalesOrderItemSet"
+          EntityType="Synthetic.VendorExtended.Sales.SalesOrderItem"
+          ext:creatable="true"
+          ext:updatable="false"
+          ext:deletable="false" />
+        <AssociationSet Name="SalesOrderItemAssociationSet" Association="Synthetic.VendorExtended.Sales.SalesOrderItemAssociation">
+          <End Role="SalesOrder" EntitySet="SalesOrderSet" />
+          <End Role="SalesOrderItem" EntitySet="SalesOrderItemSet" />
+        </AssociationSet>
+        <FunctionImport Name="SyntheticCheck" ReturnType="Edm.Boolean" m:HttpMethod="GET" ext:label="Synthetic local check" />
+      </EntityContainer>
+      <Annotations Target="Synthetic.VendorExtended.Sales.SalesOrder">
+        <Annotation Term="Synthetic.NonAuthoritative.Description" String="Synthetic annotation evidence only" />
+      </Annotations>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

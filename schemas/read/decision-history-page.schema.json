@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/decision-history-page.schema.json",
+  "title": "Migration Stream Immutable Decision History Page v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "items", "page", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/decision-history/v1" },
+    "scope": { "$ref": "#/$defs/scope" },
+    "items": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/item" }
+    },
+    "page": { "$ref": "#/$defs/page" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "disposition": {
+      "enum": ["CORRECTED", "WAIVED", "ACCEPTED_AS_IS", "EXCLUDED"]
+    },
+    "lifecycleOutcome": {
+      "enum": [
+        "EFFECTIVE",
+        "PENDING_REEVALUATION",
+        "SUPERSEDED",
+        "FAILED",
+        "INTERRUPTED",
+        "STALE_REJECTED",
+        "INTEGRITY_BLOCKED"
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_id", "validation_run_id", "issue_id"],
+      "properties": {
+        "job_id": { "$ref": "#/$defs/identifier" },
+        "validation_run_id": { "$ref": "#/$defs/identifier" },
+        "issue_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "disposition",
+        "practitioner_identifier",
+        "applied_at",
+        "reason",
+        "evidence_reference",
+        "prior_decision_id",
+        "generation",
+        "correction_overlay_id",
+        "reevaluation_id",
+        "canonical_hash",
+        "lifecycle_outcome",
+        "active"
+      ],
+      "properties": {
+        "decision_id": { "$ref": "#/$defs/identifier" },
+        "disposition": { "$ref": "#/$defs/disposition" },
+        "practitioner_identifier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "applied_at": {
+          "type": "string",
+          "maxLength": 64,
+          "format": "date-time"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096,
+          "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "evidence_reference": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 2048,
+          "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "prior_decision_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "generation": { "type": "integer", "minimum": 1 },
+        "correction_overlay_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "reevaluation_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "canonical_hash": { "$ref": "#/$defs/sha256" },
+        "lifecycle_outcome": { "$ref": "#/$defs/lifecycleOutcome" },
+        "active": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "generation": { "const": 1 } } },
+          "then": { "properties": { "prior_decision_id": { "type": "null" } } },
+          "else": {
+            "properties": {
+              "prior_decision_id": { "$ref": "#/$defs/identifier" }
+            }
+          }
+        }
+      ]
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_size", "returned", "next_cursor"],
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "returned": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "next_cursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      }
+    }
+  }
+}

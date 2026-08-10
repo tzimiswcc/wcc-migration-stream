@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/decision-queue-page.schema.json",
+  "title": "Migration Stream Governed Decision Queue Page v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scope",
+    "filters",
+    "items",
+    "page",
+    "canonical_hash"
+  ],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/decision-queue/v1" },
+    "scope": { "$ref": "#/$defs/scope" },
+    "filters": { "$ref": "#/$defs/filters" },
+    "items": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/queueItem" }
+    },
+    "page": { "$ref": "#/$defs/page" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sourceFile": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^[^/\\\\]+(?:/[^/\\\\]+)*$"
+    },
+    "disposition": {
+      "enum": ["CORRECTED", "WAIVED", "ACCEPTED_AS_IS", "EXCLUDED"]
+    },
+    "reevaluationState": {
+      "enum": [
+        "NOT_REQUIRED",
+        "PLANNED",
+        "RUNNING",
+        "COMPLETE",
+        "INTERRUPTED",
+        "FAILED",
+        "BOUND_EXCEEDED",
+        "INTEGRITY_BLOCKED",
+        "STALE_INPUT"
+      ]
+    },
+    "attemptState": {
+      "enum": [
+        "RECEIVED",
+        "VALIDATED",
+        "REJECTED",
+        "CONFLICT",
+        "OVERLAY_PERSISTED",
+        "REEVALUATION_PLANNED",
+        "REEVALUATION_RUNNING",
+        "REEVALUATION_COMPLETE",
+        "REEVALUATION_INTERRUPTED",
+        "REEVALUATION_FAILED",
+        "REEVALUATION_BOUND_EXCEEDED",
+        "REEVALUATION_INTEGRITY_BLOCKED",
+        "REEVALUATION_STALE_INPUT",
+        "EFFECTIVE"
+      ]
+    },
+    "lifecycleOutcome": {
+      "enum": [
+        "EFFECTIVE",
+        "PENDING_REEVALUATION",
+        "SUPERSEDED",
+        "FAILED",
+        "INTERRUPTED",
+        "STALE_REJECTED",
+        "INTEGRITY_BLOCKED"
+      ]
+    },
+    "integrityStatus": {
+      "enum": ["NOT_CHECKED", "VERIFIED", "FAILED", "INTEGRITY_BLOCKED"]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["job_id", "validation_run_id"],
+      "properties": {
+        "job_id": { "$ref": "#/$defs/identifier" },
+        "validation_run_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "filters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "disposition",
+        "severity",
+        "entity_id",
+        "field_id",
+        "rule_id",
+        "source_file",
+        "reevaluation_state"
+      ],
+      "properties": {
+        "disposition": {
+          "type": ["string", "null"],
+          "enum": [
+            "UNRESOLVED",
+            "CORRECTED",
+            "WAIVED",
+            "ACCEPTED_AS_IS",
+            "EXCLUDED",
+            null
+          ]
+        },
+        "severity": {
+          "type": ["string", "null"],
+          "enum": ["ERROR", "WARNING", "INFORMATION", null]
+        },
+        "entity_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "field_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "rule_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "source_file": {
+          "anyOf": [{ "$ref": "#/$defs/sourceFile" }, { "type": "null" }]
+        },
+        "reevaluation_state": {
+          "anyOf": [{ "$ref": "#/$defs/reevaluationState" }, { "type": "null" }]
+        }
+      }
+    },
+    "decisionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "disposition",
+        "practitioner_identifier",
+        "applied_at",
+        "reason_summary",
+        "correction_overlay_id",
+        "reevaluation_id",
+        "reevaluation_state",
+        "generation",
+        "supersession_count",
+        "lifecycle_outcome",
+        "integrity_status",
+        "active"
+      ],
+      "properties": {
+        "decision_id": { "$ref": "#/$defs/identifier" },
+        "disposition": { "$ref": "#/$defs/disposition" },
+        "practitioner_identifier": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256,
+          "pattern": "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$"
+        },
+        "applied_at": {
+          "type": "string",
+          "maxLength": 64,
+          "format": "date-time"
+        },
+        "reason_summary": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 256
+        },
+        "correction_overlay_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "reevaluation_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "reevaluation_state": { "$ref": "#/$defs/reevaluationState" },
+        "generation": { "type": "integer", "minimum": 1 },
+        "supersession_count": { "type": "integer", "minimum": 0 },
+        "lifecycle_outcome": { "$ref": "#/$defs/lifecycleOutcome" },
+        "integrity_status": { "$ref": "#/$defs/integrityStatus" },
+        "active": { "type": "boolean" }
+      }
+    },
+    "attemptSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_attempt_id",
+        "disposition",
+        "correction_overlay_id",
+        "reevaluation_id",
+        "attempt_state",
+        "reevaluation_state",
+        "lifecycle_outcome",
+        "integrity_status",
+        "active"
+      ],
+      "properties": {
+        "decision_attempt_id": { "$ref": "#/$defs/identifier" },
+        "disposition": { "$ref": "#/$defs/disposition" },
+        "correction_overlay_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "reevaluation_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "attempt_state": { "$ref": "#/$defs/attemptState" },
+        "reevaluation_state": { "$ref": "#/$defs/reevaluationState" },
+        "lifecycle_outcome": { "$ref": "#/$defs/lifecycleOutcome" },
+        "integrity_status": { "$ref": "#/$defs/integrityStatus" },
+        "active": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "active": { "const": true } } },
+          "then": {
+            "properties": { "lifecycle_outcome": { "const": "EFFECTIVE" } }
+          }
+        }
+      ]
+    },
+    "queueItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issue_id",
+        "severity",
+        "rule_id",
+        "issue_code",
+        "display_message",
+        "entity_id",
+        "field_id",
+        "source_file",
+        "source_ordinal",
+        "active_decision",
+        "latest_attempt"
+      ],
+      "properties": {
+        "issue_id": { "$ref": "#/$defs/identifier" },
+        "severity": { "enum": ["ERROR", "WARNING", "INFORMATION"] },
+        "rule_id": { "$ref": "#/$defs/identifier" },
+        "issue_code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Z0-9_]+$"
+        },
+        "display_message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4096
+        },
+        "entity_id": { "$ref": "#/$defs/identifier" },
+        "field_id": { "$ref": "#/$defs/identifier" },
+        "source_file": { "$ref": "#/$defs/sourceFile" },
+        "source_ordinal": { "type": "integer", "minimum": 1 },
+        "active_decision": {
+          "anyOf": [{ "$ref": "#/$defs/decisionSummary" }, { "type": "null" }]
+        },
+        "latest_attempt": {
+          "anyOf": [{ "$ref": "#/$defs/attemptSummary" }, { "type": "null" }]
+        }
+      }
+    },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_size", "returned", "next_cursor"],
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "returned": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "next_cursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 8192
+        }
+      }
+    }
+  }
+}

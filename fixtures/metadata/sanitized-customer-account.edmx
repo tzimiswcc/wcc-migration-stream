@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx xmlns:edmx="http://docs.oasis-open.org/odata/ns/edmx" Version="4.0">
+  <edmx:DataServices>
+    <Schema xmlns="http://docs.oasis-open.org/odata/ns/edm" Namespace="Synthetic.CustomerAccount">
+      <EntityType Name="CustomerAccount">
+        <Key>
+          <PropertyRef Name="CustomerAccount" />
+        </Key>
+        <Property Name="DisplayName" Type="Edm.String" Nullable="true" MaxLength="80" />
+        <Property Name="CustomerAccount" Type="Edm.String" Nullable="false" MaxLength="10" />
+        <Property Name="CreditAmount" Type="Edm.Decimal" Nullable="true" Precision="16" Scale="3" />
+        <NavigationProperty Name="PrimaryAddress" Type="Synthetic.CustomerAccount.Address" Nullable="true" Partner="CustomerAccount" />
+        <NavigationProperty Name="Addresses" Type="Collection(Synthetic.CustomerAccount.Address)" Partner="CustomerAccount" />
+      </EntityType>
+      <EntityType Name="Address">
+        <Key>
+          <PropertyRef Name="AddressId" />
+          <PropertyRef Name="CustomerAccount" />
+        </Key>
+        <Property Name="City" Type="Edm.String" Nullable="true" MaxLength="40" />
+        <Property Name="AddressId" Type="Edm.String" Nullable="false" MaxLength="10" />
+        <Property Name="CustomerAccount" Type="Edm.String" Nullable="false" MaxLength="10" />
+        <NavigationProperty Name="CustomerAccount" Type="Synthetic.CustomerAccount.CustomerAccount" Nullable="false" Partner="Addresses" />
+      </EntityType>
+      <EntityContainer Name="SyntheticService">
+        <EntitySet Name="CustomerAccounts" EntityType="Synthetic.CustomerAccount.CustomerAccount" />
+        <EntitySet Name="Addresses" EntityType="Synthetic.CustomerAccount.Address" />
+      </EntityContainer>
+    </Schema>
+  </edmx:DataServices>
+</edmx:Edmx>

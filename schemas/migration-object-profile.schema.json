@@ -1,0 +1,350 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/migration-object-profile.schema.json",
+  "title": "Migration Stream Migration Object Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profileId",
+    "version",
+    "status",
+    "title",
+    "technicalSources",
+    "entities",
+    "relationships",
+    "rules",
+    "publicationAdapters"
+  ],
+  "properties": {
+    "profileId": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9.-]+$"
+    },
+    "version": {
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "status": {
+      "enum": [
+        "GENERATED_DRAFT",
+        "REVIEWED_DRAFT",
+        "APPROVED",
+        "DEPRECATED",
+        "RETIRED"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner": {
+      "type": "string"
+    },
+    "technicalSources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "artifact",
+          "sha256"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              "odata_edmx",
+              "migration_cockpit",
+              "staging_schema",
+              "manual_catalogue"
+            ]
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "system": {
+            "type": "string"
+          },
+          "client": {
+            "type": "string"
+          },
+          "release": {
+            "type": "string"
+          },
+          "extractedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relationship"
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "publicationAdapters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "adapterId",
+          "status"
+        ],
+        "properties": {
+          "adapterId": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "future",
+              "deprecated"
+            ]
+          }
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "properties": {
+        "approvedBy": {
+          "type": "string"
+        },
+        "approvedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evidence": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "ruleMessage": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fieldId",
+        "logicalType",
+        "required"
+      ],
+      "properties": {
+        "fieldId": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string"
+        },
+        "logicalType": {
+          "enum": [
+            "text",
+            "code",
+            "integer",
+            "decimal",
+            "boolean",
+            "date",
+            "datetime",
+            "identifier",
+            "country_code",
+            "currency",
+            "email",
+            "phone"
+          ]
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "technicalProperty": {
+          "type": "string"
+        },
+        "maxLength": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entityId",
+        "root",
+        "fields",
+        "key"
+      ],
+      "properties": {
+        "entityId": {
+          "$ref": "#/$defs/id"
+        },
+        "root": {
+          "type": "boolean"
+        },
+        "technicalEntity": {
+          "type": "string"
+        },
+        "key": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          }
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/field"
+          }
+        }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to",
+        "cardinality"
+      ],
+      "properties": {
+        "relationshipId": {
+          "$ref": "#/$defs/id"
+        },
+        "from": {
+          "$ref": "#/$defs/id"
+        },
+        "to": {
+          "$ref": "#/$defs/id"
+        },
+        "cardinality": {
+          "enum": [
+            "0..1",
+            "1..1",
+            "0..*",
+            "1..*"
+          ]
+        },
+        "technicalNavigation": {
+          "type": "string"
+        },
+        "keyPairs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/relationshipKeyPair"
+          }
+        }
+      },
+      "dependentRequired": {
+        "relationshipId": [
+          "keyPairs"
+        ],
+        "keyPairs": [
+          "relationshipId"
+        ]
+      }
+    },
+    "relationshipKeyPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fromFieldId",
+        "toFieldId"
+      ],
+      "properties": {
+        "fromFieldId": {
+          "$ref": "#/$defs/id"
+        },
+        "toFieldId": {
+          "$ref": "#/$defs/id"
+        }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ruleId",
+        "severity",
+        "kind",
+        "target",
+        "message"
+      ],
+      "properties": {
+        "ruleId": {
+          "$ref": "#/$defs/id"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "information"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "required",
+            "max_length",
+            "allowed_values",
+            "pattern",
+            "unique",
+            "conditional_required",
+            "reference_lookup"
+          ]
+        },
+        "target": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 257
+        },
+        "parameters": {
+          "type": "object"
+        },
+        "message": {
+          "$ref": "#/$defs/ruleMessage"
+        }
+      }
+    }
+  }
+}

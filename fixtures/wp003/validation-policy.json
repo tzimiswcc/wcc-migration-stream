@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "rowBatchSize": 2,
+  "maximumIssues": 100,
+  "maximumPatternBytes": 512,
+  "maximumTotalPatternBytes": 4096,
+  "maximumPatternProgramBytes": 8388608,
+  "maximumLookupEntries": 1000,
+  "maximumLookupBytes": 1048576,
+  "maximumUniqueKeys": 10000,
+  "maximumUniqueKeyBytes": 1048576
+}

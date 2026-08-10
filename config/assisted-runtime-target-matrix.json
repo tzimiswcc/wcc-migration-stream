@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "migration-stream/assisted-local-runtime-target-matrix/v1",
+  "targets": [
+    {
+      "artifact": "migration-stream-local-macos-arm64",
+      "targetTriple": "aarch64-apple-darwin",
+      "verificationStatus": "NATIVE_ACCEPTED"
+    },
+    {
+      "artifact": "migration-stream-local-windows-x64",
+      "targetTriple": "x86_64-pc-windows-msvc",
+      "verificationStatus": "NATIVE_LIFECYCLE_AND_RUNNER_REQUIRED"
+    },
+    {
+      "artifact": "migration-stream-local-windows-arm64",
+      "targetTriple": "aarch64-pc-windows-msvc",
+      "verificationStatus": "NATIVE_LIFECYCLE_AND_DEVICE_REQUIRED"
+    },
+    {
+      "artifact": "migration-stream-local-linux-x64-gnu",
+      "targetTriple": "x86_64-unknown-linux-gnu",
+      "verificationStatus": "NATIVE_RUNNER_REQUIRED"
+    },
+    {
+      "artifact": "migration-stream-local-linux-arm64-gnu",
+      "targetTriple": "aarch64-unknown-linux-gnu",
+      "verificationStatus": "NATIVE_DEVICE_REQUIRED"
+    }
+  ]
+}

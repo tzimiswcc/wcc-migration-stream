@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/write/decision-command-result.schema.json",
+  "title": "Migration Stream Governed Decision Command Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "data", "canonical_hash"],
+  "properties": {
+    "schema_version": {
+      "const": "migration-stream/write/decision-command-result/v1"
+    },
+    "data": { "$ref": "#/$defs/result" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "disposition": {
+      "enum": ["CORRECTED", "WAIVED", "ACCEPTED_AS_IS", "EXCLUDED"]
+    },
+    "reevaluationState": {
+      "enum": ["NOT_REQUIRED", "COMPLETE"]
+    },
+    "lifecycleOutcome": { "const": "EFFECTIVE" },
+    "integrityStatus": { "const": "VERIFIED" },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "disposition",
+        "lifecycle_outcome",
+        "active",
+        "idempotent_replay",
+        "correction_overlay_id",
+        "reevaluation_id",
+        "reevaluation_state",
+        "original_issue_present",
+        "residual_issue_count",
+        "new_issue_count",
+        "integrity_status"
+      ],
+      "properties": {
+        "decision_id": { "$ref": "#/$defs/identifier" },
+        "disposition": { "$ref": "#/$defs/disposition" },
+        "lifecycle_outcome": { "$ref": "#/$defs/lifecycleOutcome" },
+        "active": { "type": "boolean" },
+        "idempotent_replay": { "type": "boolean" },
+        "correction_overlay_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "reevaluation_id": {
+          "anyOf": [{ "$ref": "#/$defs/identifier" }, { "type": "null" }]
+        },
+        "reevaluation_state": { "$ref": "#/$defs/reevaluationState" },
+        "original_issue_present": { "type": "boolean" },
+        "residual_issue_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "new_issue_count": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000000
+        },
+        "integrity_status": { "$ref": "#/$defs/integrityStatus" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "disposition": { "const": "CORRECTED" } },
+            "required": ["disposition"]
+          },
+          "then": {
+            "properties": {
+              "correction_overlay_id": { "$ref": "#/$defs/identifier" },
+              "reevaluation_id": { "$ref": "#/$defs/identifier" },
+              "reevaluation_state": { "const": "COMPLETE" }
+            }
+          },
+          "else": {
+            "properties": {
+              "correction_overlay_id": { "type": "null" },
+              "reevaluation_id": { "type": "null" },
+              "reevaluation_state": { "const": "NOT_REQUIRED" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

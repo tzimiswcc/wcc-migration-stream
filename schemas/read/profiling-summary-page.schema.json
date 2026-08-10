@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/profiling-summary-page.schema.json",
+  "title": "Migration Stream Profiling Summary Page v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scope", "include_samples", "items", "page", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/profiling-summary/v1" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "job_id", "result_hash"],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/id" },
+        "job_id": { "$ref": "#/$defs/id" },
+        "result_hash": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] }
+      }
+    },
+    "include_samples": { "type": "boolean" },
+    "items": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "$ref": "#/$defs/column" }
+    },
+    "page": { "$ref": "#/$defs/page" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "nullableCount": { "type": ["integer", "null"], "minimum": 0 },
+    "page": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_size", "returned", "next_cursor"],
+      "properties": {
+        "page_size": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "returned": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "next_cursor": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "maxLength": 8192,
+          "pattern": "^v1[.][a-f0-9]+[.][a-f0-9]{64}$"
+        }
+      }
+    },
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "utf8_bytes", "decoded_length", "value"],
+      "properties": {
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "utf8_bytes": { "$ref": "#/$defs/count" },
+        "decoded_length": { "$ref": "#/$defs/count" },
+        "value": { "type": ["string", "null"], "maxLength": 1048576 }
+      }
+    },
+    "column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path", "column_ordinal", "column_name", "empty_count", "nonempty_count",
+        "min_decoded_length", "max_decoded_length", "oversized_count", "distinct_status",
+        "distinct_count", "sample_count"
+      ],
+      "properties": {
+        "path": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "column_ordinal": { "type": "integer", "minimum": 0, "maximum": 4095 },
+        "column_name": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "empty_count": { "$ref": "#/$defs/count" },
+        "nonempty_count": { "$ref": "#/$defs/count" },
+        "min_decoded_length": { "$ref": "#/$defs/nullableCount" },
+        "max_decoded_length": { "$ref": "#/$defs/nullableCount" },
+        "oversized_count": { "$ref": "#/$defs/count" },
+        "distinct_status": { "enum": ["EXACT", "ESTIMATED", "NOT_COMPUTED_DUE_TO_BOUND"] },
+        "distinct_count": { "$ref": "#/$defs/nullableCount" },
+        "sample_count": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "samples": {
+          "anyOf": [
+            {
+              "type": "array",
+              "maxItems": 100,
+              "items": { "$ref": "#/$defs/sample" }
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PublicationRequest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "job_id",
+    "candidate_id",
+    "approval_id",
+    "practitioner",
+    "publication_reason",
+    "acknowledgments",
+    "idempotency_key"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "migration-stream/publication-command/v1"
+    },
+    "job_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidate_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "approval_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "practitioner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "publication_reason": {
+      "type": "string",
+      "minLength": 1
+    },
+    "acknowledgments": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "additionalProperties": false
+}

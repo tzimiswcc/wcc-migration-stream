@@ -1,0 +1,50 @@
+Migration Stream
+Copyright 2026 World Class Consultants G.P.
+
+Migration Stream is published by World Class Consultants G.P.
+
+The Apache License, Version 2.0, does not grant permission to use the trade
+names, trademarks, service marks, or product names of the Licensor except as
+provided in Section 6 of that license.
+
+Source-only third-party and adapted material
+--------------------------------------------
+
+This notice is limited to the exact source-only Migration Stream v0.1.0
+candidate. It does not describe or authorize any compiled product or dependency
+executable or library, installer, vendored dependency tree, generated frontend
+distribution, package, or runtime bundle.
+
+The standard Apache License, Version 2.0 text in LICENSE is the licence
+instrument for owner-authored material.
+
+CODE_OF_CONDUCT.md is adapted from Contributor Covenant, version 3.0,
+stewarded by the Organization for Ethical Source. The adapted
+CODE_OF_CONDUCT.md is distributed under Creative Commons
+Attribution-ShareAlike 4.0. Its attribution section identifies the adaptation,
+source, licence, and retained Mozilla inspiration credit:
+
+https://www.contributor-covenant.org/version/3/0/
+https://creativecommons.org/licenses/by-sa/4.0/
+
+docs/CONTRIBUTING.md reproduces the Developer Certificate of Origin, version
+1.1, verbatim with its Linux Foundation copyright and copy-without-change
+permission notice:
+
+https://developercertificate.org/
+
+src/fixture.rs implements the SplitMix64 mixing algorithm described by the
+2015 reference implementation by Sebastiano Vigna. The reference source states
+its public-domain dedication and permission terms and supplies its own warranty
+disclaimer:
+
+https://prng.di.unimi.it/splitmix64.c
+
+Cargo.lock and web/package-lock.json are dependency-resolution metadata. The
+source candidate does not contain the crate or npm package payloads they name,
+node_modules, vendored dependency source, compiled dependency objects, or
+compiled dependency executables or libraries. The informational dependency
+SBOM therefore records the complete 503-component lock universe without
+asserting that those package payloads are distributed. Any future vendored,
+generated, packaged, runtime, or binary distribution requires a new
+shipped-closure and licence-obligation review.

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://worldclassconsultants.gr/migration-stream/schemas/read/validation-summary.schema.json",
+  "title": "Migration Stream Validation Summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "data", "canonical_hash"],
+  "properties": {
+    "schema_version": { "const": "migration-stream/read/validation-summary/v1" },
+    "data": { "$ref": "#/$defs/summary" },
+    "canonical_hash": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "count": { "type": "integer", "minimum": 0 },
+    "timestamp": { "type": "string", "format": "date-time", "maxLength": 64 },
+    "nullableHash": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+    "nullableText": { "type": ["string", "null"], "minLength": 1, "maxLength": 4096 },
+    "breakdownItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "count"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1, "maxLength": 1024 },
+        "count": { "$ref": "#/$defs/count" }
+      }
+    },
+    "breakdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items", "truncated"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "maxItems": 512,
+          "items": { "$ref": "#/$defs/breakdownItem" }
+        },
+        "truncated": { "type": "boolean" }
+      }
+    },
+    "breakdowns": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by_severity", "by_rule", "by_entity", "by_field", "by_source_file"],
+      "properties": {
+        "by_severity": { "$ref": "#/$defs/breakdown" },
+        "by_rule": { "$ref": "#/$defs/breakdown" },
+        "by_entity": { "$ref": "#/$defs/breakdown" },
+        "by_field": { "$ref": "#/$defs/breakdown" },
+        "by_source_file": { "$ref": "#/$defs/breakdown" }
+      }
+    },
+    "timestamps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["created_at", "updated_at", "completed_at"],
+      "properties": {
+        "created_at": { "$ref": "#/$defs/timestamp" },
+        "updated_at": { "$ref": "#/$defs/timestamp" },
+        "completed_at": { "anyOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id", "identity_hash", "job_id", "source_hash", "profile_id", "profile_version", "profile_hash",
+        "mapping_id", "mapping_version", "mapping_hash", "rule_set_hash", "engine_version",
+        "policy_hash", "state", "result_hash", "issue_count", "rows_processed", "error_code",
+        "error_message", "timestamps", "issue_breakdowns"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/id" },
+        "identity_hash": { "$ref": "#/$defs/sha256" },
+        "job_id": { "$ref": "#/$defs/id" },
+        "source_hash": { "$ref": "#/$defs/sha256" },
+        "profile_id": { "$ref": "#/$defs/id" },
+        "profile_version": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "profile_hash": { "$ref": "#/$defs/sha256" },
+        "mapping_id": { "$ref": "#/$defs/id" },
+        "mapping_version": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "mapping_hash": { "$ref": "#/$defs/sha256" },
+        "rule_set_hash": { "$ref": "#/$defs/sha256" },
+        "engine_version": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "policy_hash": { "$ref": "#/$defs/sha256" },
+        "state": { "enum": ["RUNNING", "COMPLETE", "FAILED", "INTERRUPTED", "BOUND_EXCEEDED"] },
+        "result_hash": { "$ref": "#/$defs/nullableHash" },
+        "issue_count": { "$ref": "#/$defs/count" },
+        "rows_processed": { "$ref": "#/$defs/count" },
+        "error_code": { "$ref": "#/$defs/nullableText" },
+        "error_message": { "$ref": "#/$defs/nullableText" },
+        "timestamps": { "$ref": "#/$defs/timestamps" },
+        "issue_breakdowns": { "$ref": "#/$defs/breakdowns" }
+      }
+    }
+  }
+}
