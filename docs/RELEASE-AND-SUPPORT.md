@@ -6,8 +6,9 @@ private development repository.
 
 ## Current product facts
 
-- The first public release is source-only. It will contain no public binary,
-  installer, signed runtime bundle, package, or update channel.
+- The public repository contains the source-only `v0.1.0` publication tree. It
+  publishes no compiled binary, installer, signed runtime bundle, distribution
+  package, or update channel.
 - No operating-system platform is designated as publicly supported for
   `v0.1.0`.
 - Native macOS and Windows evidence is development and local-evaluation
@@ -20,13 +21,13 @@ private development repository.
   external connector, live target write, or deployment capability.
 - Multi-entity work stops at First Issues and Compared Validation.
 
-## Public-release readiness
+## Source-publication evidence
 
 The technical source-publication baseline includes a vendor-neutral release
 corpus and vocabulary gate, a deterministic standalone source candidate, native
 lifecycle evidence, exact source/bundle identity records, and a bounded local
-product journey. The clean one-commit tree must be privately mirrored,
-independently cloned, and validated before its visibility boundary.
+product journey. The initial one-commit public root was privately mirrored,
+independently cloned, and validated before its visibility boundary changed.
 
 The owner has selected the Apache License, Version 2.0 for owner-authored
 material; confirmed World Class Consultants G.P. as the copyright holder and
@@ -38,7 +39,7 @@ claim.
 
 ## Source publication boundary
 
-The exact source-only `v0.1.0` candidate now has a reviewed shipped-material
+The published source-only `v0.1.0` tree has a reviewed shipped-material
 boundary and notices: it includes the lockfiles as metadata, but no dependency
 package payloads, vendored source, generated distribution, or compiled
 dependency executables or libraries. The deterministic lock-universe SBOM
@@ -47,22 +48,21 @@ are distributed or legally reviewed.
 
 Source publication is limited to the verified clean repository tree. It creates
 no tag, GitHub Release, package, binary, installer, or update channel. The
-visibility transition and its repository settings remain governed by the
-explicit owner-authorization step in
-[PUBLIC-RELEASE-ROUTE.md](PUBLIC-RELEASE-ROUTE.md).
+owner-authorized visibility transition and repository protections are recorded
+in [PUBLIC-RELEASE-ROUTE.md](PUBLIC-RELEASE-ROUTE.md).
 
 Binary distribution is a separate future decision. It would require explicit
 platforms and minimum versions, native evidence tied to exact release bytes,
 signing and distribution decisions, exact target-specific dependency and
 linkage closure, reviewed licence and notice obligations, artifact-level SBOM
 and provenance evidence, update/rollback guidance, and separate owner
-authorization. Nothing in the source-only `v0.1.0` plan reserves or implies
+authorization. Nothing in this source publication reserves or implies
 such a release.
 
 ## Support and contributions
 
-When the clean repository is public and Issues are enabled, GitHub issues may
-be used for reproducible product defects and bounded proposals. They are not a
+In the public clean repository, GitHub issues may be used for reproducible
+product defects and bounded proposals. They are not a
 consulting channel, migration-delivery service, incident-response service, or
 route for client data, credentials, workspaces, confidential extracts, or raw
 logs.

@@ -25,8 +25,8 @@ excluded. `.github/workflows/public-source-ci.yml` is the only selected workflow
 This selection establishes the source-publication boundary; its evidence does
 not by itself authorize a visibility change or binary release.
 
-For the source-only `v0.1.0` candidate, `NOTICE` records the third-party and
-adapted text actually present in the selected corpus and the attributed
+For the source-only `v0.1.0` publication tree, `NOTICE` records the third-party
+and adapted text actually present in the selected corpus and the attributed
 SplitMix64 reference. The exact source archive contains dependency lockfiles as
 metadata but no crate or npm package payloads, `node_modules`, vendored
 dependency source, generated distribution, compiled dependency objects, or
