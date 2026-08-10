@@ -42,8 +42,9 @@ Approval, or Package authority.
 - Loopback binding reduces exposure but is not authentication.
 - Package generation is local evidence creation. It does not transmit data or
   write to another system.
-- The planned first public release is source-only `v0.1.0`. It will not include
-  public binaries or designate any supported operating-system platform.
+- The public clean repository contains the source-only `v0.1.0` publication
+  tree. It includes no public binaries and designates no supported
+  operating-system platform.
 - Native platform evidence is development evidence. It is not a public binary,
   installer, signing, distribution, or platform-support promise.
 
@@ -62,9 +63,9 @@ Choose the path that matches how you are evaluating the project:
 - [Troubleshooting](docs/TROUBLESHOOTING.md) — safe local recovery steps.
 - [Security and data boundary](SECURITY.md) — local-data and reporting limits.
 - [Release and support status](docs/RELEASE-AND-SUPPORT.md) — current scope,
-  release-candidate work, and no-support-promise boundary.
+  source-publication status, and no-support-promise boundary.
 - [Route to a public release](docs/PUBLIC-RELEASE-ROUTE.md) — clean-export-first
-  milestones and the owner decisions still required before publication.
+  milestones and the separately gated binary-release decisions.
 
 The in-app **Help for this stage** control is local, read-only help for the ten
 journey stages. It follows the current route and does not change authority.

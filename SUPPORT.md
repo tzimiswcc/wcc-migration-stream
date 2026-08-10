@@ -7,8 +7,7 @@ roadmap promise, or guaranteed fix or backport.
 
 ## Public issue scope
 
-When the clean repository is public and Issues are enabled, GitHub Issues
-accept:
+In the public clean repository, GitHub Issues accept:
 
 - reproducible software defects through the bug form; and
 - bounded product or engineering proposals through the proposal form.
