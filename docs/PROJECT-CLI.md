@@ -70,6 +70,17 @@ existing directory. A publication error can leave a final descriptor visible;
 inspect the indicated pending/final state before choosing an explicit next step.
 Missing required initialization arguments fail during parsing before creation.
 
+For an interrupted initialization with a retained command, `project inspect`
+returns `requiredAction: "RESUME_EXACT_WORKSPACE_INITIALIZATION"`. Its existing
+`lifecycle.pendingCommand` contains the exact schema, original state hash,
+metadata and idempotency key to pass explicitly to
+`ObjectWorkspaceService::initialize`. Preserve the complete command; a fresh
+`object-workspace initialize` invocation constructs a new command and cannot
+replace the retained one. The CLI has no exact-command resume operation.
+Inspect remains read-only: it does not resume initialization, repair partial
+material, or bind the project. After explicit recovery makes the workspace
+active, inspect returns `BIND_PROJECT`; binding remains a separate operation.
+
 Placing files under `input/` grants no accepted source/profile authority. These
 commands do not ingest, import, approve a profile, adopt or relocate evidence,
 export data, launch a browser or create an installer. To launch a bound object,
