@@ -252,7 +252,8 @@ resource URLs backed by a bundle base; this projection preserves their native
 filesystem bytes. Directly supplied resource URLs and document selections retain
 the existing strict validation, including refusal of relative or based documents.
 
-The source menu configuration is **File → Open Object…**, Command-O. Its
+The source menu reserves a dedicated application-menu container before the
+**File → Open Object…**, Command-O menu; the container adds no commands. Its
 asynchronous `NSOpenPanel` chooses files, refuses directories/multiple selection
 and disables alias resolution. One picker may be in flight. Cancellation or
 no selection performs no open operation; selection and presentation failure
@@ -277,9 +278,12 @@ xcrun swiftc -swift-version 6 -warnings-as-errors \
 This proof instantiates the real coordinator with injected resource URL,
 picker, adapter factory, runner, browser and error presenters. A temporary metadata-only
 Bundle fixture also exercises the production resource projection and actual
-constructors, with no picker/runner/browser calls. Production
-bootstrap/menu/panel composition is typechecked only: tests never construct
-`NSApplication`, `NSMenu` or `NSOpenPanel`, present UI, launch processes or use a
+constructors, with no picker/runner/browser calls. The same production menu builder
+is also checked as an unassigned `NSMenu` graph: application slot first, File
+second, and the exact Open Object action, retained target and Command-O. Tests
+verify `NSApp` stays absent. Application assignment and panel composition are
+typechecked only: tests never construct `NSApplication` or `NSOpenPanel`,
+present UI, launch processes or use a
 real workspace/browser/native event/network runtime. The command excludes the
 older adapter/helper test driver and does not repeat its 45-second case.
 Actual application startup, document events, UI and installed behavior still

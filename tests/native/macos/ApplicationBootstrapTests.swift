@@ -96,6 +96,42 @@ private actor BootstrapRunnerSpy {
     if let operation = coordinator.openObject() { await operation.value }
   }
 
+  @MainActor private static func nativeMenuGraph() async throws {
+    expect(NSApp == nil, "menu graph proof must not start an application")
+    let picker = BootstrapPickerSpy()
+    let runner = BootstrapRunnerSpy(response())
+    let view = BootstrapView()
+    let retained = try coordinator(
+      URL(fileURLWithPath: "/synthetic/Contents/Resources", isDirectory: true),
+      picker, runner, view)
+    let main = ApplicationBootstrap.makeMainMenu(coordinator: retained)
+    expect(main.numberOfItems == 2, "dedicated application slot then File")
+    let application = main.items[0]
+    let file = main.items[1]
+    expect(application !== file, "distinct top-level menu parents")
+    expect(
+      application.title == "Migration Stream" && application.submenu != nil
+        && application.submenu?.numberOfItems == 0,
+      "first application menu container adds no commands")
+    expect(
+      file.title == "File" && file.submenu != nil && file.submenu !== application.submenu
+        && file.submenu?.title == "File" && file.submenu?.numberOfItems == 1,
+      "File has its own submenu in the second slot")
+    let open = file.submenu!.items[0]
+    expect(
+      open.title == "Open Object…"
+        && open.action == #selector(OpenObjectCoordinator.chooseObject(_:))
+        && open.target === retained && open.keyEquivalent == "o"
+        && open.keyEquivalentModifierMask == .command,
+      "exact Open Object action, retained coordinator target and Command-O")
+    let calls = await runner.calls
+    expect(
+      NSApp == nil && picker.configurations.isEmpty && calls.isEmpty
+        && view.browsers.isEmpty && view.errors.isEmpty,
+      "unassigned menu construction has no application, picker, runner or browser effects")
+    print("PASS native menu graph reserves application slot before unchanged File/Open Object")
+  }
+
   @MainActor private static func platformBundleResourceProjection() async throws {
     let files = FileManager.default
     let fixture = files.temporaryDirectory.appendingPathComponent(
@@ -167,7 +203,8 @@ private actor BootstrapRunnerSpy {
 
   @MainActor static func main() async throws {
     // Only pure Bundle metadata projection and injected constructors/configuration.
-    // Never call make/configure, NSApplication, NSMenu or NSOpenPanel.
+    // Construct only an unassigned menu graph; never call configure or start an application.
+    try await nativeMenuGraph()
     try await platformBundleResourceProjection()
     let resources = URL(
       fileURLWithPath: "/synthetic app/πελάτης%literal/Contents/Resources", isDirectory: true)
@@ -341,7 +378,7 @@ private actor BootstrapRunnerSpy {
     await second.value
     print("PASS picker state isolated from older controller completion")
     print(
-      "9 coordinator proof groups passed; no UI/app/process/browser/nativeevent/network/runtime execution"
+      "10 coordinator proof groups passed; unpresented NSMenu only, no UI/app/process/browser/nativeevent/network/runtime execution"
     )
   }
 }
