@@ -36,6 +36,63 @@ logs, received data or evidence inside it. If verification reports a changed,
 missing, extra, linked, wrongly typed, wrongly permissioned or wrong-platform
 member, stop and obtain a known bundle again.
 
+## Create and reopen one project
+
+From the verified bundle directory, select a new object directory outside the
+bundle whose parent already exists. The object directory itself must not exist;
+do not create it with `mkdir` first.
+
+```sh
+./bin/migration-stream project create \
+  --directory /absolute/private/projects/customer-readiness \
+  --display-name "Customer readiness" \
+  --initialize-and-bind \
+  --migration-object-name-or-scope "Customer readiness" \
+  --creator-attribution "Local operator"
+
+./bin/migration-stream project inspect \
+  --project /absolute/private/projects/customer-readiness/project.mstream
+
+./migration-stream-local start \
+  --project /absolute/private/projects/customer-readiness/project.mstream \
+  --port 4173
+```
+
+`--initialize-and-bind` explicitly initializes this new empty object's workspace
+and binds its project descriptor. Supply the object's scope and creator
+attribution; these fields grant no profile approval authority. After success,
+use the returned `descriptorPath` for inspection and runtime commands. Inspect
+is read-only. Open the exact loopback URL printed by `start`.
+
+Stop, then reopen the same object using its final descriptor and the same port:
+
+```sh
+./migration-stream-local stop \
+  --project /absolute/private/projects/customer-readiness/project.mstream \
+  --port 4173
+
+./migration-stream-local start \
+  --project /absolute/private/projects/customer-readiness/project.mstream \
+  --port 4173
+```
+
+Reopening retains the existing workspace identity and evidence. `status`,
+`restart` and `integrity` also accept `--project`; select either `--project` or
+`--workspace` for each command. The lifecycle controls described below apply
+to both selections.
+
+Creation refuses every existing target directory, including an empty directory
+or a previous partial attempt. To reopen a completed project, inspect its final
+`project.mstream` and start it as above. If creation fails after retaining
+material, read the failure's `project.phase`, known `descriptorPath` and
+`nextAction`, and inspect the indicated descriptor before taking an explicit
+recovery step. Leave the retained material intact; repeating `create` does not
+resume, repair or overwrite it. A publication failure can leave a final
+descriptor visible. A `project.pending.mstream` receipt requires explicit
+workspace initialization and binding before runtime use; it cannot substitute
+for the final descriptor. Omitting `--initialize-and-bind` deliberately leaves
+that staged setup pending.
+
 ## Operate one workspace
 
 Create or select one existing real directory outside the bundle. The browser

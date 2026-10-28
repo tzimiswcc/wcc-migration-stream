@@ -2129,7 +2129,7 @@ mod tests {
             build_compared_finding_set(&KEY, &set_input("tour-2", '6', vec![])).expect("current");
         let result =
             compare_finding_sets(&comparison_input(prior, current)).expect("empty comparison");
-        assert!(result.findings.is_empty());
+        assert_eq!(result.findings, [] as [ComparedFindingDelta; 0]);
         assert_eq!(
             result.counts,
             ComparedValidationCounts {

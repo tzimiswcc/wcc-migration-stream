@@ -324,14 +324,18 @@ fn authority_mapping_and_validation_are_bounded_and_deterministic() {
     assert_eq!(mapping.state, "VALID");
     assert_eq!(mapping.coverage.mapped_canonical_fields.len(), 5);
     assert_eq!(mapping.coverage.defaulted_canonical_fields.len(), 1);
-    assert!(mapping.coverage.unmapped_source_columns.is_empty());
-    assert!(
-        mapping
-            .coverage
-            .required_canonical_fields_without_coverage
-            .is_empty()
+    assert_eq!(
+        mapping.coverage.unmapped_source_columns,
+        [] as [migration_stream::mapping::SourceColumnIdentity; 0]
     );
-    assert!(mapping.coverage.invalid_bindings.is_empty());
+    assert_eq!(
+        mapping.coverage.required_canonical_fields_without_coverage,
+        [] as [migration_stream::mapping::RequiredCanonicalFieldIdentity; 0]
+    );
+    assert_eq!(
+        mapping.coverage.invalid_bindings,
+        [] as [std::string::String; 0]
+    );
 
     let policy =
         ValidationPolicy::from_path(&project_path("fixtures/wp003/validation-policy.json"))

@@ -205,7 +205,10 @@ fn textual_metrics_are_exact_bounded_and_persisted_atomically() {
     assert_eq!(empty.min_decoded_length, None);
     assert_eq!(empty.max_decoded_length, None);
     assert_eq!(empty.distinct.count, Some(1));
-    assert!(empty.samples.is_empty());
+    assert_eq!(
+        empty.samples,
+        [] as [migration_stream::profiling::TextSample; 0]
+    );
 
     let database = Connection::open(workspace.join("state.sqlite3")).expect("open state");
     let counts: (i64, i64, i64) = database
@@ -252,7 +255,7 @@ fn zero_sample_bound_retains_no_sample_hashes_or_values() {
         .expect("query sample evidence")
         .collect::<Result<Vec<_>, _>>()
         .expect("collect sample evidence");
-    assert!(!samples.is_empty());
+    assert_ne!(samples, [] as [std::string::String; 0]);
     assert!(samples.iter().all(|sample_json| sample_json == "[]"));
     let result_json: String = database
         .query_row(

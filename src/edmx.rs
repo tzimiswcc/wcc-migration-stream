@@ -770,9 +770,12 @@ fn parse_schemas(
 ) -> Result<(Vec<EdmxSchema>, CompatibilityScan)> {
     let mut reader = NsReader::from_reader(bytes);
     reader.config_mut().trim_text(false);
-    reader
-        .resolver_mut()
-        .set_max_declarations_per_element(limits.max_attributes_per_element);
+    reader.resolver_mut().set_max_namespace_bindings(
+        limits
+            .max_attributes_per_element
+            .saturating_mul(limits.max_depth)
+            .saturating_add(2),
+    );
     let mut buffer = Vec::new();
     let mut frames = Vec::new();
     let mut events = 0_usize;
@@ -825,7 +828,7 @@ fn parse_schemas(
             }
             Event::Text(text) => {
                 enforce_text_size(text.len(), limits)?;
-                let raw_text: &[u8] = text.as_ref();
+                let raw_text: &[u8] = text.as_ref().as_bytes();
                 if frames.is_empty() && raw_text.iter().any(|byte| !byte.is_ascii_whitespace()) {
                     return Err(KernelError::EdmxParse(
                         "non-whitespace text is forbidden outside the Edmx root".to_owned(),
@@ -865,7 +868,7 @@ fn parse_schemas(
 
 fn classify_namespace(namespace: ResolveResult<'_>) -> Result<ElementNamespace> {
     match namespace {
-        ResolveResult::Bound(namespace) => match namespace.as_ref() {
+        ResolveResult::Bound(namespace) => match namespace.as_ref().as_bytes() {
             EDM_V2_NAMESPACE => Ok(ElementNamespace::Edm(ODataVersion::V2)),
             EDM_V4_NAMESPACE => Ok(ElementNamespace::Edm(ODataVersion::V4)),
             EDMX_V2_NAMESPACE => Ok(ElementNamespace::Edmx(ODataVersion::V2)),
@@ -874,8 +877,7 @@ fn classify_namespace(namespace: ResolveResult<'_>) -> Result<ElementNamespace> 
         },
         ResolveResult::Unbound => Ok(ElementNamespace::Unbound),
         ResolveResult::Unknown(prefix) => Err(KernelError::EdmxParse(format!(
-            "element uses undeclared namespace prefix {:?}",
-            String::from_utf8_lossy(&prefix)
+            "element uses undeclared namespace prefix {prefix:?}"
         ))),
     }
 }
@@ -903,7 +905,7 @@ fn process_element(
     state: &mut ParseState,
 ) -> Result<Frame> {
     let local = start.local_name();
-    let local = local.as_ref();
+    let local = local.as_ref().as_bytes();
     let recognized = is_recognized_element(local);
     let unsupported = unsupported_element_kind(namespace, local);
     let capture = recognized || unsupported.is_some();
@@ -1439,7 +1441,6 @@ fn bounded_attributes(
     compatibility: &mut CompatibilityScan,
 ) -> Result<BTreeMap<String, String>> {
     let attributes = start.attributes();
-    let decoder = attributes.decoder();
     let mut output = BTreeMap::new();
     let mut count = 0_usize;
     for attribute in attributes {
@@ -1464,22 +1465,17 @@ fn bounded_attributes(
                 limits.max_attribute_bytes,
             ));
         }
-        if raw_name == b"xmlns" || raw_name.starts_with(b"xmlns:") {
+        if raw_name == "xmlns" || raw_name.starts_with("xmlns:") {
             continue;
         }
-        if raw_name.contains(&b':') {
+        if raw_name.contains(':') {
             let (namespace, local_name) = resolver.resolve_attribute(attribute.key);
-            let local_name = std::str::from_utf8(local_name.as_ref()).map_err(|error| {
-                KernelError::EdmxParse(format!("invalid qualified attribute name: {error}"))
-            })?;
+            let local_name = local_name.as_ref();
             let namespace = match namespace {
-                ResolveResult::Bound(namespace) => {
-                    String::from_utf8_lossy(namespace.as_ref()).into_owned()
-                }
+                ResolveResult::Bound(namespace) => namespace.as_ref().to_owned(),
                 ResolveResult::Unknown(prefix) => {
                     return Err(KernelError::EdmxParse(format!(
-                        "attribute uses undeclared namespace prefix {:?}",
-                        String::from_utf8_lossy(&prefix)
+                        "attribute uses undeclared namespace prefix {prefix:?}"
                     )));
                 }
                 ResolveResult::Unbound => {
@@ -1490,8 +1486,7 @@ fn bounded_attributes(
             };
             if capture && is_core_attribute_name(local_name) {
                 return Err(KernelError::EdmxParse(format!(
-                    "recognized element attribute {} must be unqualified",
-                    String::from_utf8_lossy(raw_name)
+                    "recognized element attribute {raw_name} must be unqualified"
                 )));
             }
             compatibility.qualified_attribute(element, &namespace, local_name)?;
@@ -1500,11 +1495,9 @@ fn bounded_attributes(
         if !capture {
             continue;
         }
-        let name = std::str::from_utf8(raw_name)
-            .map_err(|error| KernelError::EdmxParse(format!("invalid attribute name: {error}")))?
-            .to_owned();
+        let name = raw_name.to_owned();
         let value = attribute
-            .decoded_and_normalized_value(XmlVersion::Implicit1_0, decoder)
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|error| {
                 KernelError::EdmxParse(format!("invalid value for attribute {name}: {error}"))
             })?
@@ -1922,7 +1915,7 @@ fn hash_catalogue(catalogue: &TechnicalCatalogue) -> Result<String> {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    crate::canonical::lower_hex(Sha256::digest(bytes))
 }
 
 #[cfg(test)]
@@ -1973,6 +1966,56 @@ mod tests {
         format!(
             r#"<e:Edmx xmlns:e="http://schemas.microsoft.com/ado/2007/06/edmx" Version="1.0"><e:DataServices>{schemas}</e:DataServices></e:Edmx>"#
         )
+    }
+
+    #[test]
+    fn utf8_attributes_keep_entity_and_xml_whitespace_normalization() {
+        let document = v4_document(
+            r#"<d:Schema Namespace="Δοκιμή"><d:EntityType Name="Πελάτης"><d:Property Name="Label" Type="Edm.String" MaxLength="A&amp;B&#x9;C	D"/></d:EntityType></d:Schema>"#,
+        );
+        let artifact = import_edmx_bytes(
+            document.as_bytes(),
+            context("utf8.edmx"),
+            &EdmxLimits::default(),
+        )
+        .unwrap();
+        let schema = &artifact.catalogue.schemas[0];
+        assert_eq!(schema.namespace, "Δοκιμή");
+        assert_eq!(schema.entity_types[0].name, "Πελάτης");
+        assert_eq!(
+            schema.entity_types[0].properties[0].max_length.as_deref(),
+            Some("A&B\tC D")
+        );
+        artifact.verify_contract().unwrap();
+    }
+
+    #[test]
+    fn rejects_invalid_utf8_and_excess_namespace_declarations() {
+        let document = v4_document(r#"<d:Schema Namespace="X"/>"#);
+        let invalid = document.replace("Namespace=\"X\"", "Namespace=\"INVALID\"");
+        let mut invalid = invalid.into_bytes();
+        let offset = invalid
+            .windows(7)
+            .position(|value| value == b"INVALID")
+            .unwrap();
+        invalid[offset] = 0xff;
+        assert!(matches!(
+            import_edmx_bytes(&invalid, context("invalid.edmx"), &EdmxLimits::default()),
+            Err(KernelError::EdmxParse(_))
+        ));
+        let limits = EdmxLimits {
+            max_attributes_per_element: 2,
+            ..EdmxLimits::default()
+        };
+        let document = document.replacen(
+            "Version=\"4.0\"",
+            "xmlns:x=\"urn:x\" xmlns:y=\"urn:y\" Version=\"4.0\"",
+            1,
+        );
+        assert!(matches!(
+            import_edmx_bytes(document.as_bytes(), context("namespaces.edmx"), &limits),
+            Err(KernelError::EdmxLimit(_))
+        ));
     }
 
     #[test]
@@ -2263,7 +2306,10 @@ mod tests {
             construct.kind == EdmxUnsupportedConstructKind::Containment
                 && construct.location == "Synthetic.ODataV4.Sales.SalesOrder.to_Attachments"
         }));
-        assert!(report.qualified_attributes.is_empty());
+        assert_eq!(
+            report.qualified_attributes,
+            [] as [EdmxQualifiedAttribute; 0]
+        );
         assert_eq!(
             artifact.catalogue.schemas[0]
                 .entity_types

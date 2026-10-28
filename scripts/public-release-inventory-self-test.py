@@ -13,6 +13,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+import shutil
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -65,7 +67,57 @@ def main() -> int:
         module = load_module()
         real_repository = base / "real-repository"
         clone_fixture(SCRIPT.parents[1], real_repository)
+        # Exercise the current dependency refresh inside a temporary fixture commit.
+        # Overlay only public source inputs so this also runs in a clean export.
+        # Excluded-entry behavior is exercised by the synthetic fixture below.
+        # This does not create release provenance or modify the source branch.
+        selected = ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
+                    "crates/migration-stream-windows-native/Cargo.toml",
+                    "web/package.json", "web/package-lock.json", "web/.node-version",
+                    "config/release-corpus.json", "scripts/cargo-build.sh",
+                    "scripts/rustc-macos-loader.py", "scripts/cargo-build-self-test.py",
+                    "scripts/ci.sh", "scripts/public-release-inventory.py",
+                    "scripts/public-release-inventory-self-test.py",
+                    "docs/PUBLIC-RELEASE-ROUTE.md",
+                    "docs/PROJECT-OBJECT-CORE.md", "web/src/favicon.svg",
+                    "scripts/release-corpus-vocabulary-gate.py",
+                    "scripts/release-corpus-vocabulary-gate-self-test.py",
+                    "scripts/build-assisted-runtime-bundle.sh"]
+        for relative in selected:
+            shutil.copy2(SCRIPT.parents[1] / relative, real_repository / relative)
+        git(real_repository, "add", *selected)
+        git(real_repository, "commit", "--quiet", "--allow-empty", "-m", "Current dependency self-test fixture")
+        cargo_lock = tomllib.loads((real_repository / "Cargo.lock").read_text())
+        npm_lock = json.loads((real_repository / "web/package-lock.json").read_text())
+        expected_cargo = sum("source" in package for package in cargo_lock["package"])
+        expected_npm_installations = len(npm_lock["packages"]) - 1
+        expected_npm = len({(path.rsplit("node_modules/", 1)[-1], package["version"])
+                            for path, package in npm_lock["packages"].items() if path})
+        cargo_declarations = []
+        for relative in ("Cargo.toml", "crates/migration-stream-windows-native/Cargo.toml"):
+            manifest = tomllib.loads((real_repository / relative).read_text())
+            sections = [manifest, *manifest.get("target", {}).values()]
+            for section in sections:
+                for group in ("dependencies", "dev-dependencies", "build-dependencies"):
+                    for name, specification in section.get(group, {}).items():
+                        if isinstance(specification, dict) and "path" in specification:
+                            continue
+                        pin = specification if isinstance(specification, str) else specification["version"]
+                        cargo_declarations.append((name, pin))
+        npm_manifest = json.loads((real_repository / "web/package.json").read_text())
+        npm_declarations = [(name, version) for group in ("dependencies", "devDependencies", "optionalDependencies")
+                            for name, version in npm_manifest.get(group, {}).items()]
+        expected_declarations = len(cargo_declarations) + len(npm_declarations)
+        expected_direct = len(set(cargo_declarations)) + len(set(npm_declarations))
         real_inventory, _ = module.build_inventory(real_repository)
+        selected_records = {record["path"]: record for record in real_inventory["files"]}
+        for helper in ("scripts/cargo-build.sh", "scripts/rustc-macos-loader.py"):
+            assert helper in selected_records and selected_records[helper]["executable"]
+        assert "scripts/cargo-build-self-test.py" in selected_records
+        for current_path in ("docs/PROJECT-OBJECT-CORE.md", "web/src/favicon.svg",
+                             "scripts/release-corpus-vocabulary-gate.py"):
+            assert selected_records[current_path]["sha256"] == hashlib.sha256(
+                (SCRIPT.parents[1] / current_path).read_bytes()).hexdigest()
         real_sbom = module.build_dependency_sbom(real_repository, real_inventory)
         replayed_real_sbom = module.build_dependency_sbom(
             real_repository, real_inventory
@@ -77,24 +129,25 @@ def main() -> int:
             property_["name"]: property_["value"]
             for property_ in real_sbom["metadata"]["properties"]
         }
-        assert real_properties["migration-stream:evidence:component-count"] == "503"
+        assert int(real_properties["migration-stream:evidence:component-count"]) == expected_cargo + expected_npm
         assert real_properties[
             "migration-stream:evidence:cargo-component-count"
-        ] == "231"
+        ] == str(expected_cargo)
         assert real_properties[
             "migration-stream:evidence:npm-component-count"
-        ] == "272"
+        ] == str(expected_npm)
         assert real_properties[
             "migration-stream:evidence:direct-declaration-count"
-        ] == "51"
+        ] == str(expected_declarations)
         assert real_properties[
             "migration-stream:evidence:direct-component-count"
-        ] == "49"
-        assert len(real_sbom["components"]) == 503
+        ] == str(expected_direct)
+        assert int(real_properties["migration-stream:evidence:npm-installation-count"]) == expected_npm_installations
+        assert len(real_sbom["components"]) == expected_cargo + expected_npm
         assert "dependencies" not in real_sbom
         assert all("licenses" not in component for component in real_sbom["components"])
         assert all(
-            component["name"] != "1.97.1" for component in real_sbom["components"]
+            component["name"] != "1.99.1" for component in real_sbom["components"]
         )
 
         repository = base / "repository"
@@ -134,7 +187,7 @@ def main() -> int:
             """[package]
 name = "fixture"
 version = "1.0.0"
-rust-version = "1.97.1"
+rust-version = "1.99.1"
 
 [workspace]
 members = ["crates/helper"]
@@ -149,7 +202,7 @@ serde = "=1.0.0"
             """[package]
 name = "helper"
 version = "1.0.0"
-rust-version = "1.97.1"
+rust-version = "1.99.1"
 
 [dependencies]
 anyhow = "=1.0.0"
@@ -185,7 +238,7 @@ checksum = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         write(
             repository / "rust-toolchain.toml",
             """[toolchain]
-channel = "1.97.1"
+channel = "1.99.1"
 profile = "minimal"
 """,
         )
@@ -252,7 +305,7 @@ profile = "minimal"
                 sort_keys=True,
             ),
         )
-        write(repository / "web/.node-version", "24.18.0\n")
+        write(repository / "web/.node-version", "24.22.1\n")
         git(repository, "add", ".")
         git(repository, "update-index", "--chmod=+x", "public/run.sh")
         git(repository, "commit", "--quiet", "-m", "fixture")
@@ -339,7 +392,7 @@ profile = "minimal"
         assert sbom_properties[
             "migration-stream:evidence:direct-component-count"
         ] == "4"
-        assert sbom_properties["migration-stream:evidence:node-pin"] == "24.18.0"
+        assert sbom_properties["migration-stream:evidence:node-pin"] == "24.22.1"
         assert sbom_properties[
             "migration-stream:evidence:node-engine"
         ] == "^20.19.0 || >=24.0.0"
@@ -493,6 +546,17 @@ profile = "minimal"
             raise AssertionError("colliding package URLs were accepted")
         finally:
             module.cargo_purl = original_cargo_purl
+
+        original_npm_purl = module.npm_purl
+        module.npm_purl = lambda *_values: "pkg:npm/colliding-identity@1.0.0"
+        try:
+            module.build_dependency_sbom(repository, document)
+        except module.InventoryError as error:
+            assert "conflicting provenance" in str(error)
+        else:
+            raise AssertionError("conflicting npm name/version evidence for one package URL was accepted")
+        finally:
+            module.npm_purl = original_npm_purl
 
         archive = base / "public-release-candidate.zip"
         third = base / "third.json"
@@ -715,6 +779,53 @@ profile = "minimal"
             assert expected in invalid.stderr, (name, invalid.stderr.decode())
             assert not output.exists()
 
+        duplicate_paths = [
+            "node_modules/a/node_modules/left-pad",
+            "node_modules/b/node_modules/left-pad",
+            "node_modules/c/node_modules/left-pad",
+        ]
+
+        def add_duplicate_installations(candidate: Path) -> None:
+            path = candidate / "web/package-lock.json"
+            lock = json.loads(path.read_text())
+            prototype = lock["packages"].pop("node_modules/left-pad")
+            # Retain the declared direct installation plus three identical nested occurrences.
+            lock["packages"]["node_modules/left-pad"] = prototype
+            for installation in duplicate_paths:
+                lock["packages"][installation] = dict(prototype)
+            write(path, json.dumps(lock, sort_keys=True))
+
+        repeated = base / "identical-npm-installations"
+        clone_fixture(repository, repeated)
+        add_duplicate_installations(repeated)
+        git(repeated, "add", ".")
+        git(repeated, "commit", "--quiet", "-m", "Repeated npm installation fixture")
+        repeated_inventory, _ = module.build_inventory(repeated)
+        repeated_sbom = module.build_dependency_sbom(repeated, repeated_inventory)
+        repeated_components = [component for component in repeated_sbom["components"]
+                               if component["purl"] == "pkg:npm/left-pad@1.0.0"]
+        assert len(repeated_components) == 1
+        repeated_properties = {item["name"]: item["value"] for item in repeated_components[0]["properties"]}
+        assert json.loads(repeated_properties["migration-stream:evidence:install-paths"]) == sorted(
+            ["node_modules/left-pad", *duplicate_paths])
+        repeated_metadata = {item["name"]: item["value"] for item in repeated_sbom["metadata"]["properties"]}
+        assert repeated_metadata["migration-stream:evidence:npm-component-count"] == "2"
+        assert repeated_metadata["migration-stream:evidence:npm-installation-count"] == "5"
+        assert module.canonical_json(repeated_sbom) == module.canonical_json(module.build_dependency_sbom(repeated, repeated_inventory))
+
+        for field, conflicting_value in (
+            ("integrity", integrity_b),
+            ("resolved", "https://registry.npmjs.org/left-pad/-/alternate.tgz"),
+            ("license", "CONFLICTING-FIXTURE"),
+        ):
+            def conflict(candidate: Path, field=field, value=conflicting_value) -> None:
+                add_duplicate_installations(candidate)
+                path = candidate / "web/package-lock.json"
+                lock = json.loads(path.read_text())
+                lock["packages"][duplicate_paths[0]][field] = value
+                write(path, json.dumps(lock, sort_keys=True))
+            invalid_dependency_case(f"npm-duplicate-{field}", conflict, b"conflicting provenance")
+
         def mutate_cargo_checksum(candidate: Path) -> None:
             path = candidate / "Cargo.lock"
             write(path, path.read_text(encoding="utf-8").replace("a" * 64, "bad", 1))
@@ -818,7 +929,7 @@ checksum = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
         def mutate_toolchain(candidate: Path) -> None:
             path = candidate / "rust-toolchain.toml"
-            write(path, path.read_text(encoding="utf-8").replace("1.97.1", "1.98.0"))
+            write(path, path.read_text(encoding="utf-8").replace("1.99.1", "1.100.0"))
 
         invalid_dependency_case(
             "toolchain-drift", mutate_toolchain, b"does not match the toolchain"

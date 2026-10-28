@@ -116,7 +116,7 @@ mod native {
         digest.update(b"migration-stream/workspace-filesystem-identity/v1\0windows\0");
         digest.update(identity.volume_serial_number.to_be_bytes());
         digest.update(identity.file_id);
-        format!("{:x}", digest.finalize())
+        lowercase_hex_32(&digest.finalize().into())
     }
 
     /// Read the full stable identity of one already-open Windows file handle.
@@ -967,7 +967,7 @@ mod native {
             return Err(invalid_input(&format!("{label} is not 64 lowercase hex")));
         }
         let mut decoded = [0_u8; 32];
-        for (index, pair) in value.as_bytes().chunks_exact(2).enumerate() {
+        for (index, pair) in value.as_bytes().as_chunks::<2>().0.iter().enumerate() {
             let high = decode_lowercase_hex_nibble(pair[0])?;
             let low = decode_lowercase_hex_nibble(pair[1])?;
             decoded[index] = high * 16 + low;

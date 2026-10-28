@@ -1390,7 +1390,7 @@ fn canonicalize_json(value: &Value) -> Value {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    crate::canonical::lower_hex(Sha256::digest(bytes))
 }
 
 fn nonnegative_i64(value: i64, label: &str) -> Result<u64> {

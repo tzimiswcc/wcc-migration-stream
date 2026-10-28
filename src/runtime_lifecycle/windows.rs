@@ -24,7 +24,7 @@ use sha2::{Digest as _, Sha256};
 
 use super::{
     RUNTIME_INTEGRITY_SCHEMA, RUNTIME_STATUS_SCHEMA, RuntimeClassification, RuntimeCommandOptions,
-    RuntimeIntegrityReport, RuntimeStatusReport, RuntimeWorkspaceIdentity,
+    RuntimeIntegrityReport, RuntimeSelection, RuntimeStatusReport, RuntimeWorkspaceIdentity,
 };
 use crate::{
     KernelError, Result,
@@ -249,7 +249,8 @@ impl ProtectedRecord {
 // Keep entrypoint, bundle, workspace and private-state identity establishment
 // together: splitting this authority boundary would make TOCTOU review harder.
 #[allow(clippy::too_many_lines)]
-fn resolve_context(options: &RuntimeCommandOptions) -> Result<RuntimeContext> {
+fn resolve_context(selection: &impl RuntimeSelection) -> Result<RuntimeContext> {
+    let options = selection.runtime_options();
     if options.port == 0 || !options.workspace.is_absolute() {
         return Err(runtime_conflict(
             "workspace and a non-zero loopback port must be explicit at startup",
@@ -352,6 +353,7 @@ fn resolve_context(options: &RuntimeCommandOptions) -> Result<RuntimeContext> {
         object_workspace_state: workspace_status.state,
         object_workspace: workspace_status.workspace,
     };
+    selection.validate_runtime_workspace(&workspace)?;
     if paths_overlap(bundle_root.path(), workspace_directory.path()) {
         return Err(runtime_conflict(
             "workspace and immutable bundle directories must not overlap",
@@ -483,7 +485,7 @@ fn session_key(filesystem_identity_sha256: &str) -> String {
     let mut digest = Sha256::new();
     digest.update(b"migration-stream-assisted-runtime-session-key/v2\0");
     digest.update(filesystem_identity_sha256.as_bytes());
-    format!("{:x}", digest.finalize())
+    crate::canonical::lower_hex(digest.finalize())
 }
 
 fn require_ascii_file_name(path: &Path, expected: &str, label: &str) -> Result<()> {
@@ -907,7 +909,7 @@ fn listener_is_active(address: SocketAddrV4) -> bool {
 ///
 /// Returns an error when the fixed bundle, workspace, private control state,
 /// listener ownership, or authenticated readiness proof cannot be verified.
-pub async fn start_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+pub async fn start_runtime(options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
     let context = resolve_context(options)?;
     let _command_lock = lock_command(&context)?;
     start_runtime_locked(&context).await
@@ -1323,7 +1325,7 @@ fn cleanup_stale_state(context: &RuntimeContext) -> Result<()> {
 ///
 /// Returns an error when the fixed bundle, workspace, private control state,
 /// or runtime ownership evidence cannot be replayed.
-pub fn status_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+pub fn status_runtime(options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
     let context = resolve_context(options)?;
     let _command_lock = lock_command(&context)?;
     let classified = classify_runtime(&context)?;
@@ -1824,7 +1826,7 @@ fn probe_runtime_identity(
     let identity: RuntimeHttpIdentity = serde_json::from_value(value).map_err(|error| {
         runtime_unavailable(format!("application identity contract is invalid: {error}"))
     })?;
-    let token_hash = format!("{:x}", Sha256::digest(session_token.as_bytes()));
+    let token_hash = crate::canonical::lower_hex(Sha256::digest(session_token.as_bytes()));
     if identity.schema_version != APPLICATION_IDENTITY_SCHEMA
         || identity.session_token_sha256 != token_hash
         || identity.process_id != expected_workbench_pid
@@ -1858,7 +1860,7 @@ fn parse_listen(value: &str) -> Result<SocketAddrV4> {
 ///
 /// Returns an error when ownership cannot be authenticated, a foreign listener
 /// is present, or the exact owned runtime cannot be stopped within its bound.
-pub async fn stop_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+pub async fn stop_runtime(options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
     let context = resolve_context(options)?;
     let _command_lock = lock_command(&context)?;
     stop_runtime_locked(&context).await
@@ -1928,7 +1930,7 @@ async fn wait_for_owned_stop(context: &RuntimeContext) -> Result<()> {
 ///
 /// Returns an error when stop/start or either identity replay fails, including
 /// any inability to prove cleanup of a replacement runtime.
-pub async fn restart_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+pub async fn restart_runtime(options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
     let context = resolve_context(options)?;
     let _command_lock = lock_command(&context)?;
     let before_workspace = context.workspace.clone();
@@ -1985,7 +1987,7 @@ fn combine_restart_cleanup<T>(error: KernelError, cleanup: Result<()>) -> Result
 ///
 /// Returns an error when the runtime is not safely stopped or bundle,
 /// workspace, or integrity authority cannot be replayed.
-pub fn integrity_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeIntegrityReport> {
+pub fn integrity_runtime(options: &impl RuntimeSelection) -> Result<RuntimeIntegrityReport> {
     let context = resolve_context(options)?;
     let _command_lock = lock_command(&context)?;
     let classified = classify_runtime(&context)?;

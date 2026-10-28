@@ -111,11 +111,7 @@ export function JourneyRail({
               className={`journey-stage journey-stage--${stage.status.toLowerCase()}`}
             >
               {stage.available && stage.href !== null ? (
-                <a
-                  href={stage.href}
-                  aria-label={stage.label}
-                  aria-current={viewed ? "page" : undefined}
-                >
+                <a href={stage.href} aria-current={viewed ? "page" : undefined}>
                   <span>{stage.label}</span>
                   <small>{stageStatus(stage.status)}</small>
                 </a>

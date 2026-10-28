@@ -3,10 +3,11 @@ use std::{path::PathBuf, process::ExitCode};
 use clap::{Args, Parser, Subcommand};
 use migration_stream::{
     KernelError,
+    project_runtime::BoundProjectRuntime,
     runtime_bundle::{compiled_bundle_build_identity, verify_bundle_root},
     runtime_lifecycle::{
-        DEFAULT_ASSISTED_RUNTIME_PORT, RuntimeCommandOptions, integrity_runtime, restart_runtime,
-        run_supervisor, start_runtime, status_runtime, stop_runtime,
+        DEFAULT_ASSISTED_RUNTIME_PORT, RuntimeCommandOptions, RuntimeSelection, integrity_runtime,
+        restart_runtime, run_supervisor, start_runtime, status_runtime, stop_runtime,
     },
 };
 use serde::Serialize;
@@ -49,20 +50,62 @@ enum Command {
 #[derive(Clone, Debug, Args)]
 struct LifecycleArguments {
     /// Existing real workspace directory selected only at process startup.
-    #[arg(long)]
-    workspace: PathBuf,
+    #[arg(long, required_unless_present = "project", conflicts_with = "project")]
+    workspace: Option<PathBuf>,
+    /// Already-bound project descriptor selected by this trusted local caller.
+    #[arg(
+        long,
+        required_unless_present = "workspace",
+        conflicts_with = "workspace"
+    )]
+    project: Option<PathBuf>,
     /// Literal 127.0.0.1 port; the host is not configurable.
     #[arg(long, default_value_t = DEFAULT_ASSISTED_RUNTIME_PORT)]
     port: u16,
 }
 
-impl From<LifecycleArguments> for RuntimeCommandOptions {
-    fn from(value: LifecycleArguments) -> Self {
-        Self {
-            workspace: value.workspace,
-            port: value.port,
-        }
+#[derive(Clone, Copy)]
+enum LifecycleOperation {
+    Start,
+    Status,
+    Restart,
+    Integrity,
+    Stop,
+}
+
+async fn execute_lifecycle(
+    operation: LifecycleOperation,
+    arguments: LifecycleArguments,
+) -> migration_stream::Result<serde_json::Value> {
+    if let Some(project) = arguments.project {
+        let selection = BoundProjectRuntime::open(project, arguments.port)?;
+        execute_selected(operation, &selection).await
+    } else {
+        let workspace = arguments.workspace.ok_or_else(|| {
+            KernelError::RuntimeConflict("workspace or bound project is required".to_owned())
+        })?;
+        execute_selected(
+            operation,
+            &RuntimeCommandOptions {
+                workspace,
+                port: arguments.port,
+            },
+        )
+        .await
     }
+}
+
+async fn execute_selected(
+    operation: LifecycleOperation,
+    selection: &impl RuntimeSelection,
+) -> migration_stream::Result<serde_json::Value> {
+    Ok(match operation {
+        LifecycleOperation::Start => serde_json::to_value(start_runtime(selection).await?)?,
+        LifecycleOperation::Status => serde_json::to_value(status_runtime(selection)?)?,
+        LifecycleOperation::Restart => serde_json::to_value(restart_runtime(selection).await?)?,
+        LifecycleOperation::Integrity => serde_json::to_value(integrity_runtime(selection)?)?,
+        LifecycleOperation::Stop => serde_json::to_value(stop_runtime(selection).await?)?,
+    })
 }
 
 #[derive(Serialize)]
@@ -118,19 +161,17 @@ async fn main() -> ExitCode {
 async fn execute(command: Command) -> migration_stream::Result<serde_json::Value> {
     match command {
         Command::Verify => Ok(serde_json::to_value(verify_bundle_root(bundle_root()?)?)?),
-        Command::Start(arguments) => Ok(serde_json::to_value(
-            start_runtime(&arguments.into()).await?,
-        )?),
-        Command::Status(arguments) => Ok(serde_json::to_value(status_runtime(&arguments.into())?)?),
-        Command::Restart(arguments) => Ok(serde_json::to_value(
-            restart_runtime(&arguments.into()).await?,
-        )?),
-        Command::Integrity(arguments) => {
-            Ok(serde_json::to_value(integrity_runtime(&arguments.into())?)?)
+        Command::Start(arguments) => execute_lifecycle(LifecycleOperation::Start, arguments).await,
+        Command::Status(arguments) => {
+            execute_lifecycle(LifecycleOperation::Status, arguments).await
         }
-        Command::Stop(arguments) => Ok(serde_json::to_value(
-            stop_runtime(&arguments.into()).await?,
-        )?),
+        Command::Restart(arguments) => {
+            execute_lifecycle(LifecycleOperation::Restart, arguments).await
+        }
+        Command::Integrity(arguments) => {
+            execute_lifecycle(LifecycleOperation::Integrity, arguments).await
+        }
+        Command::Stop(arguments) => execute_lifecycle(LifecycleOperation::Stop, arguments).await,
         Command::Supervise { request } => {
             run_supervisor(&request).await?;
             Ok(serde_json::json!({
@@ -183,5 +224,39 @@ fn bundle_root() -> migration_stream::Result<PathBuf> {
         _ => Err(KernelError::RuntimeUnavailable(
             "runtime command is not an exact fixed Windows bundle entrypoint".to_owned(),
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lifecycle_accepts_existing_workspace_or_project_but_never_both() {
+        for flag in ["--workspace", "--project"] {
+            assert!(
+                Cli::try_parse_from([
+                    "runtime",
+                    "start",
+                    flag,
+                    "/synthetic/path",
+                    "--port",
+                    "43210"
+                ])
+                .is_ok()
+            );
+        }
+        assert!(Cli::try_parse_from(["runtime", "start"]).is_err());
+        assert!(
+            Cli::try_parse_from([
+                "runtime",
+                "start",
+                "--workspace",
+                "/synthetic/workspace",
+                "--project",
+                "/synthetic/project.mstream"
+            ])
+            .is_err()
+        );
     }
 }

@@ -239,7 +239,7 @@ fn build_zip_variant(path: &Path, fixture_directory: &str, drift_header: bool, r
 fn file_identity(path: &Path) -> (String, u64) {
     let bytes = fs::read(path).expect("source package bytes");
     (
-        format!("{:064x}", Sha256::digest(&bytes)),
+        migration_stream::canonical::lower_hex(Sha256::digest(&bytes)),
         u64::try_from(bytes.len()).expect("source package size"),
     )
 }
@@ -2319,7 +2319,7 @@ fn canonical_comparison_item(item: &StoredComparisonItem) -> String {
 }
 
 fn test_sha256(bytes: &[u8]) -> String {
-    format!("{:064x}", Sha256::digest(bytes))
+    migration_stream::canonical::lower_hex(Sha256::digest(bytes))
 }
 
 fn recompute_membership_hash(connection: &Connection, finding_set_id: &str) -> String {

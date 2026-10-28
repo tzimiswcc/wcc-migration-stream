@@ -115,7 +115,7 @@ mod support {
             }
             digest.update(&buffer[..count]);
         }
-        format!("{:x}", digest.finalize())
+        migration_stream::canonical::lower_hex(digest.finalize())
     }
 
     pub fn database(workspace: &Path) -> Connection {

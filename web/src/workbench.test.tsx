@@ -236,7 +236,7 @@ describe("practitioner workbench", () => {
       expect(
         within(navigation)
           .getAllByRole("link")
-          .map((link) => link.getAttribute("aria-label")),
+          .map((link) => link.querySelector("span")?.textContent),
       ).toEqual(labels);
     },
   );

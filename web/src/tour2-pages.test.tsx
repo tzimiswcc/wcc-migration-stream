@@ -828,10 +828,9 @@ describe("Tour 2 compared validation", () => {
         name: "Source revisions and compared validation",
       }),
     ).toBeVisible();
-    expect(screen.getByRole("link", { name: "Compare" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(
+      screen.getByRole("link", { name: "Compare Current" }),
+    ).toHaveAttribute("aria-current", "page");
     expect(screen.queryByText(/multi-entity authority stops/i)).toBeNull();
   });
 
@@ -901,11 +900,10 @@ describe("Tour 2 compared validation", () => {
         name: "Source revisions and compared validation",
       }),
     ).toBeVisible();
-    expect(screen.getByRole("link", { name: "Compare" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(screen.getByRole("link", { name: "Issues" })).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Compare Available" }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Issues Current" })).toBeVisible();
     expect(
       screen.getByLabelText("Multi-entity First Issues authority boundary"),
     ).toHaveTextContent("authority stops at First Issues");

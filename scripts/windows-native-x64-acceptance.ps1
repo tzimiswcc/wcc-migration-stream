@@ -75,6 +75,7 @@ $summary = Join-Path $evidenceRoot $EvidenceFileName
 $summaryStream = $null
 $succeeded = $false
 $lifecycleSucceeded = $false
+$projectRuntimeBridgeOk = $false
 $bundleEntrypointsVerified = $false
 $lifecycleStartAttempted = $false
 $commandSequence = 0
@@ -176,6 +177,7 @@ $allowedEvidenceStages = @(
     'start-rejected',
     'restart-rejected',
     'stop-rejected',
+    'project-runtime-bridge',
     'cleanup-status',
     'cleanup',
     'complete'
@@ -987,6 +989,7 @@ function Write-AcceptanceEvidence {
             foreignStateUnchanged = $script:foreignStateUnchanged
             lifecycleAuthorityContinuous = $script:lifecycleAuthorityContinuous
             authenticatedStopOk = $script:authenticatedLifecycleStopOk
+            projectRuntimeBridgeOk = $script:projectRuntimeBridgeOk
         }
         cleanup = [ordered]@{
             cleanupAttempted = $script:cleanupAttempted
@@ -1931,6 +1934,24 @@ try {
     $foreignListenerPreserved = $true
     $foreignStateUnchanged = $true
     $lifecycleAuthorityContinuous = $true
+    if ($Target -eq 'x86_64-pc-windows-msvc') {
+        Set-AcceptanceStage 'project-runtime-bridge'
+        $bridgeBundleBefore = $env:MIGRATION_STREAM_TEST_PROJECT_RUNTIME_BUNDLE
+        $bridgeEvidenceBefore = $env:MIGRATION_STREAM_TEST_PROJECT_RUNTIME_EVIDENCE_DIR
+        try {
+            $env:MIGRATION_STREAM_TEST_PROJECT_RUNTIME_BUNDLE = $artifact
+            $env:MIGRATION_STREAM_TEST_PROJECT_RUNTIME_EVIDENCE_DIR = Join-Path $evidenceRoot (
+                [IO.Path]::GetFileNameWithoutExtension($EvidenceFileName) + '-project-runtime-bridge'
+            )
+            cargo test --locked --test project_runtime_bridge -- --ignored --exact bound_project_real_start_reuse_stop_reopen_and_foreign_isolation
+            if ($LASTEXITCODE -ne 0) { throw 'packaged project runtime bridge proof failed' }
+            $projectRuntimeBridgeOk = $true
+            Complete-AcceptanceStage 'project-runtime-bridge'
+        } finally {
+            $env:MIGRATION_STREAM_TEST_PROJECT_RUNTIME_BUNDLE = $bridgeBundleBefore
+            $env:MIGRATION_STREAM_TEST_PROJECT_RUNTIME_EVIDENCE_DIR = $bridgeEvidenceBefore
+        }
+    }
     $lifecycleSucceeded = $true
 } catch {
     if ($null -eq $runtimeFailure) {

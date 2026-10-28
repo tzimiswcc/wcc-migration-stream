@@ -164,14 +164,20 @@ fn cancellation_before_spooling_is_durable_and_recovery_is_idempotent() {
     assert_eq!(recovery.removed_partial_files, 0);
     assert_eq!(recovery.quarantined_partial_files, 0);
     assert_eq!(recovery.deleted_tombstones, 0);
-    assert!(recovery.cleanup_pending.is_empty());
+    assert_eq!(
+        recovery.cleanup_pending,
+        [] as [migration_stream::state::CleanupPending; 0]
+    );
     let repeated = recover_workspace(&workspace).expect("repeated recovery");
     assert_eq!(repeated.recovered_jobs, 0);
     assert_eq!(repeated.recovered_profiling_runs, 0);
     assert_eq!(repeated.removed_partial_files, 0);
     assert_eq!(repeated.quarantined_partial_files, 0);
     assert_eq!(repeated.deleted_tombstones, 0);
-    assert!(repeated.cleanup_pending.is_empty());
+    assert_eq!(
+        repeated.cleanup_pending,
+        [] as [migration_stream::state::CleanupPending; 0]
+    );
     let packages = workspace.join("packages");
     if packages.exists() {
         assert!(
@@ -292,14 +298,20 @@ fn hard_aborted_profiling_is_recovered_and_can_be_rerun() {
     assert_eq!(recovery.removed_partial_files, 0);
     assert_eq!(recovery.quarantined_partial_files, 0);
     assert_eq!(recovery.deleted_tombstones, 0);
-    assert!(recovery.cleanup_pending.is_empty());
+    assert_eq!(
+        recovery.cleanup_pending,
+        [] as [migration_stream::state::CleanupPending; 0]
+    );
     let repeated = recover_workspace(&workspace).expect("repeat profile recovery");
     assert_eq!(repeated.recovered_jobs, 0);
     assert_eq!(repeated.recovered_profiling_runs, 0);
     assert_eq!(repeated.removed_partial_files, 0);
     assert_eq!(repeated.quarantined_partial_files, 0);
     assert_eq!(repeated.deleted_tombstones, 0);
-    assert!(repeated.cleanup_pending.is_empty());
+    assert_eq!(
+        repeated.cleanup_pending,
+        [] as [migration_stream::state::CleanupPending; 0]
+    );
     let connection = Connection::open(workspace.join("state.sqlite3")).expect("open database");
     let (state, result_count): (String, i64) = connection
         .query_row(

@@ -38,7 +38,7 @@ test("proves the complete fresh-project-to-first-issues presenter path", async (
       .getByRole("link"),
   ).toHaveCount(1);
   await expect(
-    page.getByRole("link", { name: "Setup / Workspace", exact: true }),
+    page.getByRole("link", { name: "Setup / Workspace Current", exact: true }),
   ).toHaveAttribute("href", "/setup");
 
   await expect(
@@ -163,10 +163,10 @@ test("proves the complete fresh-project-to-first-issues presenter path", async (
     page.getByRole("heading", { level: 1, name: "Issues" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Decisions", exact: true }),
+    page.getByRole("link", { name: "Decisions Current", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: "Package", exact: true }),
+    page.getByRole("link", { name: "Package Available", exact: true }),
   ).toBeVisible();
   expect(browserErrors).toEqual([]);
 });

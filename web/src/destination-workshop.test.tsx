@@ -751,10 +751,10 @@ describe("destination contract workshop", () => {
       name: "Migration journey",
     });
     expect(
-      within(journey).getByRole("link", { name: "Destination" }),
+      within(journey).getByRole("link", { name: "Destination Current" }),
     ).toHaveAttribute("aria-current", "page");
     expect(
-      within(journey).getByRole("link", { name: "Source" }),
+      within(journey).getByRole("link", { name: "Source Available" }),
     ).toHaveAttribute("href", "/setup");
     expect(await screen.findByLabelText("EDMX file")).toBeVisible();
     expect(
@@ -803,10 +803,9 @@ describe("destination contract workshop", () => {
     expect(
       screen.getByRole("navigation", { name: "Migration journey" }),
     ).toBeVisible();
-    expect(screen.getByRole("link", { name: "Destination" })).toHaveAttribute(
-      "href",
-      "/destination",
-    );
+    expect(
+      screen.getByRole("link", { name: "Destination Complete" }),
+    ).toHaveAttribute("href", "/destination");
     expect(
       await screen.findByText("Destination catalogue authority"),
     ).toBeVisible();
@@ -1410,7 +1409,7 @@ describe("destination contract workshop", () => {
       name: "Migration journey",
     });
     expect(
-      within(reviewedJourney).queryByRole("link", { name: "Mapping" }),
+      within(reviewedJourney).queryByRole("link", { name: /^Mapping\b/ }),
     ).toBeNull();
     expect(
       within(reviewedJourney).getByText(

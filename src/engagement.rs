@@ -1779,7 +1779,7 @@ impl EngagementService {
     ) -> Result<SourcePreflightView> {
         validate_identifier(&command.preflight_id, "preflight ID")?;
         validate_sha256(&command.sha256, "preflight SHA-256")?;
-        let writer = self.open_writer()?;
+        let mut writer = self.open_writer()?;
         let row = load_preflight(writer.connection(), &command.preflight_id)?;
         if row.state == "READY" {
             if row.source_hash.as_deref() == Some(command.sha256.as_str())
@@ -1912,7 +1912,7 @@ impl EngagementService {
         let expected_retained_links =
             self.require_declared_retained_aliases(&row, &publish_intent, &retained)?;
         install_retained_ready_commit_guard(
-            &writer,
+            &mut writer,
             &retained_directory,
             &retained_name,
             &retained,
@@ -2283,9 +2283,9 @@ impl EngagementService {
             ));
         }
 
-        let writer = self.open_writer()?;
+        let mut writer = self.open_writer()?;
         install_retained_ready_commit_guard(
-            &writer,
+            &mut writer,
             &retained_directory,
             &retained_name,
             &replayed_retained,
@@ -11370,7 +11370,7 @@ fn sync_read_only_controlled_file(
 }
 
 fn install_retained_ready_commit_guard(
-    writer: &WorkspaceWriter,
+    writer: &mut WorkspaceWriter,
     directory: &ControlledDirectory,
     name: &OsStr,
     retained: &File,
@@ -11404,7 +11404,7 @@ fn install_retained_ready_commit_guard(
             &guard_identity,
             expected_links,
         )
-    });
+    })?;
     Ok(())
 }
 
@@ -11787,7 +11787,7 @@ fn hash_open_regular_file(file: &File, maximum: u64) -> Result<(String, u64)> {
         }
         digest.update(&buffer[..read]);
     }
-    Ok((format!("{:064x}", digest.finalize()), size))
+    Ok((crate::canonical::lower_hex(digest.finalize()), size))
 }
 
 #[allow(clippy::too_many_lines)]

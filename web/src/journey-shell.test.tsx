@@ -387,6 +387,32 @@ function salesContext(phase = "FIRST_ISSUES_READY") {
 describe("unified migration journey shell", () => {
   beforeEach(() => window.history.replaceState(null, "", "/setup"));
 
+  it("includes visible stage labels and statuses in journey link names", () => {
+    const railJourney = {
+      ...journeyFixture,
+      stages: [
+        stage("SETUP", "COMPLETED", "/setup", null),
+        stage("ISSUES", "CURRENT", "/issues", null),
+        stage("RECONCILIATION", "AVAILABLE", "/reconciliation", null),
+      ],
+    } as Journey;
+    render(
+      <JourneyRail
+        journey={railJourney}
+        location={new URL("/issues", window.location.origin)}
+      />,
+    );
+    const rail = screen.getByRole("navigation", { name: "Migration journey" });
+    for (const name of [
+      "Setup / Workspace Complete",
+      "Issues Current",
+      "Reconciliation Available",
+    ]) {
+      expect(within(rail).getByRole("link", { name })).toBeVisible();
+    }
+    expect(within(rail).getAllByRole("link")).toHaveLength(3);
+  });
+
   it("renders the same persistent journey rail in setup and downstream modes", async () => {
     const setup = mockApi({
       "GET /api/v1/context": engagementContextFixture,
@@ -399,7 +425,9 @@ describe("unified migration journey shell", () => {
     });
     expect(within(setupRail).getAllByRole("listitem")).toHaveLength(10);
     expect(
-      within(setupRail).getByRole("link", { name: "Setup / Workspace" }),
+      within(setupRail).getByRole("link", {
+        name: "Setup / Workspace Current",
+      }),
     ).toHaveAttribute("aria-current", "page");
     expect(setup.requests).toEqual(
       expect.arrayContaining([
@@ -421,7 +449,7 @@ describe("unified migration journey shell", () => {
     });
     expect(within(downstreamRail).getAllByRole("listitem")).toHaveLength(10);
     expect(
-      within(downstreamRail).getByRole("link", { name: "Decisions" }),
+      within(downstreamRail).getByRole("link", { name: "Decisions Complete" }),
     ).toHaveAttribute("href", "/decisions");
   });
 
@@ -484,19 +512,17 @@ describe("unified migration journey shell", () => {
       name: "Migration journey",
     });
     expect(
-      within(rail).getByRole("link", { name: "Decisions" }),
+      within(rail).getByRole("link", { name: "Decisions Complete" }),
     ).toHaveAttribute("href", "/decisions");
     expect(
-      within(rail).getByRole("link", { name: "Reconciliation" }),
+      within(rail).getByRole("link", { name: "Reconciliation Complete" }),
     ).toHaveAttribute("href", "/reconciliation");
-    expect(within(rail).getByRole("link", { name: "Compare" })).toHaveAttribute(
-      "href",
-      "/comparison",
-    );
-    expect(within(rail).getByRole("link", { name: "Package" })).toHaveAttribute(
-      "href",
-      "/publication",
-    );
+    expect(
+      within(rail).getByRole("link", { name: "Compare Available" }),
+    ).toHaveAttribute("href", "/comparison");
+    expect(
+      within(rail).getByRole("link", { name: "Package Current" }),
+    ).toHaveAttribute("href", "/publication");
   });
 
   it("shows comparison and issues while locking multi-entity downstream authority", async () => {
@@ -513,16 +539,14 @@ describe("unified migration journey shell", () => {
     const rail = screen.getByRole("navigation", {
       name: "Migration journey",
     });
-    expect(within(rail).getByRole("link", { name: "Compare" })).toHaveAttribute(
-      "href",
-      "/comparison",
-    );
-    expect(within(rail).getByRole("link", { name: "Mapping" })).toHaveAttribute(
-      "href",
-      "/mapping",
-    );
     expect(
-      within(rail).queryByRole("link", { name: "Decisions" }),
+      within(rail).getByRole("link", { name: "Compare Available" }),
+    ).toHaveAttribute("href", "/comparison");
+    expect(
+      within(rail).getByRole("link", { name: "Mapping Complete" }),
+    ).toHaveAttribute("href", "/mapping");
+    expect(
+      within(rail).queryByRole("link", { name: /^Decisions\b/ }),
     ).not.toBeInTheDocument();
     expect(within(rail).getAllByText(multiEntityReason)).toHaveLength(3);
   });
@@ -556,10 +580,9 @@ describe("unified migration journey shell", () => {
     const rail = await screen.findByRole("navigation", {
       name: "Migration journey",
     });
-    expect(within(rail).getByRole("link", { name: "Mapping" })).toHaveAttribute(
-      "href",
-      "/mapping",
-    );
+    expect(
+      within(rail).getByRole("link", { name: "Mapping Current" }),
+    ).toHaveAttribute("href", "/mapping");
   });
 
   it.each([
@@ -581,7 +604,7 @@ describe("unified migration journey shell", () => {
         name: "Migration journey",
       });
       expect(
-        within(rail).getByRole("link", { name: stageLabel }),
+        within(rail).getByRole("link", { name: `${stageLabel} Complete` }),
       ).toHaveAttribute("aria-current", "page");
       expect(
         within(rail)
@@ -672,12 +695,11 @@ describe("unified migration journey shell", () => {
       screen.queryByText("Multi-entity authority stops at First Issues"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Issues" }),
+      screen.queryByRole("link", { name: /^Issues\b/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Compare" })).toHaveAttribute(
-      "href",
-      "/comparison",
-    );
+    expect(
+      screen.getByRole("link", { name: "Compare Available" }),
+    ).toHaveAttribute("href", "/comparison");
     expect(
       screen.getByText("This validation completed without issue findings."),
     ).toBeVisible();
@@ -726,7 +748,7 @@ describe("unified migration journey shell", () => {
       name: "Migration journey",
     });
     expect(
-      within(rail).getByRole("link", { name: "Source" }),
+      within(rail).getByRole("link", { name: "Source Current" }),
     ).toHaveTextContent("Current");
   });
 
@@ -767,11 +789,10 @@ describe("unified migration journey shell", () => {
       name: "Migration journey",
     });
     expect(
-      within(rail).getByRole("link", { name: "Decisions" }),
+      within(rail).getByRole("link", { name: "Decisions Complete" }),
     ).toHaveAttribute("href", "/decisions");
-    expect(within(rail).getByRole("link", { name: "Package" })).toHaveAttribute(
-      "href",
-      "/publication",
-    );
+    expect(
+      within(rail).getByRole("link", { name: "Package Current" }),
+    ).toHaveAttribute("href", "/publication");
   });
 });

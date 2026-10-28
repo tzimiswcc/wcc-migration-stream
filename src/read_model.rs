@@ -1840,13 +1840,13 @@ impl ReadService {
 
     fn open_snapshot(&self) -> Result<Connection> {
         let database_path = self.workspace.join(DATABASE_FILENAME);
-        let connection = crate::state::open_read_only(&database_path)?;
+        let mut connection = crate::state::open_read_only(&database_path)?;
         let deadline_started = Instant::now();
         let query_timeout = self.query_timeout;
         connection.progress_handler(
             100,
             Some(move || deadline_started.elapsed() >= query_timeout),
-        );
+        )?;
         connection.execute_batch("BEGIN DEFERRED;")?;
         let schema_version: i64 =
             connection.pragma_query_value(None, "user_version", |row| row.get(0))?;

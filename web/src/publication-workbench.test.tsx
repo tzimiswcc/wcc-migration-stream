@@ -241,7 +241,7 @@ describe("PublicationWorkbench Page and Components", () => {
     expect(
       within(
         screen.getByRole("navigation", { name: "Migration journey" }),
-      ).getByRole("link", { name: "Package" }),
+      ).getByRole("link", { name: "Package Current" }),
     ).toHaveAttribute("aria-current", "page");
     expect(
       screen.getByText(/local Migration Stream readiness evidence only/i),
@@ -386,7 +386,7 @@ describe("PublicationWorkbench Page and Components", () => {
         name: "Readiness Packages",
       }),
     ).toBeVisible();
-    expect(screen.getByRole("link", { name: "Package" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Package Current" })).toBeVisible();
     const sectionIndex = screen.getByRole("navigation", {
       name: "Readiness Package sections",
     });

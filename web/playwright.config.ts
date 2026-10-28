@@ -18,6 +18,8 @@ export default defineConfig({
   use: {
     baseURL,
     browserName: "chromium",
+    // Full Chromium keeps animation frames running on macOS ARM64.
+    channel: "chromium",
     headless: true,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

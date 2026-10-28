@@ -127,7 +127,10 @@ pub fn import_edmx_to_workspace(
 
 fn deterministic_snapshot_id(snapshot: &crate::edmx::EdmxSnapshotEvidence) -> Result<String> {
     let identity = serde_json::to_vec(snapshot)?;
-    Ok(format!("edmx-{:x}", Sha256::digest(identity)))
+    Ok(format!(
+        "edmx-{}",
+        crate::canonical::lower_hex(Sha256::digest(identity))
+    ))
 }
 
 fn preserve_snapshot(
@@ -195,7 +198,7 @@ fn preserve_snapshot(
         output
             .sync_all()
             .map_err(|error| KernelError::io(&partial, error))?;
-        let actual_hash = format!("{:x}", digest.finalize());
+        let actual_hash = crate::canonical::lower_hex(digest.finalize());
         if actual_hash != expected_hash || copied_size != expected_size {
             return Err(KernelError::EdmxParse(format!(
                 "snapshot changed between parse and immutable promotion: expected {expected_hash}/{expected_size}, found {actual_hash}/{copied_size}"
@@ -232,7 +235,7 @@ fn preserve_bytes(
     bytes: &[u8],
 ) -> Result<(PathBuf, String)> {
     let workspace = &writer.root;
-    let hash = format!("{:x}", Sha256::digest(bytes));
+    let hash = crate::canonical::lower_hex(Sha256::digest(bytes));
     let directory = ensure_evidence_directory(workspace, namespace.as_str())?;
     let destination = directory.join(format!("{hash}.{extension}"));
     match fs::symlink_metadata(&destination) {
@@ -436,7 +439,7 @@ fn hash_file_handle(file: &File, path: &Path) -> Result<(String, u64)> {
             .checked_add(u64::try_from(read).unwrap_or(u64::MAX))
             .ok_or_else(|| KernelError::EdmxLimit("snapshot byte count overflow".to_owned()))?;
     }
-    Ok((format!("{:x}", digest.finalize()), size))
+    Ok((crate::canonical::lower_hex(digest.finalize()), size))
 }
 
 #[cfg(unix)]

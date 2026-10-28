@@ -3748,7 +3748,7 @@ mod tests {
             &v1_policy(),
         )
         .expect("repeat deterministic classification");
-        assert!(warnings.is_empty());
+        assert_eq!(warnings, [] as [String; 0]);
         assert_eq!(first.len(), expected.len());
         assert_eq!(
             first

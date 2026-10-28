@@ -28,6 +28,8 @@ pub mod policy;
 pub mod profile;
 pub mod profile_registry;
 pub mod profiling;
+pub mod project_object;
+pub mod project_runtime;
 pub mod publication;
 pub mod publication_integrity;
 pub mod publication_read_model;

@@ -458,7 +458,7 @@ MIGRATION_STREAM_PRODUCT_COMMIT="$product_commit" \
 MIGRATION_STREAM_SOURCE_SNAPSHOT_SHA256="$source_snapshot_sha256" \
 MIGRATION_STREAM_SOURCE_STATE="$source_state" \
 MIGRATION_STREAM_FRONTEND_ASSETS_SHA256="$frontend_assets_sha256" \
-  cargo build --locked --release --bins
+  bash "$repository_root/scripts/cargo-build.sh" build --locked --release --bins
 
 stage_release_binaries
 

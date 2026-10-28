@@ -1086,10 +1086,10 @@ impl DecisionReadService {
     }
 
     fn open_snapshot(&self) -> Result<Connection> {
-        let connection = crate::state::open_read_only(&self.workspace.join("state.sqlite3"))?;
+        let mut connection = crate::state::open_read_only(&self.workspace.join("state.sqlite3"))?;
         let started = Instant::now();
         let timeout = self.query_timeout;
-        connection.progress_handler(100, Some(move || started.elapsed() >= timeout));
+        connection.progress_handler(100, Some(move || started.elapsed() >= timeout))?;
         connection.execute_batch("BEGIN DEFERRED;")?;
         let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
         if version != REQUIRED_SCHEMA_VERSION {

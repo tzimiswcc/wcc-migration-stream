@@ -78,14 +78,27 @@ def main() -> int:
     for filename in (".gitattributes", ".gitignore", "CODEOWNERS", "LICENSE", "NOTICE"):
         assert gate.text_name_allowed(filename)
     assert not gate.text_name_allowed("DEPENDENCY-NOTICES")
+    assert gate.text_name_allowed("web/src/favicon.svg")
+    for name in ("web/src/unreviewed.svg", "assets/favicon.svg", "favicon.svg", "web/src/favicon.SVG"):
+        assert not gate.text_name_allowed(name), name
 
     with tempfile.TemporaryDirectory(prefix="release-corpus-gate-") as temporary:
         root = Path(temporary)
         (root / "config").mkdir()
         (root / "fixtures").mkdir()
         (root / "config" / "release-corpus.json").write_text(
-            json.dumps({"include": ["fixtures/**"], "excluded": []}), encoding="utf-8"
+            json.dumps({"include": ["fixtures/**", "web/**"], "excluded": []}), encoding="utf-8"
         )
+
+        asset = root / "web/src/favicon.svg"
+        asset.parent.mkdir(parents=True)
+        asset.write_text('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>')
+        result, output = invoke(root, ["web/src/favicon.svg"])
+        assert result == 0, output
+        unreviewed = asset.with_name("unreviewed.svg")
+        unreviewed.write_bytes(asset.read_bytes())
+        result, output = invoke(root, ["web/src/unreviewed.svg"])
+        assert result == 1 and "selected file has no approved text name" in output, output
 
         valid = root / "fixtures" / "customer-accounts.zip"
         write_zip(valid, [("customer_accounts.csv", b"account_id,name\n1,Ada\n")])
