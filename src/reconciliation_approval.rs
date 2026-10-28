@@ -2068,7 +2068,7 @@ mod tests {
         .expect("eligibility");
         assert!(eligible.eligible);
         assert_eq!(eligible.currentness, CandidateCurrentness::Current);
-        assert!(eligible.reason_codes.is_empty());
+        assert_eq!(eligible.reason_codes, [] as [String; 0]);
 
         let unacknowledged =
             evaluate_approval_eligibility(&candidate, &snapshot, &snapshot.governing, &[], true)

@@ -1300,7 +1300,7 @@ fn write_deterministic_zip(output_path: &Path, members: &[MemberContent]) -> Res
         }
         hasher.update(&buf[..n]);
     }
-    let physical_digest = format!("{:064x}", hasher.finalize());
+    let physical_digest = crate::canonical::lower_hex(hasher.finalize());
 
     Ok((package_size_bytes, physical_digest))
 }
@@ -1319,7 +1319,7 @@ fn format_canonical_json<T: serde::Serialize>(value: &T) -> Result<Vec<u8>> {
 fn sha256_hex(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:064x}", hasher.finalize())
+    crate::canonical::lower_hex(hasher.finalize())
 }
 
 fn io_err(path: &Path, source: std::io::Error) -> KernelError {

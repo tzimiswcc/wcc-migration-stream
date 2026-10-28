@@ -724,11 +724,9 @@ fn multi_file_required_coverage_is_per_file_and_same_targets_are_scoped() {
     let report = register_mapping(&setup, &valid_path)
         .expect("same canonical targets are valid in distinct source-file scopes");
     assert_eq!(report.coverage.mapped_canonical_fields.len(), 5);
-    assert!(
-        report
-            .coverage
-            .required_canonical_fields_without_coverage
-            .is_empty()
+    assert_eq!(
+        report.coverage.required_canonical_fields_without_coverage,
+        [] as [migration_stream::mapping::RequiredCanonicalFieldIdentity; 0]
     );
 }
 

@@ -574,8 +574,10 @@ fn validate_metadata_registration(
     let artifact: TechnicalCatalogueArtifact = serde_json::from_slice(&catalogue_bytes)?;
     artifact.verify_contract()?;
     let expected_snapshot_id = format!(
-        "edmx-{:x}",
-        Sha256::digest(serde_json::to_vec(&artifact.catalogue.snapshot)?)
+        "edmx-{}",
+        crate::canonical::lower_hex(Sha256::digest(serde_json::to_vec(
+            &artifact.catalogue.snapshot
+        )?))
     );
     if snapshot.id != expected_snapshot_id {
         return Err(KernelError::Reconciliation(format!(
@@ -1168,7 +1170,7 @@ pub fn integrity_check(workspace: &Path) -> Result<IntegrityReport> {
         }
         match serde_json::to_vec(&artifact.catalogue.snapshot) {
             Ok(identity) => {
-                let expected_snapshot_id = format!("edmx-{:x}", Sha256::digest(identity));
+                let expected_snapshot_id = format!("edmx-{}", crate::canonical::lower_hex(Sha256::digest(identity)));
                 if snapshot_id != expected_snapshot_id {
                     issues.push(format!(
                         "metadata snapshot ID is not deterministic: expected {expected_snapshot_id}, found {snapshot_id}"
@@ -1582,7 +1584,8 @@ fn verify_profiling_runs(connection: &Connection, issues: &mut Vec<String>) -> R
                 run.job_id
             )),
         }
-        let actual_policy_hash = format!("{:x}", Sha256::digest(run.policy_json.as_bytes()));
+        let actual_policy_hash =
+            crate::canonical::lower_hex(Sha256::digest(run.policy_json.as_bytes()));
         let policy_value = match serde_json::from_str::<serde_json::Value>(&run.policy_json) {
             Ok(value) => Some(value),
             Err(error) => {
@@ -1946,7 +1949,10 @@ fn verify_samples(
             Some(serde_json::Value::String(value)) => {
                 utf8_bytes == u64::try_from(value.len()).ok()
                     && decoded_length == u64::try_from(value.chars().count()).ok()
-                    && hash == Some(format!("{:x}", Sha256::digest(value.as_bytes())).as_str())
+                    && hash
+                        == Some(
+                            crate::canonical::lower_hex(Sha256::digest(value.as_bytes())).as_str(),
+                        )
                     && maximum_sample_bytes.is_none_or(|limit| {
                         u64::try_from(value.len()).is_ok_and(|length| length <= limit)
                     })
@@ -2293,7 +2299,7 @@ fn hash_evidence_file(path: &Path) -> std::result::Result<(String, u64, bool), S
     drop(reader);
     verify_evidence_file_identity(path, &file)?;
     Ok((
-        format!("{:x}", digest.finalize()),
+        crate::canonical::lower_hex(digest.finalize()),
         size,
         metadata.permissions().readonly(),
     ))
@@ -2313,7 +2319,7 @@ fn read_evidence_file(path: &Path) -> std::result::Result<(Vec<u8>, String, u64,
     verify_evidence_file_identity(path, &file)?;
     let size = u64::try_from(bytes.len())
         .map_err(|_| format!("file {} byte count overflow", path.display()))?;
-    let hash = format!("{:x}", Sha256::digest(&bytes));
+    let hash = crate::canonical::lower_hex(Sha256::digest(&bytes));
     Ok((bytes, hash, size, metadata.permissions().readonly()))
 }
 
@@ -2511,7 +2517,7 @@ impl WorkspaceLock {
             .map_err(|error| KernelError::io(&database_path, error))?
             .then(|| retain_workspace_path_nofollow(&database_path, false))
             .transpose()?;
-        let connection = Connection::open_with_flags(
+        let mut connection = Connection::open_with_flags(
             &database_path,
             OpenFlags::SQLITE_OPEN_READ_WRITE
                 | OpenFlags::SQLITE_OPEN_CREATE
@@ -2570,7 +2576,7 @@ impl WorkspaceLock {
         });
         authority.verify()?;
         let commit_authority = Arc::clone(&authority);
-        connection.commit_hook(Some(move || commit_authority.verify().is_err()));
+        connection.commit_hook(Some(move || commit_authority.verify().is_err()))?;
         configure_writer(&connection)?;
         if migrate_schema {
             migrate(&connection)?;
@@ -2621,14 +2627,15 @@ impl WorkspaceWriter {
         &self.connection
     }
 
-    pub(crate) fn install_supplemental_commit_guard<F>(&self, mut guard: F)
+    pub(crate) fn install_supplemental_commit_guard<F>(&mut self, mut guard: F) -> Result<()>
     where
         F: FnMut() -> Result<()> + Send + 'static,
     {
         let authority = Arc::clone(&self.authority);
         self.connection.commit_hook(Some(move || {
             authority.verify().is_err() || guard().is_err()
-        }));
+        }))?;
+        Ok(())
     }
 
     pub(crate) fn verify(&self) -> Result<()> {
@@ -9864,7 +9871,7 @@ mod tests {
         let report = recover_workspace(temporary.path()).expect("recover");
         assert_eq!(report.recovered_jobs, 1);
         assert_eq!(report.removed_partial_files, 1);
-        assert!(report.cleanup_pending.is_empty());
+        assert_eq!(report.cleanup_pending, [] as [CleanupPending; 0]);
         assert!(!partial.exists());
         #[cfg(windows)]
         {
@@ -9881,7 +9888,7 @@ mod tests {
         assert_eq!(repeated.removed_partial_files, 0);
         assert_eq!(repeated.quarantined_partial_files, 0);
         assert_eq!(repeated.deleted_tombstones, 0);
-        assert!(repeated.cleanup_pending.is_empty());
+        assert_eq!(repeated.cleanup_pending, [] as [CleanupPending; 0]);
         let status = workspace_status(temporary.path()).expect("status");
         assert_eq!(status.jobs[0].state, JobState::Interrupted);
         assert_eq!(
@@ -10106,7 +10113,7 @@ mod tests {
         assert_eq!(report.removed_partial_files, 0);
         assert_eq!(report.quarantined_partial_files, 0);
         assert_eq!(report.deleted_tombstones, 1);
-        assert!(report.cleanup_pending.is_empty());
+        assert_eq!(report.cleanup_pending, [] as [CleanupPending; 0]);
         assert!(!live.exists());
         assert!(!tombstone.exists());
 
@@ -10172,14 +10179,14 @@ mod tests {
         assert_eq!(second.removed_partial_files, 0);
         assert_eq!(second.quarantined_partial_files, 0);
         assert_eq!(second.deleted_tombstones, 1);
-        assert!(second.cleanup_pending.is_empty());
+        assert_eq!(second.cleanup_pending, [] as [CleanupPending; 0]);
         assert!(!tombstone.exists());
         let third = recover_workspace(temporary.path()).expect("idempotent recovery");
         assert_eq!(third.recovered_jobs, 0);
         assert_eq!(third.removed_partial_files, 0);
         assert_eq!(third.quarantined_partial_files, 0);
         assert_eq!(third.deleted_tombstones, 0);
-        assert!(third.cleanup_pending.is_empty());
+        assert_eq!(third.cleanup_pending, [] as [CleanupPending; 0]);
 
         let connection = Connection::open(temporary.path().join(DATABASE_FILENAME))
             .expect("open recovered workspace");
@@ -10369,7 +10376,10 @@ mod tests {
         assert_eq!(job.data.counts, job_before.data.counts);
         assert_eq!(job.data.reconciliation, job_before.data.reconciliation);
         assert_eq!(job.data.accepted_source, job_before.data.accepted_source);
-        assert!(job.data.warnings.is_empty());
+        assert_eq!(
+            job.data.warnings,
+            [] as [crate::read_model::OperationalWarning; 0]
+        );
 
         let files = reads
             .file_manifest(&accepted.job_id, &page)
@@ -10381,7 +10391,10 @@ mod tests {
             .profiling_summary(&profiling.run_id, false, &page)
             .expect("read profiling with surviving inert tombstone");
         assert_eq!(profiling_view.scope.job_id, accepted.job_id);
-        assert!(!profiling_view.items.is_empty());
+        assert_ne!(
+            profiling_view.items,
+            [] as [crate::read_model::ProfilingSummaryItem; 0]
+        );
         let profile_view = reads
             .profile_view(PROFILE_ID, PROFILE_VERSION, &approved.profile_hash)
             .expect("read approved profile with surviving inert tombstone");
@@ -10450,14 +10463,14 @@ mod tests {
         let retry = recover_workspace(&workspace).expect("retry deferred tombstone deletion");
         assert_eq!(retry.recovered_jobs, 0);
         assert_eq!(retry.deleted_tombstones, 1);
-        assert!(retry.cleanup_pending.is_empty());
+        assert_eq!(retry.cleanup_pending, [] as [CleanupPending; 0]);
         assert!(!tombstone.exists());
         let repeated = recover_workspace(&workspace).expect("repeat idempotent recovery");
         assert_eq!(repeated.recovered_jobs, 0);
         assert_eq!(repeated.removed_partial_files, 0);
         assert_eq!(repeated.quarantined_partial_files, 0);
         assert_eq!(repeated.deleted_tombstones, 0);
-        assert!(repeated.cleanup_pending.is_empty());
+        assert_eq!(repeated.cleanup_pending, [] as [CleanupPending; 0]);
 
         let cleaned = reads
             .operational_cleanup(&CleanupFilters::default(), &page)
@@ -12119,24 +12132,28 @@ mod tests {
         let service = crate::object_workspace::ObjectWorkspaceService::new(temporary.path())
             .expect("active workspace service");
         let lock = WorkspaceLock::acquire(service.root()).expect("acquire workspace lock");
-        let writer = lock.open_writer().expect("open strict writer");
+        let mut writer = lock.open_writer().expect("open strict writer");
         let retained = service.root().join("guarded-retained-package.zip");
         fs::write(&retained, b"synthetic retained evidence").expect("write guarded evidence");
         let retained_handle = File::open(&retained).expect("retain guarded evidence");
-        writer.install_supplemental_commit_guard(move || {
-            if retained_handle
-                .metadata()
-                .map_err(|error| KernelError::io(Path::new("guarded retained evidence"), error))?
-                .nlink()
-                == 1
-            {
-                Ok(())
-            } else {
-                Err(KernelError::IntegrityFailed(
-                    "guarded retained evidence acquired a hard-link alias".to_owned(),
-                ))
-            }
-        });
+        writer
+            .install_supplemental_commit_guard(move || {
+                if retained_handle
+                    .metadata()
+                    .map_err(|error| {
+                        KernelError::io(Path::new("guarded retained evidence"), error)
+                    })?
+                    .nlink()
+                    == 1
+                {
+                    Ok(())
+                } else {
+                    Err(KernelError::IntegrityFailed(
+                        "guarded retained evidence acquired a hard-link alias".to_owned(),
+                    ))
+                }
+            })
+            .expect("install supplemental guard");
         let transaction = writer
             .connection
             .unchecked_transaction()

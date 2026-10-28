@@ -5121,8 +5121,7 @@ fn verify_catalogue_authority(connection: &Connection, row: &CatalogueAuthorityR
             row.id
         )));
     }
-    let expected_report;
-    if row.origin == "EDMX" {
+    let expected_report = if row.origin == "EDMX" {
         let (Some(snapshot_id), Some(snapshot_sha256), Some(catalogue_path), Some(file_hash)) = (
             row.snapshot_id.as_deref(),
             row.snapshot_sha256.as_deref(),
@@ -5193,14 +5192,14 @@ fn verify_catalogue_authority(connection: &Connection, row: &CatalogueAuthorityR
                     .to_owned(),
             ));
         }
-        expected_report = compatibility_report_from_edmx(&bytes, &artifact)?;
+        compatibility_report_from_edmx(&bytes, &artifact)?
     } else if row.origin != "MANUAL" || row.catalogue_payload_sha256 != row.catalogue_hash {
         return Err(KernelError::IntegrityFailed(
             "manual destination catalogue contract is invalid".to_owned(),
         ));
     } else {
-        expected_report = compatibility_report_from_manual(&catalogue_value)?;
-    }
+        compatibility_report_from_manual(&catalogue_value)?
+    };
     let expected_report_value = serde_json::to_value(&expected_report)?;
     if canonical_json_string(&expected_report_value)? != row.compatibility_report_json
         || canonical_hash(&expected_report_value)? != row.compatibility_report_hash
@@ -6888,7 +6887,7 @@ fn relative_workspace_path(workspace: &Path, path: &Path) -> Result<String> {
                     .components()
                     .all(|component| matches!(component, Component::Normal(_)))
         })
-        .ok_or_else(&invalid_path)?;
+        .ok_or_else(invalid_path)?;
     relative
         .components()
         .map(|component| component.as_os_str().to_str())
@@ -8983,7 +8982,10 @@ mod tests {
             }],
             "same canonical entity ID must not preserve routing after technical/root identity drift"
         );
-        assert!(carried.cloned_bindings.is_empty());
+        assert_eq!(
+            carried.cloned_bindings,
+            [] as [crate::mapping::MappingBinding; 0]
+        );
         assert_eq!(
             carried.unresolved_targets,
             vec![

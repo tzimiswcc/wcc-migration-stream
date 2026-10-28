@@ -166,7 +166,7 @@ fn build_sales_zip(path: &Path) {
 fn file_identity(path: &Path) -> (String, u64) {
     let bytes = fs::read(path).expect("source package bytes");
     (
-        format!("{:064x}", Sha256::digest(&bytes)),
+        migration_stream::canonical::lower_hex(Sha256::digest(&bytes)),
         u64::try_from(bytes.len()).expect("source package size"),
     )
 }
@@ -937,7 +937,10 @@ fn exact_approved_mapping_carry_forward_is_atomic_and_restart_durable() {
     assert_eq!(carried.cloned_binding_count, 13);
     assert_eq!(carried.unresolved_target_count, 2);
     assert_eq!(carried.unresolved_relationship_count, 0);
-    assert!(carried.unresolved_relationships.is_empty());
+    assert_eq!(
+        carried.unresolved_relationships,
+        [] as [migration_stream::destination::UnresolvedCarryForwardRelationshipView; 0]
+    );
     let retry = destination
         .carry_forward_mapping(&exact_command)
         .expect("retry exact immutable carry-forward");
@@ -969,7 +972,10 @@ fn exact_approved_mapping_carry_forward_is_atomic_and_restart_durable() {
     assert_eq!(carry_draft.snapshot.source_entity_assignments.len(), 2);
     assert_eq!(carry_draft.snapshot.bindings.len(), 13);
     assert_eq!(carry_draft.snapshot.relationship_bindings.len(), 1);
-    assert!(carry_draft.snapshot.reference_tables.is_empty());
+    assert_eq!(
+        carry_draft.snapshot.reference_tables,
+        [] as [migration_stream::mapping::ReferenceTable; 0]
+    );
     assert!(
         carry_draft
             .snapshot
@@ -1601,7 +1607,7 @@ fn simultaneous_save_and_submit_leave_one_complete_authority_outcome() {
                 .expect("advanced editable generation")
         );
         assert_eq!(state, "EDITABLE");
-        assert!(operator_files.is_empty());
+        assert_eq!(operator_files, [] as [std::ffi::OsString; 0]);
     }
     let integrity = integrity_check(&workspace).expect("replay simultaneous command outcome");
     assert!(integrity.ok, "integrity issues: {:?}", integrity.issues);
@@ -1853,7 +1859,10 @@ fn conflicting_preparation_identity_rolls_back_exact_mapping_submission() {
     );
     assert_eq!(state, "EDITABLE");
     drop(connection);
-    assert!(operator_mapping_files(&workspace).is_empty());
+    assert_eq!(
+        operator_mapping_files(&workspace),
+        [] as [std::ffi::OsString; 0]
+    );
     let integrity = integrity_check(&workspace).expect("replay retained prior preparation");
     assert!(integrity.ok, "integrity issues: {:?}", integrity.issues);
 }
@@ -2150,13 +2159,16 @@ fn unfamiliar_sales_documents_reach_entity_and_relationship_scoped_first_issues(
         })
         .expect("freeze immutable mapping version");
     assert_eq!(submitted.draft.state, "SUBMITTED");
-    assert!(
+    assert_eq!(
         submitted
             .coverage
-            .required_canonical_fields_without_coverage
-            .is_empty()
+            .required_canonical_fields_without_coverage,
+        [] as [migration_stream::mapping::RequiredCanonicalFieldIdentity; 0]
     );
-    assert!(submitted.coverage.invalid_bindings.is_empty());
+    assert_eq!(
+        submitted.coverage.invalid_bindings,
+        [] as [std::string::String; 0]
+    );
     assert_eq!(submitted.coverage.mapped_canonical_fields.len(), 14);
 
     let coverage_before_approval = restarted

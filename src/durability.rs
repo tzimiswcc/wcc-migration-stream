@@ -174,9 +174,19 @@ fn required_parent(path: &Path) -> io::Result<&Path> {
         })
 }
 
+/// Synchronize a directory's namespace on Unix. Other platforms currently have
+/// no equivalent in this portability layer; successful return there is not a
+/// directory-entry crash-durability guarantee.
 #[cfg(unix)]
-fn sync_directory(path: &Path) -> io::Result<()> {
+pub(crate) fn sync_directory(path: &Path) -> io::Result<()> {
     fs::File::open(path).and_then(|directory| directory.sync_all())
+}
+
+#[cfg(not(unix))]
+#[allow(clippy::unnecessary_wraps)]
+pub(crate) fn sync_directory(_path: &Path) -> io::Result<()> {
+    // Match the existing workspace/bundle directory-sync portability policy.
+    Ok(())
 }
 
 #[cfg(test)]

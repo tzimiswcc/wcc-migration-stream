@@ -757,7 +757,7 @@ async fn create_active_remediation_pack(
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(
-        format!("{:x}", Sha256::digest(&bytes)),
+        migration_stream::canonical::lower_hex(Sha256::digest(&bytes)),
         pack["archiveSha256"]
     );
     (options.body, pack, bytes)
@@ -1130,10 +1130,9 @@ async fn exercise_remediation_pack_http(
         assert_eq!(archive_metadata.permissions().mode() & 0o777, 0o400);
     }
     assert_eq!(
-        format!(
-            "{:x}",
-            Sha256::digest(fs::read(&archive_path).expect("read exact remediation archive"))
-        ),
+        migration_stream::canonical::lower_hex(Sha256::digest(
+            fs::read(&archive_path).expect("read exact remediation archive")
+        )),
         archive_sha256
     );
     let (immediate_status, immediate_bytes) = get_bytes(
@@ -1324,7 +1323,7 @@ async fn exercise_remediation_pack_http(
         String::from_utf8_lossy(&keys_only_zip)
     );
     assert_eq!(
-        format!("{:x}", Sha256::digest(&keys_only_zip)),
+        migration_stream::canonical::lower_hex(Sha256::digest(&keys_only_zip)),
         keys_only.body["pack"]["archiveSha256"]
     );
     let keys_only_issues: Value = serde_json::from_slice(&remediation_zip_member(
@@ -1373,7 +1372,7 @@ async fn exercise_remediation_pack_http(
         String::from_utf8_lossy(&offending_zip)
     );
     assert_eq!(
-        format!("{:x}", Sha256::digest(&offending_zip)),
+        migration_stream::canonical::lower_hex(Sha256::digest(&offending_zip)),
         offending.body["pack"]["archiveSha256"]
     );
     let offending_issues: Value = serde_json::from_slice(&remediation_zip_member(
@@ -1657,7 +1656,7 @@ async fn assisted_runtime_identity_is_token_bound_value_free_and_tracks_authorit
     }
     assert_eq!(
         before["sessionTokenSha256"],
-        format!("{:x}", Sha256::digest(token.as_bytes()))
+        migration_stream::canonical::lower_hex(Sha256::digest(token.as_bytes()))
     );
     assert!(
         before["applicationIdentitySha256"]
@@ -1695,7 +1694,7 @@ async fn empty_startup_folder_requires_explicit_workspace_initialization_and_reo
         .expect("read empty selected workspace")
         .map(|entry| entry.expect("workspace entry").file_name())
         .collect::<Vec<_>>();
-    assert!(entries_before.is_empty());
+    assert_eq!(entries_before, [] as [std::ffi::OsString; 0]);
     let app = application_without_establishing_workspace(&fixture);
 
     let initial = get_json(&app, "/api/v1/object-workspace").await;
@@ -1885,10 +1884,9 @@ async fn existing_pre_descriptor_evidence_requires_adoption_and_is_preserved() {
     let legacy_file = fixture.workspace.join("legacy-evidence.bin");
     fs::write(&legacy_file, b"immutable synthetic legacy evidence")
         .expect("write legacy evidence file");
-    let legacy_file_hash = format!(
-        "{:x}",
-        Sha256::digest(fs::read(&legacy_file).expect("read legacy evidence file"))
-    );
+    let legacy_file_hash = migration_stream::canonical::lower_hex(Sha256::digest(
+        fs::read(&legacy_file).expect("read legacy evidence file"),
+    ));
 
     let app = application_without_establishing_workspace(&fixture);
     let initial = get_json(&app, "/api/v1/object-workspace").await;
@@ -1942,10 +1940,9 @@ async fn existing_pre_descriptor_evidence_requires_adoption_and_is_preserved() {
     assert_eq!(preserved, legacy_evidence);
     drop(connection);
     assert_eq!(
-        format!(
-            "{:x}",
-            Sha256::digest(fs::read(&legacy_file).expect("reread legacy evidence file"))
-        ),
+        migration_stream::canonical::lower_hex(Sha256::digest(
+            fs::read(&legacy_file).expect("reread legacy evidence file")
+        )),
         legacy_file_hash,
         "adoption must preserve pre-existing evidence bytes"
     );
@@ -2698,7 +2695,7 @@ async fn fresh_sanitized_package_reaches_existing_issues_and_reopens() {
         .expect("read scoped baseline readiness package")
         .expect("baseline readiness package belongs to engagement");
     assert_eq!(
-        format!("{:x}", Sha256::digest(&baseline_publication_bytes)),
+        migration_stream::canonical::lower_hex(Sha256::digest(&baseline_publication_bytes)),
         baseline_publication.physical_archive_digest
     );
     let baseline_downstream_evidence = immutable_downstream_evidence(&fixture.workspace, &job_id);
@@ -3670,7 +3667,7 @@ async fn preexisting_same_content_retained_hardlink_never_becomes_ready() {
     )
     .await;
     let bytes = source_package("legacy_id,name\nC-1,Synthetic\n");
-    let source_hash = format!("{:x}", Sha256::digest(&bytes));
+    let source_hash = migration_stream::canonical::lower_hex(Sha256::digest(&bytes));
     let retained_directory = fixture.workspace.join("engagement/preflights/retained");
     fs::create_dir(&retained_directory).expect("create retained namespace");
     let retained = retained_directory.join(format!("{source_hash}.zip"));
@@ -3874,7 +3871,7 @@ async fn publish_before_ready_is_replayed_exactly_once_after_restart() {
     )
     .await;
     let bytes = source_package("legacy_id,name\nC-1,Synthetic\n");
-    let source_hash = format!("{:x}", Sha256::digest(&bytes));
+    let source_hash = migration_stream::canonical::lower_hex(Sha256::digest(&bytes));
     let source_size = u64::try_from(bytes.len()).expect("source size");
     let partial = fixture
         .workspace
@@ -4465,7 +4462,7 @@ async fn invalid_zip_fails_intelligibly_and_cannot_be_accepted() {
     assert_eq!(rejected["state"], "REJECTED");
     assert_eq!(rejected["errorCode"], "ARCHIVE_INTEGRITY");
 
-    let fake_hash = format!("{:x}", Sha256::digest(b"this is not a ZIP"));
+    let fake_hash = migration_stream::canonical::lower_hex(Sha256::digest(b"this is not a ZIP"));
     let accept = command_json(
         &app,
         Method::POST,

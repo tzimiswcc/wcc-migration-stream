@@ -66,7 +66,7 @@ fn sha256(path: &Path) -> String {
         }
         digest.update(&buffer[..count]);
     }
-    format!("{:x}", digest.finalize())
+    migration_stream::canonical::lower_hex(digest.finalize())
 }
 
 fn zip_entry(path: &Path, name: &str) -> Vec<u8> {

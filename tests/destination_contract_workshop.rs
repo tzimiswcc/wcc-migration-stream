@@ -806,7 +806,7 @@ fn destination_authority_survives_reopen_and_rebases_a_frozen_profile() {
         .start_draft(&start_command)
         .expect("start destination draft");
     assert_initial_technical_suggestions(&draft.snapshot);
-    assert!(!draft.freeze_blockers.is_empty());
+    assert_ne!(draft.freeze_blockers, [] as [std::string::String; 0]);
 
     let root_properties = service
         .destination_service()
@@ -843,7 +843,7 @@ fn destination_authority_survives_reopen_and_rebases_a_frozen_profile() {
         .save_draft(&save_command)
         .expect("save reviewed destination draft");
     assert_eq!(saved.generation, 2);
-    assert!(saved.freeze_blockers.is_empty());
+    assert_eq!(saved.freeze_blockers, [] as [std::string::String; 0]);
     assert_eq!(
         service
             .destination_service()
@@ -1211,7 +1211,7 @@ fn destination_authority_survives_reopen_and_rebases_a_frozen_profile() {
             idempotency_key: "destination-link-manual-supplement-0001".to_owned(),
         })
         .expect("link manual supplement to revised EDMX");
-    assert!(linked.freeze_blockers.is_empty());
+    assert_eq!(linked.freeze_blockers, [] as [std::string::String; 0]);
     let linked_field = linked
         .snapshot
         .entities
@@ -1680,7 +1680,7 @@ fn removed_active_property_requires_explicit_deactivation_before_new_profile_fre
             idempotency_key: "destination-deactivate-removed-property-0001".to_owned(),
         })
         .expect("save explicit removal deactivation");
-    assert!(saved.freeze_blockers.is_empty());
+    assert_eq!(saved.freeze_blockers, [] as [std::string::String; 0]);
     assert!(
         saved
             .snapshot
@@ -2177,7 +2177,7 @@ fn freeze_rejects_stale_rules_noncanonical_source_keys_and_dotted_entity_ids() {
             idempotency_key: "destination-save-freeze-baseline-0001".to_owned(),
         })
         .expect("save aligned freeze baseline");
-    assert!(saved.freeze_blockers.is_empty());
+    assert_eq!(saved.freeze_blockers, [] as [std::string::String; 0]);
 
     let mut stale = saved.snapshot.clone();
     let root = stale
@@ -2625,7 +2625,7 @@ fn technical_change_review_is_exact_bounded_and_cleared_by_the_next_rebase() {
             idempotency_key: "destination-save-accepted-technical-review-0001".to_owned(),
         })
         .expect("save exact technical review");
-    assert!(accepted.freeze_blockers.is_empty());
+    assert_eq!(accepted.freeze_blockers, [] as [std::string::String; 0]);
     let accepted_frozen = service
         .destination_service()
         .freeze_draft(&FreezeDestinationDraftCommand {

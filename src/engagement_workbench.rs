@@ -685,7 +685,9 @@ fn prepare_assisted_runtime_identity(
     }
     let filesystem = runtime_filesystem_identity(&workspace_path, &metadata)?;
     Ok(AssistedRuntimeIdentityState {
-        session_token_sha256: format!("{:x}", Sha256::digest(runtime.session_token.as_bytes())),
+        session_token_sha256: crate::canonical::lower_hex(Sha256::digest(
+            runtime.session_token.as_bytes(),
+        )),
         listen_address: listen.to_string(),
         process_id: std::process::id(),
         workspace_path: filesystem.canonical_path,
@@ -796,7 +798,7 @@ async fn assisted_runtime_identity(
     let presented_token_sha256 = headers
         .get(ASSISTED_RUNTIME_IDENTITY_HEADER)
         .and_then(|value| value.to_str().ok())
-        .map(|value| format!("{:x}", Sha256::digest(value.as_bytes())));
+        .map(|value| crate::canonical::lower_hex(Sha256::digest(value.as_bytes())));
     if presented_token_sha256.as_deref() != Some(runtime.session_token_sha256.as_str()) {
         return StatusCode::NOT_FOUND.into_response();
     }
@@ -2039,7 +2041,7 @@ async fn upload_source_preflight(
         .await;
     }
     drop(workspace_lock);
-    let sha256 = format!("{:x}", digest.finalize());
+    let sha256 = crate::canonical::lower_hex(digest.finalize());
     let command = CompletePreflightCommand {
         preflight_id: preflight_id.clone(),
         sha256,

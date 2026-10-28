@@ -35,7 +35,7 @@ describe("governed issue-decision workbench", () => {
       }),
     ).toBeVisible();
     expect(
-      screen.queryByRole("link", { name: "Decisions" }),
+      screen.queryByRole("link", { name: /^Decisions\b/ }),
     ).not.toBeInTheDocument();
     expect(
       calls.some((call) => call.pathname === "/api/v1/decision-queue"),
@@ -49,10 +49,9 @@ describe("governed issue-decision workbench", () => {
     expect(
       await screen.findByRole("heading", { name: "Decision Queue" }),
     ).toBeVisible();
-    expect(screen.getByRole("link", { name: "Decisions" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(
+      screen.getByRole("link", { name: "Decisions Current" }),
+    ).toHaveAttribute("aria-current", "page");
     const queue = await screen.findByRole("region", {
       name: "Governed decision queue",
     });

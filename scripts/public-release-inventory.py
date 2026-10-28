@@ -961,7 +961,11 @@ def build_dependency_sbom(
 
     npm_components: list[dict[str, Any]] = []
     npm_bom_refs: dict[str, str] = {}
-    for lock_path, raw_package in raw_npm_packages.items():
+    npm_identities: dict[str, tuple[tuple[Any, ...], dict[str, Any], list[str]]] = {}
+    npm_installation_count = len(raw_npm_packages) - 1
+    if npm_installation_count + len(cargo_components) > MAXIMUM_DEPENDENCY_COMPONENTS:
+        raise InventoryError("locked dependency universe exceeds the component bound")
+    for lock_path, raw_package in sorted(raw_npm_packages.items()):
         if lock_path == "":
             continue
         if len(npm_components) + len(cargo_components) >= MAXIMUM_DEPENDENCY_COMPONENTS:
@@ -1020,8 +1024,27 @@ def build_dependency_sbom(
                     license_text,
                 )
             )
+        identity_evidence = (name, version, resolved, integrity_hash, package.get("license"))
+        existing = npm_identities.get(purl)
+        if existing is not None:
+            previous_evidence, previous_component, installation_paths = existing
+            if identity_evidence != previous_evidence:
+                raise InventoryError(
+                    f"npm package identity has conflicting provenance: {name}@{version}"
+                )
+            installation_paths.append(lock_path)
+            npm_bom_refs[lock_path] = previous_component["bom-ref"]
+            continue
         npm_bom_refs[lock_path] = bom_ref
         npm_components.append(component)
+        npm_identities[purl] = (identity_evidence, component, [lock_path])
+
+    for _identity_evidence, component, installation_paths in npm_identities.values():
+        if len(installation_paths) > 1:
+            component["properties"].append(component_property(
+                "migration-stream:evidence:install-paths",
+                json.dumps(installation_paths, ensure_ascii=False, separators=(",", ":")),
+            ))
 
     npm_direct_refs = {npm_bom_refs[path] for path in npm_direct_paths}
 
@@ -1086,6 +1109,9 @@ def build_dependency_sbom(
         component_property(
             "migration-stream:evidence:npm-component-count",
             str(len(npm_components)),
+        ),
+        component_property(
+            "migration-stream:evidence:npm-installation-count", str(npm_installation_count)
         ),
         component_property(
             "migration-stream:evidence:npm-lock-sha256",

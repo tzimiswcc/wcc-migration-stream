@@ -323,7 +323,7 @@ fn exact_publication_request_is_durable_retry_identity() {
     let expected_request_hash = {
         let mut hasher = Sha256::new();
         hasher.update(canonical_request_json.as_bytes());
-        format!("{:064x}", hasher.finalize())
+        migration_stream::canonical::lower_hex(hasher.finalize())
     };
     let connection =
         Connection::open(fixture.workspace.join("state.sqlite3")).expect("open retry database");
@@ -353,7 +353,15 @@ fn read_archive_members(zip_bytes: &[u8]) -> BTreeMap<String, Vec<u8>> {
             .read_to_end(&mut bytes)
             .expect("read generated ZIP member");
         assert!(
-            members.insert(member.name().to_owned(), bytes).is_none(),
+            members
+                .insert(
+                    member
+                        .name()
+                        .expect("valid archive member name")
+                        .into_owned(),
+                    bytes
+                )
+                .is_none(),
             "archive member names must be unique"
         );
     }
@@ -370,7 +378,7 @@ fn parse_json_member(members: &BTreeMap<String, Vec<u8>>, filename: &str) -> ser
 }
 
 fn assert_safe_governing_identifier(value: &str) {
-    assert!(!value.is_empty());
+    assert_ne!(value, "");
     assert!(value.len() <= 256);
     assert!(value.as_bytes()[0].is_ascii_alphanumeric());
     assert!(
@@ -575,7 +583,10 @@ fn test_publication_read_model_empty() {
         .list_publications("job_123")
         .expect("list publications");
     assert_eq!(list.total_count, 0);
-    assert!(list.items.is_empty());
+    assert_eq!(
+        list.items,
+        [] as [migration_stream::publication_read_model::PublicationSummaryItem; 0]
+    );
 
     let detail = read_service
         .get_detail("pub_nonexistent")
@@ -586,7 +597,7 @@ fn test_publication_read_model_empty() {
         .get_eligibility("job_123")
         .expect("get eligibility");
     assert!(!eligibility.is_eligible);
-    assert!(!eligibility.blockers.is_empty());
+    assert_ne!(eligibility.blockers, [] as [std::string::String; 0]);
 }
 
 #[test]
@@ -1267,7 +1278,7 @@ fn test_real_publication_generates_non_placeholder_digests() {
     let actual_physical = {
         let mut hasher = Sha256::new();
         hasher.update(&zip_bytes);
-        format!("{:064x}", hasher.finalize())
+        migration_stream::canonical::lower_hex(hasher.finalize())
     };
     assert_eq!(
         physical, &actual_physical,
@@ -1312,7 +1323,7 @@ fn test_real_publication_generates_non_placeholder_digests() {
         let actual_digest = {
             let mut hasher = Sha256::new();
             hasher.update(bytes);
-            format!("{:064x}", hasher.finalize())
+            migration_stream::canonical::lower_hex(hasher.finalize())
         };
         assert_eq!(declared.sha256_digest, actual_digest);
     }
@@ -1428,7 +1439,7 @@ fn test_real_publication_generates_non_placeholder_digests() {
     let semantic_publication_hash = {
         let mut hasher = Sha256::new();
         hasher.update(member_sequence_digest);
-        format!("{:064x}", hasher.finalize())
+        migration_stream::canonical::lower_hex(hasher.finalize())
     };
     assert_eq!(
         record.semantic_publication_hash, semantic_publication_hash,

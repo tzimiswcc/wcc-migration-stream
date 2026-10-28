@@ -242,7 +242,10 @@ fn approve_root_only_destination(service: &EngagementService) -> String {
         })
         .expect("start destination draft");
     assert_eq!(draft.snapshot.entities.len(), 1);
-    assert!(draft.snapshot.relationships.is_empty());
+    assert_eq!(
+        draft.snapshot.relationships,
+        [] as [migration_stream::destination::DestinationRelationshipDraft; 0]
+    );
     let entity_id = draft.snapshot.entities[0].entity_id.clone();
     let mut snapshot: DestinationDraftSnapshot = draft.snapshot;
     for field in &mut snapshot.entities[0].fields {
@@ -350,7 +353,7 @@ fn write_source_zip(path: &Path) {
 fn file_identity(path: &Path) -> (String, u64) {
     let bytes = fs::read(path).expect("read source ZIP");
     (
-        format!("{:064x}", Sha256::digest(&bytes)),
+        migration_stream::canonical::lower_hex(Sha256::digest(&bytes)),
         u64::try_from(bytes.len()).expect("source size"),
     )
 }
@@ -572,7 +575,10 @@ fn root_only_mapping_contract_is_durable_value_free_and_fail_closed() {
     assert_eq!(mapping_workspace.profile_id, PROFILE_ID);
     assert_eq!(mapping_workspace.profile_version, PROFILE_VERSION);
     assert_eq!(mapping_workspace.entities.len(), 1);
-    assert!(mapping_workspace.relationships.is_empty());
+    assert_eq!(
+        mapping_workspace.relationships,
+        [] as [migration_stream::engagement::MappingWorkspaceRelationshipView; 0]
+    );
     assert_eq!(mapping_workspace.reference_table_obligations.len(), 1);
     assert_eq!(
         mapping_workspace.reference_table_obligations[0].table_id,
@@ -642,7 +648,10 @@ fn root_only_mapping_contract_is_durable_value_free_and_fail_closed() {
             snapshot: valid.clone(),
         })
         .expect("save exact mapping draft");
-    assert!(saved.draft.snapshot.relationship_bindings.is_empty());
+    assert_eq!(
+        saved.draft.snapshot.relationship_bindings,
+        [] as [migration_stream::mapping::MappingRelationshipBinding; 0]
+    );
     let status_bindings = saved
         .draft
         .snapshot
@@ -669,7 +678,10 @@ fn root_only_mapping_contract_is_durable_value_free_and_fail_closed() {
     );
     assert_eq!(coverage.summary.blockers, 0);
     assert_eq!(coverage.summary.unresolved, 0);
-    assert!(coverage.relationships.is_empty());
+    assert_eq!(
+        coverage.relationships,
+        [] as [migration_stream::engagement::MappingContractRelationshipCoverage; 0]
+    );
     assert_eq!(coverage.authority.job_id, job_id);
     assert_eq!(coverage.authority.profiling_run_id, profiling_run_id);
     assert_eq!(

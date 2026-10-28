@@ -20,14 +20,14 @@ const resultBaseUrl = requireLoopbackOrigin(
 );
 
 const TOP_LEVEL_VIEWS = [
-  ["Setup / Workspace", "Overview", "/"],
-  ["Destination", "Profile", "/profile"],
-  ["Source", "Files", "/files"],
+  ["Setup / Workspace Complete", "Overview", "/"],
+  ["Destination Complete", "Profile", "/profile"],
+  ["Source Complete", "Files", "/files"],
   ["Profiling detail", "Profiling", "/profiling"],
-  ["Mapping", "Mapping", "/mapping"],
-  ["Validate", "Validation", "/validation"],
-  ["Issues", "Issues", "/issues"],
-  ["Reconciliation", "Reconciliation", "/reconciliation"],
+  ["Mapping Complete", "Mapping", "/mapping"],
+  ["Validate Complete", "Validation", "/validation"],
+  ["Issues Current", "Issues", "/issues"],
+  ["Reconciliation Available", "Reconciliation", "/reconciliation"],
   ["Operations", "Operations", "/operations"],
 ] as const;
 
@@ -156,7 +156,7 @@ test("keeps the actual interrupted workspace visibly non-complete", async ({
   const sourceStage = journey.locator('[data-stage="SOURCE"]');
   await expect(sourceStage).toHaveAttribute("data-status", "CURRENT");
   await expect(
-    sourceStage.getByRole("link", { name: "Source" }),
+    sourceStage.getByRole("link", { name: "Source Current", exact: true }),
   ).toHaveAttribute("href", "/files");
   const destinationStage = journey.locator('[data-stage="DESTINATION"]');
   await expect(destinationStage).toHaveAttribute("data-status", "LOCKED");

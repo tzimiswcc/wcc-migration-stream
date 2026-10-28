@@ -550,7 +550,10 @@ fn all_practitioner_read_contracts_are_bounded_scoped_and_schema_valid() {
     let cleanup = reads
         .operational_cleanup(&CleanupFilters::default(), &default_page)
         .expect("read empty bounded cleanup evidence");
-    assert!(cleanup.items.is_empty());
+    assert_eq!(
+        cleanup.items,
+        [] as [migration_stream::read_model::OperationalCleanupItem; 0]
+    );
     let cleanup_json = assert_contract(
         &cleanup,
         "schemas/read/operational-cleanup-summary.schema.json",
@@ -639,7 +642,10 @@ fn inclusive_rule_identity_and_message_bounds_remain_read_schema_valid() {
             },
         )
         .expect("read issues at inclusive rule bounds");
-    assert!(!issues.items.is_empty());
+    assert_ne!(
+        issues.items,
+        [] as [migration_stream::read_model::IssueListItem; 0]
+    );
     for issue in &issues.items {
         assert_eq!(issue.rule_id.chars().count(), 128);
         assert_eq!(issue.display_message.chars().count(), 4096);

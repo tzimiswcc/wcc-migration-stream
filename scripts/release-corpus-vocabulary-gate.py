@@ -192,7 +192,8 @@ def archive_magic(data: bytes) -> bool:
 
 def text_name_allowed(name: str) -> bool:
     path = PurePosixPath(name)
-    return path.name in TEXT_FILENAMES or path.suffix.lower() in TEXT_SUFFIXES
+    # This reviewed local asset is UTF-8 source text; other SVG paths remain unapproved.
+    return name == "web/src/favicon.svg" or path.name in TEXT_FILENAMES or path.suffix.lower() in TEXT_SUFFIXES
 
 
 def archive_texts(path: Path) -> list[tuple[str, str]]:

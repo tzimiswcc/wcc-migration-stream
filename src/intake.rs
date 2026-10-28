@@ -994,7 +994,7 @@ fn spool_source(
         )));
     }
     drop(output);
-    let hash = format!("{:x}", digest.finalize());
+    let hash = crate::canonical::lower_hex(digest.finalize());
     let stored = packages.join(format!("{hash}.zip"));
     let mut permissions = fs::metadata(&partial)
         .map_err(|error| KernelError::io(&partial, error))?
@@ -1067,7 +1067,7 @@ fn hash_file_handle(file: &File, path: &Path, buffer_size: usize) -> Result<(Str
             .checked_add(u64::try_from(read).unwrap_or(u64::MAX))
             .ok_or_else(|| KernelError::Reconciliation("file byte count overflow".to_owned()))?;
     }
-    Ok((format!("{:x}", digest.finalize()), total))
+    Ok((crate::canonical::lower_hex(digest.finalize()), total))
 }
 
 fn enforce_source_size(actual: u64, limit: u64) -> Result<()> {

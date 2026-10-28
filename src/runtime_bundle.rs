@@ -37,6 +37,9 @@ pub const SUPPORTED_RUNTIME_OS: &str = "macos";
 pub const SUPPORTED_RUNTIME_ARCHITECTURE: &str = "arm64";
 pub const SUPPORTED_RUNTIME_TARGET_TRIPLE: &str = "aarch64-apple-darwin";
 pub const SUPPORTED_RUNTIME_MACOS_MAJOR: &str = "26";
+/// Exact provisional native qualification host; this is not a support/release
+/// promotion or an allowance for arbitrary macOS 27/future versions.
+pub const PROVISIONAL_RUNTIME_MACOS_VERSION: &str = "27.0.1";
 pub const BUNDLED_BINARY_MINIMUM_MACOS_VERSION: &str = "11.0";
 pub const COMPILED_PRODUCT_COMMIT: Option<&str> = option_env!("MIGRATION_STREAM_PRODUCT_COMMIT");
 pub const COMPILED_SOURCE_SNAPSHOT_SHA256: Option<&str> =
@@ -579,11 +582,7 @@ fn same_owned_directory_identity(
 pub fn supported_host_target() -> Result<BundleTarget> {
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
         let detected_version = detected_macos_version()?;
-        if detected_version.split('.').next() != Some(SUPPORTED_RUNTIME_MACOS_MAJOR) {
-            return Err(KernelError::BundlePlatform(format!(
-                "supported host is macOS {SUPPORTED_RUNTIME_MACOS_MAJOR} arm64; detected macOS {detected_version}"
-            )));
-        }
+        qualify_macos_host(&detected_version, std::env::consts::ARCH)?;
         target_for(SUPPORTED_RUNTIME_OS, SUPPORTED_RUNTIME_ARCHITECTURE)
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
         target_for("linux", "x64")
@@ -599,6 +598,26 @@ pub fn supported_host_target() -> Result<BundleTarget> {
             std::env::consts::OS,
             std::env::consts::ARCH
         )))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MacosHostQualification {
+    Existing26,
+    Provisional27_0_1,
+}
+
+fn qualify_macos_host(version: &str, architecture: &str) -> Result<MacosHostQualification> {
+    match (architecture, version) {
+        ("aarch64", value) if value.split('.').next() == Some(SUPPORTED_RUNTIME_MACOS_MAJOR) => {
+            Ok(MacosHostQualification::Existing26)
+        }
+        ("aarch64", PROVISIONAL_RUNTIME_MACOS_VERSION) => {
+            Ok(MacosHostQualification::Provisional27_0_1)
+        }
+        _ => Err(KernelError::BundlePlatform(format!(
+            "qualified macOS 26 arm64 or exact provisional macOS {PROVISIONAL_RUNTIME_MACOS_VERSION} arm64 candidate required; detected macOS {version} {architecture}"
+        ))),
     }
 }
 
@@ -2716,7 +2735,7 @@ fn verify_and_hash_deterministic_archive(
         expected.into_iter().enumerate()
     {
         let mut entry = archive.by_index(index).map_err(|error| zip_error(&error))?;
-        if entry.name() != expected_name
+        if entry.name().map_err(|error| zip_error(&error))? != expected_name
             || entry.is_dir() != expected_directory
             || entry.unix_mode().map(|mode| mode & 0o777) != Some(expected_mode)
             || entry.enclosed_name().is_none()
@@ -3190,7 +3209,7 @@ fn hash_open_file_bounded(file: &mut File, path: &Path, maximum: u64) -> Result<
         }
         digest.update(&buffer[..read]);
     }
-    Ok((observed, format!("{:x}", digest.finalize())))
+    Ok((observed, crate::canonical::lower_hex(digest.finalize())))
 }
 
 fn open_retained_regular_file(path: &Path) -> Result<(File, fs::Metadata)> {
@@ -3900,6 +3919,33 @@ mod tests {
         };
         let error = validate_manifest(&manifest, &wrong).expect_err("wrong target");
         assert_eq!(error.code(), "BUNDLE_PLATFORM_MISMATCH");
+    }
+
+    #[test]
+    fn macos_host_policy_preserves_26_and_limits_27_to_the_exact_arm64_candidate() {
+        for version in ["26", "26.0", "26.5.2", "26.99.1"] {
+            assert_eq!(
+                qualify_macos_host(version, "aarch64").unwrap(),
+                MacosHostQualification::Existing26
+            );
+        }
+        assert_eq!(
+            qualify_macos_host("27.0.1", "aarch64").unwrap(),
+            MacosHostQualification::Provisional27_0_1
+        );
+        for version in [
+            "25.9", "27", "27.0", "27.0.2", "27.1", "28.0.1", "127.0.1", "",
+        ] {
+            assert_eq!(
+                qualify_macos_host(version, "aarch64").unwrap_err().code(),
+                "BUNDLE_PLATFORM_MISMATCH"
+            );
+        }
+        for architecture in ["x86_64", "arm", "universal", ""] {
+            for version in ["26.5.2", "27.0.1"] {
+                assert!(qualify_macos_host(version, architecture).is_err());
+            }
+        }
     }
 
     #[test]

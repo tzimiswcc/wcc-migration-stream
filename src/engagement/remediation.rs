@@ -3315,7 +3315,7 @@ fn hash_regular_file(path: &Path) -> Result<(String, u64)> {
         ));
     }
     verify_open_file_constraints(path, &file, true)?;
-    Ok((format!("{:x}", hasher.finalize()), size))
+    Ok((crate::canonical::lower_hex(hasher.finalize()), size))
 }
 
 fn read_verified_archive(path: &Path, expected_hash: &str, expected_size: u64) -> Result<Vec<u8>> {
@@ -4583,7 +4583,10 @@ fn verify_pack_row(
         let mut entry = archive
             .by_index(index)
             .map_err(|error| KernelError::IntegrityFailed(error.to_string()))?;
-        let entry_name = entry.name().to_owned();
+        let entry_name = entry
+            .name()
+            .map_err(|error| KernelError::IntegrityFailed(error.to_string()))?
+            .into_owned();
         if !entry.is_file() || !seen.insert(entry_name.clone()) {
             return Err(KernelError::IntegrityFailed(
                 "remediation ZIP contains a non-file or duplicate member".to_owned(),

@@ -555,7 +555,7 @@ impl ObjectWorkspaceService {
             return Err(error);
         }
 
-        let writer = match lock
+        let mut writer = match lock
             .open_writer_for_establishment_with_descriptor(&descriptor.descriptor_hash)
         {
             Ok(writer) => writer,
@@ -568,7 +568,7 @@ impl ObjectWorkspaceService {
         let guarded_pending = pending.clone();
         writer.install_supplemental_commit_guard(move || {
             verify_pending_lifecycle_evidence(&guarded_root, &guarded_pending)
-        });
+        })?;
         let persist_result = persist_binding(
             &writer,
             &descriptor,
@@ -1294,7 +1294,7 @@ fn adoption_evidence_hash(root: &Path) -> Result<String> {
         evidence.update(file_hash.finalize());
     }
     evidence.update(total_bytes.to_be_bytes());
-    Ok(format!("{:x}", evidence.finalize()))
+    Ok(crate::canonical::lower_hex(evidence.finalize()))
 }
 
 fn collect_adoption_evidence_paths(
@@ -1583,7 +1583,7 @@ fn projected_database_hash(
             database.update(row_hash);
         }
     }
-    Ok(format!("{:x}", database.finalize()))
+    Ok(crate::canonical::lower_hex(database.finalize()))
 }
 
 fn verify_no_unbound_rows_outside_projection(
@@ -1685,8 +1685,21 @@ fn pending_non_database_evidence_hash(root: &Path) -> Result<String> {
         }
         let mut file = open_regular_nofollow(&path)?;
         let mut file_hash = Sha256::new();
-        let copied = std::io::copy(&mut file, &mut file_hash)
-            .map_err(|error| KernelError::io(&path, error))?;
+        let mut copied = 0_u64;
+        let mut buffer = vec![0_u8; 64 * 1024].into_boxed_slice();
+        loop {
+            let read = std::io::Read::read(&mut file, &mut buffer)
+                .map_err(|error| KernelError::io(&path, error))?;
+            if read == 0 {
+                break;
+            }
+            file_hash.update(&buffer[..read]);
+            copied = copied
+                .checked_add(u64::try_from(read).unwrap_or(u64::MAX))
+                .ok_or_else(|| {
+                    KernelError::IntegrityFailed("evidence read length overflowed".to_owned())
+                })?;
+        }
         if copied != length || !named_file_matches(&path, &file)? {
             return Err(KernelError::IntegrityFailed(
                 "workspace lifecycle evidence changed during inspection".to_owned(),
@@ -1697,7 +1710,7 @@ fn pending_non_database_evidence_hash(root: &Path) -> Result<String> {
         evidence.update(file_hash.finalize());
     }
     evidence.update(total_bytes.to_be_bytes());
-    Ok(format!("{:x}", evidence.finalize()))
+    Ok(crate::canonical::lower_hex(evidence.finalize()))
 }
 
 fn collect_pending_non_database_paths(
@@ -3109,7 +3122,7 @@ fn metadata_is_reparse_point(metadata: &fs::Metadata) -> bool {
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    crate::canonical::lower_hex(Sha256::digest(bytes))
 }
 
 fn is_sha256(value: &str) -> bool {

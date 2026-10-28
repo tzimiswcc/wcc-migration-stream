@@ -13,12 +13,13 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    Result,
     object_workspace::{ObjectWorkspaceRecord, ObjectWorkspaceState},
     runtime_bundle::BundleVerification,
 };
 
 #[cfg(not(any(unix, windows)))]
-use crate::{KernelError, Result};
+use crate::KernelError;
 
 pub const DEFAULT_ASSISTED_RUNTIME_PORT: u16 = 4173;
 pub const RUNTIME_STATUS_SCHEMA: &str = "migration-stream/assisted-local-runtime/status/v2";
@@ -37,7 +38,7 @@ pub fn unix_workspace_filesystem_identity_sha256(device: u64, inode: u64) -> Str
     digest.update(b"migration-stream/workspace-filesystem-identity/v1\0unix\0");
     digest.update(device.to_be_bytes());
     digest.update(inode.to_be_bytes());
-    format!("{:x}", digest.finalize())
+    crate::canonical::lower_hex(digest.finalize())
 }
 
 #[derive(Clone, Debug)]
@@ -50,6 +51,36 @@ impl RuntimeCommandOptions {
     #[must_use]
     pub const fn listen_address(&self) -> SocketAddrV4 {
         SocketAddrV4::new(Ipv4Addr::LOCALHOST, self.port)
+    }
+}
+
+pub(crate) mod selection_sealed {
+    pub trait Sealed {}
+}
+
+/// Trusted startup selection accepted by the existing lifecycle. Only ordinary
+/// workspace options and the bound-project adapter implement this sealed trait.
+pub trait RuntimeSelection: selection_sealed::Sealed {
+    #[doc(hidden)]
+    fn runtime_options(&self) -> &RuntimeCommandOptions;
+
+    /// Validate the independently captured native/workspace authority before
+    /// any runtime command creates session state or controls a process.
+    ///
+    /// # Errors
+    /// Returns an error when a bound project's retained selection changed.
+    #[doc(hidden)]
+    fn validate_runtime_workspace(&self, actual: &RuntimeWorkspaceIdentity) -> Result<()>;
+}
+
+impl selection_sealed::Sealed for RuntimeCommandOptions {}
+
+impl RuntimeSelection for RuntimeCommandOptions {
+    fn runtime_options(&self) -> &Self {
+        self
+    }
+    fn validate_runtime_workspace(&self, _actual: &RuntimeWorkspaceIdentity) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -151,8 +182,7 @@ mod unix {
 
     use super::{
         RUNTIME_INTEGRITY_SCHEMA, RUNTIME_STATUS_SCHEMA, RuntimeClassification,
-        RuntimeCommandOptions, RuntimeIntegrityReport, RuntimeStatusReport,
-        RuntimeWorkspaceIdentity,
+        RuntimeIntegrityReport, RuntimeSelection, RuntimeStatusReport, RuntimeWorkspaceIdentity,
     };
     use crate::{
         KernelError, Result,
@@ -379,7 +409,7 @@ mod unix {
     ///
     /// Returns an error when bundle, workspace, process, listener, or session
     /// authority cannot be verified or the bounded startup does not complete.
-    pub async fn start_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+    pub async fn start_runtime(options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
         let context = resolve_context(options)?;
         ensure_runtime_directories(&context)?;
         let _lock = lock_command(&context)?;
@@ -485,7 +515,7 @@ mod unix {
     ///
     /// Returns an error when bundle, workspace, or recorded runtime authority
     /// cannot be independently verified.
-    pub fn status_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+    pub fn status_runtime(options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
         let context = resolve_context(options)?;
         ensure_runtime_directories(&context)?;
         let _lock = lock_command(&context)?;
@@ -499,7 +529,7 @@ mod unix {
     ///
     /// Returns an error when the runtime is foreign, its ownership cannot be
     /// authenticated, or bounded shutdown and cleanup cannot be proven.
-    pub async fn stop_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+    pub async fn stop_runtime(options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
         let context = resolve_context(options)?;
         ensure_runtime_directories(&context)?;
         let _lock = lock_command(&context)?;
@@ -564,7 +594,7 @@ mod unix {
     ///
     /// Returns an error when ownership or bundle authority cannot be verified,
     /// restart fails, or workspace/application identity changes across restart.
-    pub async fn restart_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+    pub async fn restart_runtime(options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
         let context = resolve_context(options)?;
         ensure_runtime_directories(&context)?;
         let _lock = lock_command(&context)?;
@@ -630,7 +660,7 @@ mod unix {
     /// Returns an error when bundle/runtime/workspace authority is invalid,
     /// the port is occupied, or the bounded integrity replay is not successful.
     #[allow(clippy::too_many_lines)]
-    pub fn integrity_runtime(options: &RuntimeCommandOptions) -> Result<RuntimeIntegrityReport> {
+    pub fn integrity_runtime(options: &impl RuntimeSelection) -> Result<RuntimeIntegrityReport> {
         let context = resolve_context(options)?;
         ensure_runtime_directories(&context)?;
         let _lock = lock_command(&context)?;
@@ -1238,7 +1268,8 @@ mod unix {
         }
     }
 
-    fn resolve_context(options: &RuntimeCommandOptions) -> Result<RuntimeContext> {
+    fn resolve_context(selection: &impl RuntimeSelection) -> Result<RuntimeContext> {
+        let options = selection.runtime_options();
         if options.port == 0 {
             return Err(runtime_conflict(
                 "assisted runtime port must be explicit and non-zero",
@@ -1251,6 +1282,7 @@ mod unix {
             capture_workspace_filesystem_identity(&options.workspace)?;
         let workspace =
             capture_workspace_authority(workspace_path, filesystem_device, filesystem_inode)?;
+        selection.validate_runtime_workspace(&workspace)?;
         if paths_overlap(&bundle_root, &workspace.canonical_path) {
             return Err(runtime_conflict(
                 "workspace and immutable bundle directories must not overlap",
@@ -1464,7 +1496,7 @@ mod unix {
         let mut digest = Sha256::new();
         digest.update(b"migration-stream-assisted-runtime-session-key/v2\0");
         digest.update(filesystem_identity_sha256.as_bytes());
-        format!("{:x}", digest.finalize())
+        crate::canonical::lower_hex(digest.finalize())
     }
 
     fn paths_overlap(left: &Path, right: &Path) -> bool {
@@ -2572,7 +2604,7 @@ mod unix {
     }
 
     fn token_hash(value: &str) -> String {
-        format!("{:x}", Sha256::digest(value.as_bytes()))
+        crate::canonical::lower_hex(Sha256::digest(value.as_bytes()))
     }
 
     fn is_lower_hex_sha256(value: &str) -> bool {
@@ -3248,35 +3280,35 @@ pub use windows::{
 };
 
 #[cfg(not(any(unix, windows)))]
-pub async fn start_runtime(_options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+pub async fn start_runtime(_options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
     Err(KernelError::BundlePlatform(
         "this target lacks the native assisted-runtime lifecycle adapter".to_owned(),
     ))
 }
 
 #[cfg(not(any(unix, windows)))]
-pub fn status_runtime(_options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+pub fn status_runtime(_options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
     Err(KernelError::BundlePlatform(
         "this target lacks the native assisted-runtime lifecycle adapter".to_owned(),
     ))
 }
 
 #[cfg(not(any(unix, windows)))]
-pub async fn restart_runtime(_options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+pub async fn restart_runtime(_options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
     Err(KernelError::BundlePlatform(
         "this target lacks the native assisted-runtime lifecycle adapter".to_owned(),
     ))
 }
 
 #[cfg(not(any(unix, windows)))]
-pub fn integrity_runtime(_options: &RuntimeCommandOptions) -> Result<RuntimeIntegrityReport> {
+pub fn integrity_runtime(_options: &impl RuntimeSelection) -> Result<RuntimeIntegrityReport> {
     Err(KernelError::BundlePlatform(
         "this target lacks the native assisted-runtime lifecycle adapter".to_owned(),
     ))
 }
 
 #[cfg(not(any(unix, windows)))]
-pub async fn stop_runtime(_options: &RuntimeCommandOptions) -> Result<RuntimeStatusReport> {
+pub async fn stop_runtime(_options: &impl RuntimeSelection) -> Result<RuntimeStatusReport> {
     Err(KernelError::BundlePlatform(
         "this target lacks the native assisted-runtime lifecycle adapter".to_owned(),
     ))

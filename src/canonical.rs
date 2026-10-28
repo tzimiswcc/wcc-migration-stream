@@ -78,7 +78,18 @@ pub fn canonical_json_string(value: &Value) -> Result<String> {
 
 /// Return lowercase hexadecimal SHA-256 for arbitrary bytes.
 pub fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
-    format!("{:x}", Sha256::digest(bytes.as_ref()))
+    crate::canonical::lower_hex(Sha256::digest(bytes.as_ref()))
+}
+
+/// Render bytes as exactly two lowercase hexadecimal digits per byte.
+pub fn lower_hex(bytes: impl AsRef<[u8]>) -> String {
+    use std::fmt::Write as _;
+    let bytes = bytes.as_ref();
+    let mut output = String::with_capacity(bytes.len().saturating_mul(2));
+    for byte in bytes {
+        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    output
 }
 
 /// Hash the canonical JSON representation of a value.
@@ -292,7 +303,7 @@ fn decode_hex(value: &str) -> Result<Vec<u8>> {
     }
     let bytes = value.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len() / 2);
-    for pair in bytes.chunks_exact(2) {
+    for pair in bytes.as_chunks::<2>().0 {
         let high = decode_nibble(pair[0])?;
         let low = decode_nibble(pair[1])?;
         decoded.push((high << 4) | low);
@@ -417,6 +428,19 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use super::*;
+
+    #[test]
+    fn sha256_preserves_standard_vectors_and_leading_zero_bytes() {
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(lower_hex([0, 1, 15, 16, 255]), "00010f10ff");
+    }
 
     #[test]
     fn canonical_json_sorts_objects_and_preserves_array_order() {

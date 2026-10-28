@@ -1782,15 +1782,15 @@ describe("operator-governed sales-document Mapping Workspace", () => {
     ]) {
       expect(boundary).toHaveTextContent(forbiddenAuthority);
     }
-    expect(screen.getByRole("link", { name: "Issues" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Issues Current" })).toBeVisible();
     expect(
-      screen.queryByRole("link", { name: "Decisions" }),
+      screen.queryByRole("link", { name: /^Decisions\b/ }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Readiness Packages" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Reconciliation" }),
+      screen.queryByRole("link", { name: /^Reconciliation\b/ }),
     ).not.toBeInTheDocument();
   });
 });

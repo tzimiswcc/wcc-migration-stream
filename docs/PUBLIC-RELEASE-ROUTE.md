@@ -23,7 +23,7 @@ named handoff material that are intentionally outside the clean tree.
    material. Third-party or adapted text retains its stated terms and
    attribution.
 3. **Close source-only supply-chain obligations — complete.** The deterministic
-   SBOM captures the complete 503-component lock universe. A separate review of
+   SBOM captured the reviewed source-only baseline’s 503-component lock universe. A separate review of
    the exact source archive established that it contains no crate or npm package
    payloads, vendored dependency source, generated distribution, or compiled
    dependency executable or library. `NOTICE` identifies the third-party and
@@ -136,16 +136,24 @@ also records the exact Rust and Node pins and verifies that the Node pin satisfi
 the identical root-manifest/root-lock engine constraint under the deliberately
 small supported grammar: exact `x.y.z`, `^x.y.z`, `>=x.y.z`, and ` || ` joins.
 
-At the current lockfile state, the evidence contains 503 third-party components:
-231 checksummed Cargo registry packages and 272 integrity-bound npm packages.
-The component inventory includes development, optional, host and platform-specific
-entries. It validates 51 exact direct declarations resolving to 49 unique
-third-party components and requires every local Cargo manifest's declared set to
-equal its source-less lockfile package's dependency set. It fails closed on
-unknown source-less Cargo packages, unsupported Cargo sources, ambiguous direct
-Cargo references, npm links, invalid identities, missing or malformed
-checksums/integrities, root-manifest or engine drift, direct-pin drift, toolchain
-or Node-pin drift, or duplicate component references/package URLs.
+At the current lockfile state, the evidence contains 495 third-party components:
+235 checksummed Cargo registry packages and 260 integrity-bound npm package
+identities across 262 npm installation entries. The component inventory includes
+development, optional, host and platform-specific entries. Identical npm
+name/version identities consolidate only when resolved source, SHA-512 integrity,
+and unreviewed licence metadata agree. The representative `install-path` remains;
+consolidated identities additionally record every sorted occurrence in the JSON
+array property `migration-stream:evidence:install-paths`. Metadata reports raw npm
+occurrences separately as `migration-stream:evidence:npm-installation-count`.
+Direct declarations still resolve through their exact installation paths.
+
+Every local Cargo manifest's declared set must equal its source-less lockfile
+package's dependency set. Capture fails closed on unknown source-less Cargo
+packages, unsupported Cargo sources, ambiguous direct Cargo references, npm
+links, invalid identities, missing or malformed checksums/integrities,
+root-manifest or engine drift, direct-pin drift, toolchain or Node-pin drift,
+conflicting provenance for one npm identity, or duplicate component
+references/package URLs after identical installation consolidation.
 
 Cargo licence data is deliberately not inferred. Each npm `license` value is
 preserved verbatim only in a property named

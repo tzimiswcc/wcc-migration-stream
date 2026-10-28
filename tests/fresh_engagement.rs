@@ -174,7 +174,7 @@ fn service(workspace: &Path) -> EngagementService {
 fn file_identity(path: &Path) -> (String, u64) {
     let bytes = fs::read(path).expect("fixture bytes");
     (
-        format!("{:064x}", Sha256::digest(&bytes)),
+        migration_stream::canonical::lower_hex(Sha256::digest(&bytes)),
         u64::try_from(bytes.len()).expect("fixture size"),
     )
 }
@@ -635,8 +635,8 @@ fn fresh_engagement_reaches_first_issues_with_explicit_authority() {
             acknowledgement: SOURCE_ACCEPTANCE_ACKNOWLEDGEMENT.to_owned(),
         })
         .expect("accept and profile");
-    assert!(!accepted.job_id.is_empty());
-    assert!(!accepted.profiling_run_id.is_empty());
+    assert_ne!(accepted.job_id, "");
+    assert_ne!(accepted.profiling_run_id, "");
 
     let database = Connection::open(temporary.path().join("state.sqlite3")).expect("database");
     let version: i64 = database
