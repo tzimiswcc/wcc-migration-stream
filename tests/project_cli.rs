@@ -1,6 +1,12 @@
 //! Real trusted project CLI operations; no runtime server is started here.
 
-use migration_stream::canonical::sha256_hex;
+use migration_stream::{
+    canonical::sha256_hex,
+    object_workspace::{
+        EstablishObjectWorkspaceCommand, INITIALIZE_OBJECT_WORKSPACE_COMMAND_SCHEMA,
+        ObjectWorkspaceService, ObjectWorkspaceState,
+    },
+};
 use rusqlite::{Connection, OpenFlags};
 use serde_json::Value;
 use std::{
@@ -472,4 +478,108 @@ fn unrepresentable_path_errors_stay_json_without_overwrite_or_panic() {
         );
         assert_eq!(tree(&root), before);
     }
+}
+
+#[test]
+fn interrupted_initialization_inspect_preserves_exact_pending_recovery() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("interrupted");
+    let pending = response("interrupted-create", &mut create(&root, false), true);
+    let descriptor = path(&pending, "descriptorPath");
+    let workspace = path(&pending, "workspacePath");
+    // An empty SQLite file with a colliding view has no accepted evidence.
+    // It lets the real service retain its pending command, then deterministically
+    // fails schema migration without a timing race or a product fault hook.
+    let database = Connection::open(workspace.join("state.sqlite3")).unwrap();
+    database
+        .execute_batch("CREATE VIEW source_records AS SELECT 1 AS synthetic;")
+        .unwrap();
+    drop(database);
+    let service = ObjectWorkspaceService::new(&workspace).unwrap();
+    let initial = service.inspect().unwrap();
+    assert_eq!(initial.state, ObjectWorkspaceState::InitializeRequired);
+    assert!(initial.pending_command.is_none());
+    let command = EstablishObjectWorkspaceCommand {
+        schema_version: INITIALIZE_OBJECT_WORKSPACE_COMMAND_SCHEMA.to_owned(),
+        expected_state_hash: initial.state_hash,
+        display_name: "Synthetic interrupted project".to_owned(),
+        migration_object_name_or_scope: "Synthetic interrupted initialization".to_owned(),
+        creator_attribution: "Project CLI recovery proof operator".to_owned(),
+        idempotency_key: "project-cli-interrupted-initialize-0001".to_owned(),
+    };
+    assert!(service.initialize(&command).is_err());
+    let interrupted = service.inspect().unwrap();
+    assert_eq!(interrupted.pending_command.as_ref(), Some(&command));
+    let database = Connection::open_with_flags(
+        workspace.join("state.sqlite3"),
+        OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    let retained_workspace_id: String = database
+        .query_row(
+            "SELECT workspace_id FROM object_workspace_pending_establishments",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    drop(database);
+    let before = tree(&root);
+    let view = response("interrupted-inspect", &mut inspect(&descriptor), true);
+    assert_eq!(
+        view["requiredAction"],
+        "RESUME_EXACT_WORKSPACE_INITIALIZATION"
+    );
+    assert_eq!(
+        view["lifecycle"],
+        serde_json::to_value(&interrupted).unwrap()
+    );
+    assert_eq!(view["descriptor"], pending["descriptor"]);
+    assert!(view["descriptor"]["binding"].is_null());
+    assert_eq!(tree(&root), before);
+    // A fresh CLI command cannot substitute a new CAS or idempotency key.
+    response(
+        "interrupted-fresh-initialize-rejected",
+        cli(&["object-workspace", "initialize"])
+            .arg("--workspace")
+            .arg(&workspace)
+            .args([
+                "--display-name",
+                &command.display_name,
+                "--migration-object-name-or-scope",
+                &command.migration_object_name_or_scope,
+                "--creator-attribution",
+                &command.creator_attribution,
+            ]),
+        false,
+    );
+    assert_eq!(tree(&root), before);
+    let rejected = response("interrupted-bind-rejected", &mut bind(&descriptor), false);
+    assert_eq!(rejected["code"], "CONFLICT");
+    assert_eq!(tree(&root), before);
+    // Remove only the deliberate synthetic obstruction, then explicitly resume
+    // the exact service-returned command. Inspect itself performs neither step.
+    let database = Connection::open(workspace.join("state.sqlite3")).unwrap();
+    database.execute_batch("DROP VIEW source_records;").unwrap();
+    drop(database);
+    let record = service
+        .initialize(interrupted.pending_command.as_ref().unwrap())
+        .unwrap();
+    assert_eq!(record.workspace_id, retained_workspace_id);
+    let active = response(
+        "interrupted-resumed-inspect",
+        &mut inspect(&descriptor),
+        true,
+    );
+    assert_eq!(active["requiredAction"], "BIND_PROJECT");
+    assert_eq!(
+        active["lifecycle"]["workspace"]["workspaceId"],
+        record.workspace_id
+    );
+    let bound = response("interrupted-explicit-bind", &mut bind(&descriptor), true);
+    assert!(bound["requiredAction"].is_null());
+    assert_eq!(
+        bound["descriptor"]["binding"]["workspaceId"],
+        record.workspace_id
+    );
+    assert_no_intake_or_profile_authority(&workspace);
 }

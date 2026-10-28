@@ -601,6 +601,13 @@ fn project_view(project: &OpenProject) -> Result<serde_json::Value> {
         None
     } else if project.lifecycle.state == ObjectWorkspaceState::Active {
         Some("BIND_PROJECT")
+    } else if project
+        .lifecycle
+        .pending_command
+        .as_ref()
+        .is_some_and(|command| command.schema_version == INITIALIZE_OBJECT_WORKSPACE_COMMAND_SCHEMA)
+    {
+        Some("RESUME_EXACT_WORKSPACE_INITIALIZATION")
     } else {
         Some("INITIALIZE_WORKSPACE_EXPLICITLY")
     };
