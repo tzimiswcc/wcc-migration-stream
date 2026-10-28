@@ -116,22 +116,31 @@ def _file_record(path: Path):
 def _snapshot(root: Path):
     entries = {}
     total = 0
+    admitted = 1  # The root consumes one global entry before any descent.
     def walk(path):
-        nonlocal total
+        nonlocal total, admitted
         if len(path.relative_to(root).parts) > 64:
             raise AssemblyError("runtime path depth exceeds assembly bound")
         info = path.lstat()
         relative = path.relative_to(root).as_posix()
         if stat.S_ISDIR(info.st_mode):
             entries[relative] = ("directory", stat.S_IMODE(info.st_mode), 0, "", _signature(info))
-            for child in sorted(path.iterdir()):
+            children = []
+            with os.scandir(path) as iterator:
+                for child in iterator:
+                    if admitted >= 4096:
+                        raise AssemblyError("runtime graph exceeds assembly bounds")
+                    admitted += 1
+                    children.append(Path(child.path))
+            # Capture is globally bounded before deterministic ordering/descent.
+            for child in sorted(children):
                 walk(child)
         elif stat.S_ISREG(info.st_mode):
             entries[relative] = _file_record(path)
             total += entries[relative][2]
         else:
             raise AssemblyError("runtime contains linked or special entries")
-        if len(entries) > 4096 or total > MAX_TOTAL:
+        if total > MAX_TOTAL:
             raise AssemblyError("runtime graph exceeds assembly bounds")
     walk(root)
     return entries
