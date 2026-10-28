@@ -74,12 +74,27 @@ For an interrupted initialization with a retained command, `project inspect`
 returns `requiredAction: "RESUME_EXACT_WORKSPACE_INITIALIZATION"`. Its existing
 `lifecycle.pendingCommand` contains the exact schema, original state hash,
 metadata and idempotency key to pass explicitly to
-`ObjectWorkspaceService::initialize`. Preserve the complete command; a fresh
-`object-workspace initialize` invocation constructs a new command and cannot
-replace the retained one. The CLI has no exact-command resume operation.
-Inspect remains read-only: it does not resume initialization, repair partial
-material, or bind the project. After explicit recovery makes the workspace
-active, inspect returns `BIND_PROJECT`; binding remains a separate operation.
+`ObjectWorkspaceService::initialize`. The trusted CLI can explicitly pass that
+retained command through the same service:
+
+```sh
+migration-stream project resume-initialization \
+  --project /absolute/new-object-directory/project.pending.mstream
+```
+
+Resume accepts only an existing pending initialization. It preserves the
+original command, state hash, metadata, idempotency key and assigned workspace
+identity; it accepts no replacement command or metadata. A fresh workspace,
+an adoption lifecycle, an active pending project or a bound project is refused.
+Existing writer-lock, integrity and exact-retry guards remain authoritative.
+A rejected or interrupted resume leaves retained material for explicit
+inspection; the command does not repair the cause or bind the project. After
+successful resume, its read view reports `BIND_PROJECT`; run `project bind`
+separately.
+
+A fresh `object-workspace initialize` invocation constructs a new command and
+cannot replace the retained one. Inspect remains read-only: it does not resume
+initialization, repair partial material, or bind the project.
 
 Placing files under `input/` grants no accepted source/profile authority. These
 commands do not ingest, import, approve a profile, adopt or relocate evidence,

@@ -4,7 +4,7 @@ use migration_stream::{
     canonical::sha256_hex,
     object_workspace::{
         EstablishObjectWorkspaceCommand, INITIALIZE_OBJECT_WORKSPACE_COMMAND_SCHEMA,
-        ObjectWorkspaceService, ObjectWorkspaceState,
+        ObjectWorkspaceService, ObjectWorkspaceState, ObjectWorkspaceStatus,
     },
 };
 use rusqlite::{Connection, OpenFlags};
@@ -74,6 +74,12 @@ fn create(root: &Path, initialized: bool) -> Command {
 
 fn inspect(project: &Path) -> Command {
     let mut command = cli(&["project", "inspect"]);
+    command.arg("--project").arg(project);
+    command
+}
+
+fn resume_initialization(project: &Path) -> Command {
+    let mut command = cli(&["project", "resume-initialization"]);
     command.arg("--project").arg(project);
     command
 }
@@ -480,12 +486,8 @@ fn unrepresentable_path_errors_stay_json_without_overwrite_or_panic() {
     }
 }
 
-#[test]
-fn interrupted_initialization_inspect_preserves_exact_pending_recovery() {
-    let temp = tempfile::tempdir().unwrap();
-    let root = temp.path().join("interrupted");
-    let pending = response("interrupted-create", &mut create(&root, false), true);
-    let descriptor = path(&pending, "descriptorPath");
+fn interrupted_initialization_fixture(root: &Path) -> (Value, ObjectWorkspaceStatus, String) {
+    let pending = response("interrupted-create", &mut create(root, false), true);
     let workspace = path(&pending, "workspacePath");
     // An empty SQLite file with a colliding view has no accepted evidence.
     // It lets the real service retain its pending command, then deterministically
@@ -523,6 +525,18 @@ fn interrupted_initialization_inspect_preserves_exact_pending_recovery() {
         )
         .unwrap();
     drop(database);
+    (pending, interrupted, retained_workspace_id)
+}
+
+#[test]
+fn interrupted_initialization_inspect_preserves_exact_pending_recovery() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("interrupted");
+    let (pending, interrupted, retained_workspace_id) = interrupted_initialization_fixture(&root);
+    let descriptor = path(&pending, "descriptorPath");
+    let workspace = path(&pending, "workspacePath");
+    let service = ObjectWorkspaceService::new(&workspace).unwrap();
+    let command = interrupted.pending_command.as_ref().unwrap();
     let before = tree(&root);
     let view = response("interrupted-inspect", &mut inspect(&descriptor), true);
     assert_eq!(
@@ -582,4 +596,164 @@ fn interrupted_initialization_inspect_preserves_exact_pending_recovery() {
         record.workspace_id
     );
     assert_no_intake_or_profile_authority(&workspace);
+}
+
+#[test]
+fn explicit_cli_resume_retains_command_identity_and_requires_separate_binding() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("explicit-resume");
+    let (pending, interrupted, retained_workspace_id) = interrupted_initialization_fixture(&root);
+    let descriptor = path(&pending, "descriptorPath");
+    let workspace = path(&pending, "workspacePath");
+    // Normalize empty WAL control files left by read-only fixture inspection
+    // before testing a rejected writer operation's durable-byte preservation.
+    let database = Connection::open(workspace.join("state.sqlite3")).unwrap();
+    database
+        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+        .unwrap();
+    drop(database);
+    let before = tree(&root);
+    let blocked = response(
+        "resume-obstruction-rejected",
+        &mut resume_initialization(&descriptor),
+        false,
+    );
+    assert_eq!(blocked["project"]["phase"], "RESUME_INITIALIZATION");
+    assert_eq!(tree(&root), before);
+    assert_eq!(
+        ObjectWorkspaceService::new(&workspace)
+            .unwrap()
+            .inspect()
+            .unwrap(),
+        interrupted
+    );
+    // Only this fixture removes its deliberate obstruction; the CLI never repairs it.
+    let database = Connection::open(workspace.join("state.sqlite3")).unwrap();
+    database.execute_batch("DROP VIEW source_records;").unwrap();
+    drop(database);
+    // Establish the same read-only inspection controls before the lock snapshot.
+    // The rejected resume must preserve them as well as every durable byte.
+    assert_eq!(
+        ObjectWorkspaceService::new(&workspace)
+            .unwrap()
+            .inspect()
+            .unwrap(),
+        interrupted
+    );
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(workspace.join(".migration-stream.lock"))
+        .unwrap();
+    fs2::FileExt::lock_exclusive(&lock).unwrap();
+    let before = tree(&root);
+    let locked = response(
+        "resume-writer-held-rejected",
+        &mut resume_initialization(&descriptor),
+        false,
+    );
+    assert_eq!(locked["code"], "WORKSPACE_LOCKED");
+    assert_eq!(tree(&root), before);
+    drop(lock);
+    let resumed = response(
+        "resume-explicit-success",
+        &mut resume_initialization(&descriptor),
+        true,
+    );
+    assert_eq!(resumed["requiredAction"], "BIND_PROJECT");
+    assert_eq!(resumed["descriptor"], pending["descriptor"]);
+    assert!(resumed["descriptor"]["binding"].is_null());
+    assert_eq!(
+        resumed["lifecycle"]["workspace"]["workspaceId"],
+        retained_workspace_id
+    );
+    assert!(!root.join("project.mstream").exists());
+    let database = Connection::open_with_flags(
+        workspace.join("state.sqlite3"),
+        OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    let canonical_request: String = database
+        .query_row(
+            "SELECT canonical_request_json FROM object_workspace_bindings",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&canonical_request).unwrap(),
+        serde_json::to_value(interrupted.pending_command.unwrap()).unwrap()
+    );
+    drop(database);
+    let bound = response("resume-separate-bind", &mut bind(&descriptor), true);
+    assert_eq!(
+        bound["descriptor"]["binding"]["workspaceId"],
+        retained_workspace_id
+    );
+    assert_no_intake_or_profile_authority(&workspace);
+}
+
+#[test]
+fn explicit_resume_refuses_fresh_active_bound_and_adoption_states_without_mutation() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path().join("no-pending-command");
+    let pending = response("resume-fresh-create", &mut create(&root, false), true);
+    let descriptor = path(&pending, "descriptorPath");
+    let workspace = path(&pending, "workspacePath");
+    let before = tree(&root);
+    let fresh = response(
+        "resume-fresh-rejected",
+        &mut resume_initialization(&descriptor),
+        false,
+    );
+    assert_eq!(fresh["code"], "CONFLICT");
+    assert_eq!(tree(&root), before);
+    assert!(!workspace.join("state.sqlite3").exists());
+    initialize("resume-no-pending-active", &workspace);
+    let before = tree(&root);
+    let active = response(
+        "resume-active-rejected",
+        &mut resume_initialization(&descriptor),
+        false,
+    );
+    assert_eq!(active["code"], "CONFLICT");
+    assert_eq!(tree(&root), before);
+    let bound = response("resume-no-pending-bind", &mut bind(&descriptor), true);
+    let before = tree(&root);
+    let bound_error = response(
+        "resume-bound-rejected",
+        &mut resume_initialization(&path(&bound, "descriptorPath")),
+        false,
+    );
+    assert_eq!(bound_error["code"], "CONFLICT");
+    assert_eq!(tree(&root), before);
+    let legacy_root = temp.path().join("adopt-required");
+    let legacy = response(
+        "resume-adoption-create",
+        &mut create(&legacy_root, false),
+        true,
+    );
+    // Recognized schema-only SQLite material requires adoption, never initialization.
+    let database = Connection::open(path(&legacy, "workspacePath").join("state.sqlite3")).unwrap();
+    database
+        .execute_batch("CREATE TABLE jobs (id TEXT); PRAGMA user_version = 1;")
+        .unwrap();
+    drop(database);
+    let legacy_descriptor = path(&legacy, "descriptorPath");
+    assert_eq!(
+        ObjectWorkspaceService::new(path(&legacy, "workspacePath"))
+            .unwrap()
+            .inspect()
+            .unwrap()
+            .state,
+        ObjectWorkspaceState::AdoptRequired
+    );
+    let before = tree(&legacy_root);
+    let adoption = response(
+        "resume-adoption-rejected",
+        &mut resume_initialization(&legacy_descriptor),
+        false,
+    );
+    assert_eq!(adoption["code"], "INTEGRITY_FAILED");
+    assert_eq!(tree(&legacy_root), before);
 }
