@@ -140,10 +140,14 @@ final class ApplicationBootstrap {
     return ApplicationBootstrap(coordinator)
   }
 
-  /// Call only from a separately reviewed real application wrapper.
-  func configure(_ application: NSApplication) {
+  /// Build the native menu graph without assigning or presenting it.
+  static func makeMainMenu(coordinator: OpenObjectCoordinator) -> NSMenu {
     let configuration = OpenObjectCoordinator.menuConfiguration
     let main = NSMenu()
+    // AppKit reserves the first top-level slot for the application menu.
+    let applicationItem = NSMenuItem(title: "Migration Stream", action: nil, keyEquivalent: "")
+    applicationItem.submenu = NSMenu(title: "Migration Stream")
+    main.addItem(applicationItem)
     let item = NSMenuItem(title: configuration.menuTitle, action: nil, keyEquivalent: "")
     let file = NSMenu(title: configuration.menuTitle)
     let open = NSMenuItem(
@@ -154,7 +158,12 @@ final class ApplicationBootstrap {
     file.addItem(open)
     item.submenu = file
     main.addItem(item)
-    application.mainMenu = main
+    return main
+  }
+
+  /// Call only from a separately reviewed real application wrapper.
+  func configure(_ application: NSApplication) {
+    application.mainMenu = Self.makeMainMenu(coordinator: coordinator)
     application.delegate = coordinator
   }
 }
