@@ -276,3 +276,89 @@ real workspace/browser/native event/network runtime. The command excludes the
 older adapter/helper test driver and does not repeat its 45-second case.
 Actual application startup, document events, UI and installed behavior still
 require separate exact-artifact acceptance and platform decisions.
+
+## Internal unsigned engineering assembly source
+
+`native/macos/MigrationStreamApplication.swift` supplies an explicit `@main`
+entry point. It constructs the approved bootstrap, configures its application,
+and retains the bootstrap with `withExtendedLifetime` for the entire
+`application.run()` call. Fixed error messages avoid exposing raw controller
+output. A bootstrap-construction failure presents an error and exits without
+entering `application.run()`. This entry point is typechecked only here; real
+application startup, alerts, menus, panels and native events remain unqualified.
+It adds no stop-on-quit or object-switch operation.
+
+`scripts/assemble-macos-engineering-app.py` is create-only source tooling for
+already-built **trusted** wrapper and runtime artifacts. It does not compile
+those artifacts, sign an application, install it or register it with the OS.
+The caller must explicitly supply all of:
+
+- Absolute, real non-linked wrapper, runtime and nonexistent destination paths.
+- A bundle identifier, bundle version and short version chosen by the operator.
+- A numeric minimum OS chosen by the operator.
+- `--engineering-policy local-unsigned-engineering`.
+
+There are no metadata defaults, signing/distribution modes or public validator
+bypasses. The output is the caller-selected new directory containing
+`Contents/MacOS/MigrationStream`, `Contents/Info.plist` and
+`Contents/Resources/Runtime`. The runtime subtree retains its bytes and modes;
+its manifest and admission rules are not rewritten. Info.plist contains only
+basic application identity/version/executable and minimum-OS keys, no document
+types, URL schemes, UTIs, entitlements or update configuration.
+
+Before copying, the tool calls the input's fixed
+`libexec/migration-stream-local-runtime verify` with an empty environment, no
+shell, bounded output and a 120-second deadline with bounded child cleanup.
+After copying it verifies the staged runtime through the same fixed entrypoint.
+It consumes the actual existing successful CLI envelope and BundleVerification
+fields, comparing all reported identity fields except the relocated
+`bundleRoot`. It does not invent an inner verification schema or copy an
+admission record into the application.
+
+The initial wrapper lane accepts only a thin arm64 Mach-O executable with one
+unambiguous macOS deployment command. Missing, wrong-platform, ambiguous,
+malformed or oversized deployment evidence refuses real assembly. The explicit
+minimum-OS metadata must be at least both the wrapper's parsed deployment
+minimum and the runtime report's `target.minimumOsVersion` (currently `11.0`).
+This is a **known metadata floor**, not compatibility, linked-library closure,
+host qualification or public platform support. The runtime's existing host
+policy remains unchanged. A trusted already-built wrapper with deployment
+evidence and a matching-host trusted runtime are prerequisites; source
+typechecking or a supplied metadata flag cannot substitute for those artifacts.
+
+Publication uses an owned sibling staging directory and Darwin's atomic
+`renameatx_np(RENAME_EXCL)`. It never replaces even an empty racing destination;
+there is no racy fallback rename in production. Failures clean only owned
+staging. A failure after namespace publication can leave the completed output
+visible; inspect it rather than assuming a failed command permits replacement.
+There is no power-loss/native installed-application qualification claim.
+
+Run the fake-artifact callable self-test without any product verification,
+wrapper build, real application, UI, process or OS-registration operation:
+
+```sh
+python3 -B scripts/assemble-macos-engineering-app-self-test.py
+```
+
+Tests use fake wrapper/runtime bytes, synthetic operator values and internal
+validator/inspection injection; process creation is disabled. All fixtures are
+ordinary private temporary layout directories, deliberately not `.app` bundles.
+The generated fixture plist is ordinary test data. On Darwin the test exercises
+actual no-replace publication against an empty racing directory. Elsewhere it
+reports that native atomic test as skipped and tests only injected layout flow;
+that is not an atomic-publication proof for another host.
+
+The entry point can be checked without building or starting an application:
+
+```sh
+xcrun swiftc -swift-version 6 -warnings-as-errors -typecheck \
+  native/macos/DocumentOpenAdapter.swift \
+  native/macos/ApplicationBootstrap.swift \
+  native/macos/MigrationStreamApplication.swift
+```
+
+No actual trusted wrapper/runtime assembly or verification was performed by
+these source proofs. Existing adapter/bootstrap proofs and the older real
+45-second helper case are not rerun by either command. Bundle identifiers,
+minimum OS, installer formats, signing, distribution and supported platforms
+remain separate operator/owner decisions; this source tooling makes none.
