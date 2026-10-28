@@ -126,6 +126,23 @@ private actor RunnerSpy {
     Darwin._exit(0)
   }
 
+  private static func deadlineWithinBudget(_ elapsed: Double) -> Bool {
+    elapsed >= 44 && elapsed < 49.5
+  }
+
+  @MainActor private static func deadlinePredicateProof() {
+    expect(
+      deadlineWithinBudget(47.009715167), "retained actual execution meets strict pre-expiry budget"
+    )
+    expect(deadlineWithinBudget(44), "lower timing margin accepted")
+    for elapsed in [43.999, 49.5, 50, 51] {
+      expect(!deadlineWithinBudget(elapsed), "too-early or helper-expiry timing rejected")
+    }
+    print(
+      "PASS pure deadline predicate: retained47.009715167 accepted;43.999/49.5/50/51 rejected; no helpers ran"
+    )
+  }
+
   @MainActor private static func productionRunnerProof() async throws {
     let manager = FileManager.default
     let fixture = manager.temporaryDirectory.appendingPathComponent(
@@ -172,7 +189,9 @@ private actor RunnerSpy {
           "production success: \(document)")
       }
       if document.contains("/deadline/") {
-        expect(elapsed >= 44 && elapsed <= 51, "real45s deadline plus bounded cleanup")
+        expect(
+          deadlineWithinBudget(elapsed),
+          "real45s deadline and cleanup must finish before helper expiry")
         print(
           "PASS production45s deadline/TERM-ignore cleanup elapsed=\(elapsed)s (helper self-expires50s)"
         )
@@ -192,6 +211,10 @@ private actor RunnerSpy {
 
   @MainActor static func main() async throws {
     if syntheticHelper() { return }
+    if Array(CommandLine.arguments.dropFirst()) == ["--check-deadline-predicate"] {
+      deadlinePredicateProof()
+      return
+    }
     Darwin.signal(SIGALRM, SIG_DFL)
     Darwin.alarm(70)  // Bound the whole source-proof executable, not just each helper.
     defer { Darwin.alarm(0) }
