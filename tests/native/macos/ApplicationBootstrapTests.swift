@@ -96,9 +96,79 @@ private actor BootstrapRunnerSpy {
     if let operation = coordinator.openObject() { await operation.value }
   }
 
+  @MainActor private static func platformBundleResourceProjection() async throws {
+    let files = FileManager.default
+    let fixture = files.temporaryDirectory.appendingPathComponent(
+      "migration-stream-bundle-resource-\(UUID().uuidString)", isDirectory: true
+    ).resolvingSymlinksInPath()
+    let bundleRoot = fixture.appendingPathComponent(
+      "synthetic πελάτης% literal.bundle", isDirectory: true)
+    let resources = bundleRoot.appendingPathComponent("Contents/Resources", isDirectory: true)
+    try files.createDirectory(
+      at: resources, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    defer { try? files.removeItem(at: fixture) }
+    let info: [String: Any] = [
+      "CFBundleIdentifier": "test.synthetic.resource-projection",
+      "CFBundleName": "Synthetic resource projection", "CFBundlePackageType": "BNDL",
+      "CFBundleVersion": "1", "CFBundleExecutable": "Synthetic",
+    ]
+    try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+      .write(to: bundleRoot.appendingPathComponent("Contents/Info.plist"))
+    guard let bundle = Bundle(url: bundleRoot), let raw = bundle.resourceURL else {
+      preconditionFailure("Foundation must expose the synthetic bundle resource URL")
+    }
+    expect(raw.baseURL != nil, "fixture reproduces platform base-backed resource metadata")
+    let picker = BootstrapPickerSpy()
+    let runner = BootstrapRunnerSpy(response())
+    let rejected = BootstrapView()
+    do {
+      _ = try coordinator(raw, picker, runner, rejected)
+      preconditionFailure("strict coordinator must continue refusing directly supplied based URLs")
+    } catch {
+      expect(
+        error as? OpenObjectCoordinator.Failure == .invalidResources,
+        "raw platform URL reproduces the explicit resource admission failure")
+    }
+    let projected = ApplicationBootstrap.resourceURL(in: bundle)
+    expect(
+      projected?.baseURL == nil && projected.map(native) == native(raw)
+        && projected.map(native) == native(resources),
+      "production Bundle projection resolves its own base without changing native resource bytes")
+    let view = BootstrapView()
+    let selected = try coordinator(projected, picker, runner, view)
+    let runtime = resources.appendingPathComponent("Runtime", isDirectory: true)
+    expect(
+      view.roots.count == 1 && native(view.roots[0]) == native(runtime),
+      "actual coordinator/adapter construction receives the expected native Resources/Runtime")
+    expect(
+      native(view.roots[0].appendingPathComponent("libexec/migration-stream-local-runtime"))
+        == native(
+          resources.appendingPathComponent("Runtime/libexec/migration-stream-local-runtime")),
+      "fixed controller derives beneath the exact platform Runtime root")
+    let constructedCalls = await runner.calls
+    expect(
+      constructedCalls.isEmpty && picker.configurations.isEmpty && view.browsers.isEmpty
+        && view.errors.isEmpty && rejected.roots.isEmpty,
+      "projection and real constructors perform no picker, runner or browser operation")
+    for invalidDocument in [
+      URL(string: "project.mstream")!, URL(string: "project.mstream", relativeTo: resources)!,
+    ] {
+      expect(
+        selected.forwardDocuments([invalidDocument]) == nil,
+        "platform-resource normalization must never admit a relative/based document")
+    }
+    let refusedCalls = await runner.calls
+    expect(
+      refusedCalls.isEmpty && view.browsers.isEmpty && picker.configurations.isEmpty
+        && view.errors == ["adapter:invalidDocument", "adapter:invalidDocument"],
+      "unchanged document URL guards refuse before runner/browser/picker")
+    print("PASS actual Bundle resource projection, constructor and strict based-document refusal")
+  }
+
   @MainActor static func main() async throws {
-    // Only injected coordinator/static configuration is constructed. Never call
-    // ApplicationBootstrap.make/configure, NSApplication, NSMenu or NSOpenPanel.
+    // Only pure Bundle metadata projection and injected constructors/configuration.
+    // Never call make/configure, NSApplication, NSMenu or NSOpenPanel.
+    try await platformBundleResourceProjection()
     let resources = URL(
       fileURLWithPath: "/synthetic app/πελάτης%literal/Contents/Resources", isDirectory: true)
     let document = URL(
@@ -271,7 +341,7 @@ private actor BootstrapRunnerSpy {
     await second.value
     print("PASS picker state isolated from older controller completion")
     print(
-      "8 injected coordinator proof groups passed; no UI/app/process/browser/nativeevent/network/runtime execution"
+      "9 coordinator proof groups passed; no UI/app/process/browser/nativeevent/network/runtime execution"
     )
   }
 }
