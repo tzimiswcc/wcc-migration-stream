@@ -28,6 +28,8 @@ enum Command {
     Verify,
     /// Start or report the exact owned loopback runtime.
     Start(LifecycleArguments),
+    /// Open exactly one already-bound project through the existing runtime start.
+    Open(ProjectOpenArguments),
     /// Classify the exact owned, stopped, stale, or foreign runtime state.
     Status(LifecycleArguments),
     /// Stop and start the exact workspace runtime after independent checks.
@@ -62,6 +64,22 @@ struct LifecycleArguments {
     /// Literal 127.0.0.1 port; the host is not configurable.
     #[arg(long, default_value_t = DEFAULT_ASSISTED_RUNTIME_PORT)]
     port: u16,
+}
+
+#[derive(Clone, Debug, Args)]
+struct ProjectOpenArguments {
+    /// One final bound project descriptor selected by the trusted native caller.
+    #[arg(value_name = "PROJECT")]
+    project: PathBuf,
+    /// Literal 127.0.0.1 port; the host is not configurable.
+    #[arg(long, default_value_t = DEFAULT_ASSISTED_RUNTIME_PORT)]
+    port: u16,
+}
+
+impl ProjectOpenArguments {
+    fn select(&self) -> migration_stream::Result<BoundProjectRuntime> {
+        BoundProjectRuntime::open(&self.project, self.port)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -162,6 +180,10 @@ async fn execute(command: Command) -> migration_stream::Result<serde_json::Value
     match command {
         Command::Verify => Ok(serde_json::to_value(verify_bundle_root(bundle_root()?)?)?),
         Command::Start(arguments) => execute_lifecycle(LifecycleOperation::Start, arguments).await,
+        Command::Open(arguments) => {
+            let selection = arguments.select()?;
+            execute_selected(LifecycleOperation::Start, &selection).await
+        }
         Command::Status(arguments) => {
             execute_lifecycle(LifecycleOperation::Status, arguments).await
         }
@@ -258,5 +280,203 @@ mod tests {
             ])
             .is_err()
         );
+    }
+
+    fn document_arguments(path: &std::ffi::OsStr, port: Option<u16>) -> ProjectOpenArguments {
+        let mut arguments = vec![std::ffi::OsString::from("runtime"), "open".into()];
+        if let Some(port) = port {
+            arguments.extend(["--port".into(), port.to_string().into()]);
+        }
+        arguments.extend(["--".into(), path.to_os_string()]);
+        match Cli::try_parse_from(arguments).unwrap().command {
+            Command::Open(arguments) => arguments,
+            _ => panic!("expected document-only open command"),
+        }
+    }
+
+    #[test]
+    fn open_preserves_one_native_document_argument_and_existing_port_default() {
+        for path in [
+            "customer readiness/project.mstream",
+            "πελάτης/project.mstream",
+            "literal $(touch nothing); & 'quoted'/project.mstream",
+            "--workspace",
+        ] {
+            let arguments = document_arguments(std::ffi::OsStr::new(path), None);
+            assert_eq!(arguments.project, PathBuf::from(path));
+            assert_eq!(arguments.port, DEFAULT_ASSISTED_RUNTIME_PORT);
+        }
+        let arguments = document_arguments(std::ffi::OsStr::new("project.mstream"), Some(43210));
+        assert_eq!(arguments.port, 43210);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_parser_preserves_non_utf8_native_path_bytes() {
+        use std::os::unix::ffi::{OsStrExt as _, OsStringExt as _};
+        let native = std::ffi::OsString::from_vec(b"synthetic-\xff/project.mstream".to_vec());
+        let arguments = document_arguments(&native, None);
+        assert_eq!(arguments.project.as_os_str().as_bytes(), native.as_bytes());
+    }
+
+    #[test]
+    fn open_rejects_missing_extra_documents_workspace_and_unexpected_flags() {
+        for arguments in [
+            vec!["runtime", "open"],
+            vec!["runtime", "open", "--", "one.mstream", "two.mstream"],
+            vec!["runtime", "open", "--workspace", "workspace", "one.mstream"],
+            vec!["runtime", "open", "--project", "one.mstream"],
+            vec!["runtime", "open", "--display-name", "name", "one.mstream"],
+            vec![
+                "runtime",
+                "open",
+                "--command",
+                "command.json",
+                "one.mstream",
+            ],
+            vec!["runtime", "open", "--port", "not-a-port", "one.mstream"],
+        ] {
+            assert!(Cli::try_parse_from(arguments).is_err());
+        }
+    }
+
+    fn synthetic_bound_project(
+        root: &std::path::Path,
+    ) -> migration_stream::project_object::OpenProject {
+        let pending =
+            migration_stream::project_object::create_project(root, "Synthetic open document")
+                .unwrap();
+        migration_stream::object_workspace::establish_for_local_automation(
+            pending.workspace.root(),
+            "Synthetic open document",
+            "Synthetic selection only",
+            "Document-open proof operator",
+        )
+        .unwrap();
+        migration_stream::project_object::bind_project(pending.descriptor_path).unwrap()
+    }
+
+    fn snapshot(root: &std::path::Path) -> std::collections::BTreeMap<PathBuf, String> {
+        fn walk(
+            root: &std::path::Path,
+            path: &std::path::Path,
+            entries: &mut std::collections::BTreeMap<PathBuf, String>,
+        ) {
+            for entry in std::fs::read_dir(path).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                let metadata = std::fs::symlink_metadata(&path).unwrap();
+                let value = if metadata.file_type().is_symlink() {
+                    format!("link:{:?}", std::fs::read_link(&path).unwrap())
+                } else if metadata.is_dir() {
+                    "directory".to_owned()
+                } else {
+                    migration_stream::canonical::sha256_hex(std::fs::read(&path).unwrap())
+                };
+                entries.insert(
+                    path.strip_prefix(root).unwrap().to_path_buf(),
+                    format!("{value}:readonly={}", metadata.permissions().readonly()),
+                );
+                if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                    walk(root, &path, entries);
+                }
+            }
+        }
+        let mut entries = std::collections::BTreeMap::new();
+        walk(root, root, &mut entries);
+        entries
+    }
+
+    fn assert_open_selection_refused(
+        root: &std::path::Path,
+        document: &std::path::Path,
+        port: u16,
+    ) {
+        let before = snapshot(root);
+        assert!(
+            document_arguments(document.as_os_str(), Some(port))
+                .select()
+                .is_err()
+        );
+        assert_eq!(snapshot(root), before);
+    }
+
+    #[test]
+    fn open_selects_only_exact_bound_workspace_without_starting_runtime_or_mutating() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = synthetic_bound_project(&temp.path().join("customer readiness πελάτης"));
+        let other = synthetic_bound_project(&temp.path().join("other"));
+        let before = snapshot(temp.path());
+        let selected = document_arguments(project.descriptor_path.as_os_str(), Some(43210))
+            .select()
+            .unwrap();
+        assert_eq!(selected.project_path(), project.descriptor_path);
+        assert_eq!(
+            selected.runtime_options().workspace,
+            project.workspace.root()
+        );
+        assert_eq!(selected.runtime_options().port, 43210);
+        assert_eq!(
+            selected.expected_workspace().object_workspace.as_ref(),
+            project.lifecycle.workspace.as_ref()
+        );
+        assert_ne!(
+            selected
+                .expected_workspace()
+                .object_workspace
+                .as_ref()
+                .unwrap()
+                .workspace_id,
+            other.lifecycle.workspace.as_ref().unwrap().workspace_id
+        );
+        assert_eq!(snapshot(temp.path()), before);
+        // Deliberately stop at selection: execute_selected/start_runtime is not called.
+    }
+
+    #[test]
+    fn open_refuses_pending_missing_mismatched_and_hardlinked_descriptors_without_mutation() {
+        let temp = tempfile::tempdir().unwrap();
+        let pending = migration_stream::project_object::create_project(
+            temp.path().join("pending"),
+            "Pending open proof",
+        )
+        .unwrap();
+        assert_open_selection_refused(temp.path(), &pending.descriptor_path, 4173);
+        assert!(!pending.workspace.root().join("state.sqlite3").exists());
+        assert_open_selection_refused(
+            temp.path(),
+            &temp.path().join("missing/project.mstream"),
+            4173,
+        );
+        let project = synthetic_bound_project(&temp.path().join("bound"));
+        assert_open_selection_refused(temp.path(), &project.descriptor_path, 0);
+        let other = synthetic_bound_project(&temp.path().join("other"));
+        let original = std::fs::read(&project.descriptor_path).unwrap();
+        let mut changed = project.descriptor.clone();
+        changed.binding = other.descriptor.binding;
+        std::fs::write(
+            &project.descriptor_path,
+            serde_json::to_vec(&changed).unwrap(),
+        )
+        .unwrap();
+        assert_open_selection_refused(temp.path(), &project.descriptor_path, 4173);
+        std::fs::write(&project.descriptor_path, original).unwrap();
+        std::fs::hard_link(
+            &project.descriptor_path,
+            temp.path().join("descriptor-alias"),
+        )
+        .unwrap();
+        assert_open_selection_refused(temp.path(), &project.descriptor_path, 4173);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn open_refuses_symlinked_document_without_following_or_mutating_it() {
+        let temp = tempfile::tempdir().unwrap();
+        let project = synthetic_bound_project(&temp.path().join("bound"));
+        let retained = temp.path().join("retained-descriptor");
+        std::fs::rename(&project.descriptor_path, &retained).unwrap();
+        std::os::unix::fs::symlink(&retained, &project.descriptor_path).unwrap();
+        assert_open_selection_refused(temp.path(), &project.descriptor_path, 4173);
     }
 }
