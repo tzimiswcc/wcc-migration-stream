@@ -15,6 +15,7 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 SPEC = importlib.util.spec_from_file_location("engineering_assembler", Path(__file__).with_name("assemble-macos-engineering-app.py"))
@@ -237,6 +238,59 @@ class EngineeringAssemblyTests(unittest.TestCase):
         with self.assertRaises(assembler.AssemblyError):
             self.assemble(publisher=publication_error)
         self.assertTrue((self.destination / "Contents/Info.plist").is_file())
+        self.assert_no_stage()
+
+    def test_snapshot_streaming_global_entry_and_depth_bounds_before_verify(self):
+        # A synthetic directory iterator cannot be eagerly exhausted or descended.
+        graph = self.root / "oversized-graph"
+        graph.mkdir()
+        for name in ("a", "b"):
+            (graph / name).mkdir()
+        consumed = []
+        closed = []
+        original_scandir = os.scandir
+        def synthetic_entries(path):
+            for index in range(10000):
+                consumed.append(index)
+                if len(consumed) > 4094:
+                    raise AssertionError("enumeration consumed beyond the global budget")
+                yield type("Entry", (), {"path": str(path / f"unvisited-{index}")})()
+        @contextlib.contextmanager
+        def bounded_fixture(path):
+            if path == graph / "a":
+                iterator = synthetic_entries(path)
+                try:
+                    yield iterator
+                finally:
+                    iterator.close()
+                    closed.append(True)
+            else:
+                with original_scandir(path) as iterator:
+                    yield iterator
+        with mock.patch.object(assembler.os, "scandir", bounded_fixture):
+            with self.assertRaisesRegex(assembler.AssemblyError, "graph exceeds"):
+                self.assemble(dataclasses.replace(self.request, runtime=graph))
+        # Root + a + b reserve 3 entries; 4093 names fit, next refuses immediately.
+        self.assertEqual(len(consumed), 4094)
+        self.assertEqual(closed, [True])
+        self.assertEqual(sorted(child.name for child in graph.iterdir()), ["a", "b"])
+        self.assertEqual(list((graph / "a").iterdir()), [])
+        self.assertEqual(self.calls, [])
+        self.assertFalse(self.destination.exists())
+        self.assert_no_stage()
+
+        deep = self.root / "deep-graph"
+        deep.mkdir()
+        leaf = deep
+        for _ in range(65):
+            leaf = leaf / "d"
+            leaf.mkdir()
+        with self.assertRaisesRegex(assembler.AssemblyError, "depth exceeds"):
+            self.assemble(dataclasses.replace(self.request, runtime=deep))
+        self.assertTrue(leaf.is_dir())
+        self.assertEqual(list(leaf.iterdir()), [])
+        self.assertEqual(self.calls, [])
+        self.assertFalse(self.destination.exists())
         self.assert_no_stage()
 
     def test_bounded_thin_macho_deployment_parser(self):
