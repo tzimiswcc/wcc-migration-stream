@@ -232,3 +232,47 @@ private fixture files. No product controller, runtime, browser, native document
 event or network service is launched. These are source-process proofs, not
 native association or installer acceptance; Linux source CI does not compile
 or qualify AppKit.
+
+## Internal source composition for Open Object
+
+`native/macos/ApplicationBootstrap.swift` adds an explicit, uninvoked
+`ApplicationBootstrap.make(errorPresenter:)` factory and a retained Open Object
+coordinator. A future wrapper must retain the returned owner and separately
+call `configure(_:)` with its application. There is no automatic startup or
+`@main` entry point here. The production factory derives its runtime root only
+from `Bundle.main.resourceURL/Runtime`; a missing or invalid local resource URL
+fails before adapter construction. No environment, current-directory, `PATH`
+or selected-user-root fallback is available. The `Runtime` subtree must remain
+the existing intact verified runtime; its layout, verifier and lifecycle do not
+change.
+
+The source menu configuration is **File → Open Object…**, Command-O. Its
+asynchronous `NSOpenPanel` chooses files, refuses directories/multiple selection
+and disables alias resolution. One picker may be in flight. Cancellation or
+no selection performs no open operation; selection and presentation failure
+clear picker state. Selected URL arrays are forwarded unchanged through the
+same retained `DocumentOpenAdapter` as `application(_:open:)`. The approved
+adapter continues to enforce document/cardinality/response and object-reuse
+boundaries. This adds no New Object flow, object switching, stop-on-quit,
+error-window design or native application/association/installer qualification.
+
+Compile and run only the new injected coordinator proof with an existing
+macOS SDK and Swift 6 compiler:
+
+```sh
+xcrun swiftc -swift-version 6 -warnings-as-errors \
+  native/macos/DocumentOpenAdapter.swift \
+  native/macos/ApplicationBootstrap.swift \
+  tests/native/macos/ApplicationBootstrapTests.swift \
+  -o /absolute/private/temporary/application-bootstrap-tests
+/absolute/private/temporary/application-bootstrap-tests
+```
+
+This proof instantiates the real coordinator with injected resource URL,
+picker, adapter factory, runner, browser and error presenters. Production
+bootstrap/menu/panel composition is typechecked only: tests never construct
+`NSApplication`, `NSMenu` or `NSOpenPanel`, present UI, launch processes or use a
+real workspace/browser/native event/network runtime. The command excludes the
+older adapter/helper test driver and does not repeat its 45-second case.
+Actual application startup, document events, UI and installed behavior still
+require separate exact-artifact acceptance and platform decisions.

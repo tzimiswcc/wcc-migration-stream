@@ -68,7 +68,9 @@
     ".github/pull_request_template.md",
     ".github/workflows/public-source-ci.yml",
     "native/macos/DocumentOpenAdapter.swift",
-    "tests/native/macos/DocumentOpenAdapterTests.swift"
+    "tests/native/macos/DocumentOpenAdapterTests.swift",
+    "native/macos/ApplicationBootstrap.swift",
+    "tests/native/macos/ApplicationBootstrapTests.swift"
   ],
   "excluded": [
     "config/claude/**",
