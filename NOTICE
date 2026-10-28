@@ -44,7 +44,10 @@ Cargo.lock and web/package-lock.json are dependency-resolution metadata. The
 source candidate does not contain the crate or npm package payloads they name,
 node_modules, vendored dependency source, compiled dependency objects, or
 compiled dependency executables or libraries. The informational dependency
-SBOM therefore records the complete 503-component lock universe without
-asserting that those package payloads are distributed. Any future vendored,
+SBOM for the initial published source-only v0.1.0 baseline records its complete
+503-component lock universe without asserting that those package payloads are
+distributed. Current development candidates regenerate this informational
+inventory from their own exact lockfiles; their counts may differ and still do
+not describe shipped dependency payloads. Any future vendored,
 generated, packaged, runtime, or binary distribution requires a new
 shipped-closure and licence-obligation review.

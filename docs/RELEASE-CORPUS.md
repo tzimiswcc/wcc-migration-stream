@@ -30,9 +30,13 @@ and adapted text actually present in the selected corpus and the attributed
 SplitMix64 reference. The exact source archive contains dependency lockfiles as
 metadata but no crate or npm package payloads, `node_modules`, vendored
 dependency source, generated distribution, compiled dependency objects, or
-compiled dependency executables or libraries. The 503-component deterministic
-SBOM is therefore lock-universe evidence, not a statement that those package
-payloads are shipped. Adding any vendored, generated, packaged, runtime, or
+compiled dependency executables or libraries. The initial published source-only
+`v0.1.0` baseline's 503-component deterministic SBOM is lock-universe evidence,
+not a statement that those package payloads are shipped. Current development
+candidates regenerate the informational inventory from their own exact lockfiles
+using the [public-release route](PUBLIC-RELEASE-ROUTE.md#locked-dependency-sbom-evidence);
+their counts may differ and still do not describe shipped dependency payloads.
+Adding any vendored, generated, packaged, runtime, or
 binary material requires a new closure and licence-obligation review.
 
 In the private development repository, routine pull requests limited to
