@@ -185,3 +185,41 @@ No external-system connection, target write, external transmission, deployment o
 release capability is added by this bundle. All current multi-entity work
 remains read-only after First Issues/Compared Validation; multi-entity
 Decisions, Reconciliation and Package authority are not implemented.
+
+## Source-only macOS document adapter
+
+`native/macos/DocumentOpenAdapter.swift` is an `NSApplicationDelegate` adapter
+for a future native wrapper. Its caller must provide the trusted intact runtime
+bundle subtree. It accepts one local document URL per event and invokes only
+the fixed `libexec/migration-stream-local-runtime` executable with
+`open`, `--`, and the exact losslessly represented document path. It clears the
+child environment and accepts no port or workspace override.
+
+Events are serialized; an in-flight request is refused. After a validated
+successful controller response, a different document is refused rather than
+switching objects. Repeated opens of the same document use the existing
+controller and its ownership guards. Browser presentation is allowed only for
+the exact successful CLI/status schemas, `OWNED` classification and
+`http://127.0.0.1:4173` address. The runner works off the UI actor, caps each
+output stream at 64 KiB and waits at most 45 seconds plus bounded cleanup.
+
+This is source preparation only: it creates no `.app`, `Info.plist`, document
+UTI, OS association, installer, signing identity, minimum-OS decision or
+platform-support claim. The existing bundle verifier and lifecycle are unchanged.
+The caller's native wrapper and real document events still require separate
+implementation and exact-artifact acceptance.
+
+With an existing macOS AppKit SDK and Swift 6 compiler, run the injected-only
+source proof without starting an application, controller process or browser:
+
+```sh
+xcrun swiftc -swift-version 6 -warnings-as-errors \
+  native/macos/DocumentOpenAdapter.swift \
+  tests/native/macos/DocumentOpenAdapterTests.swift \
+  -o /absolute/private/temporary/document-open-adapter-tests
+/absolute/private/temporary/document-open-adapter-tests
+```
+
+These tests call the real handler with injected process/browser/error functions.
+They establish source behavior, not native association or installer acceptance;
+Linux source CI does not compile or qualify AppKit.

@@ -41,6 +41,11 @@ TEXT_SUFFIXES = {
     ".yaml",
     ".yml",
 }
+# Only these reviewed Swift sources are classified as UTF-8; no generic suffix approval.
+SWIFT_TEXT_PATHS = {
+    "native/macos/DocumentOpenAdapter.swift",
+    "tests/native/macos/DocumentOpenAdapterTests.swift",
+}
 TEXT_FILENAMES = {
     ".gitattributes",
     ".gitignore",
@@ -193,7 +198,12 @@ def archive_magic(data: bytes) -> bool:
 def text_name_allowed(name: str) -> bool:
     path = PurePosixPath(name)
     # This reviewed local asset is UTF-8 source text; other SVG paths remain unapproved.
-    return name == "web/src/favicon.svg" or path.name in TEXT_FILENAMES or path.suffix.lower() in TEXT_SUFFIXES
+    return (
+        name in SWIFT_TEXT_PATHS
+        or name == "web/src/favicon.svg"
+        or path.name in TEXT_FILENAMES
+        or path.suffix.lower() in TEXT_SUFFIXES
+    )
 
 
 def archive_texts(path: Path) -> list[tuple[str, str]]:
