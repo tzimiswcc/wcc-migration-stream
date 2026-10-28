@@ -78,6 +78,12 @@ def main() -> int:
     for filename in (".gitattributes", ".gitignore", "CODEOWNERS", "LICENSE", "NOTICE"):
         assert gate.text_name_allowed(filename)
     assert not gate.text_name_allowed("DEPENDENCY-NOTICES")
+    swift_paths = ["native/macos/DocumentOpenAdapter.swift", "tests/native/macos/DocumentOpenAdapterTests.swift"]
+    for name in swift_paths:
+        assert gate.text_name_allowed(name), name
+    for name in ("native/macos/Unreviewed.swift", "tests/native/macos/Extra.swift", "private/DocumentOpenAdapter.swift", "native/macos/DocumentOpenAdapter.SWIFT"):
+        assert not gate.text_name_allowed(name), name
+
     assert gate.text_name_allowed("web/src/favicon.svg")
     for name in ("web/src/unreviewed.svg", "assets/favicon.svg", "favicon.svg", "web/src/favicon.SVG"):
         assert not gate.text_name_allowed(name), name
@@ -87,7 +93,7 @@ def main() -> int:
         (root / "config").mkdir()
         (root / "fixtures").mkdir()
         (root / "config" / "release-corpus.json").write_text(
-            json.dumps({"include": ["fixtures/**", "web/**"], "excluded": []}), encoding="utf-8"
+            json.dumps({"include": ["fixtures/**", "web/**", *swift_paths], "excluded": []}), encoding="utf-8"
         )
 
         asset = root / "web/src/favicon.svg"
@@ -99,6 +105,18 @@ def main() -> int:
         unreviewed.write_bytes(asset.read_bytes())
         result, output = invoke(root, ["web/src/unreviewed.svg"])
         assert result == 1 and "selected file has no approved text name" in output, output
+
+        for name in swift_paths:
+            swift = root / name
+            swift.parent.mkdir(parents=True, exist_ok=True)
+            swift.write_text('let title = "Synthetic document"\n', encoding="utf-8")
+            result, output = invoke(root, [name])
+            assert result == 0, output
+            for data, reason in ((b"\xff", "not UTF-8"), (b"let x = 1\x00", "forbidden Unicode controls"), (b"PK\x03\x04payload", "archive bytes")):
+                swift.write_bytes(data)
+                result, output = invoke(root, [name])
+                assert result == 1 and reason in output, output
+            swift.write_text("let value = 1\n", encoding="utf-8")
 
         valid = root / "fixtures" / "customer-accounts.zip"
         write_zip(valid, [("customer_accounts.csv", b"account_id,name\n1,Ada\n")])
