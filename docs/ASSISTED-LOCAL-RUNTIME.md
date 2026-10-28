@@ -64,6 +64,24 @@ attribution; these fields grant no profile approval authority. After success,
 use the returned `descriptorPath` for inspection and runtime commands. Inspect
 is read-only. Open the exact loopback URL printed by `start`.
 
+The existing controller also accepts a single-document open invocation for a
+trusted caller. Pass one final bound descriptor after `--` so its native path
+remains one argument, including spaces or shell metacharacters:
+
+```sh
+./migration-stream-local open --port 4173 -- "/absolute/private/projects/customer readiness/project.mstream"
+```
+
+`open` validates the same bound project and delegates to the existing verified
+runtime start. The port defaults to 4173. It returns the existing runtime status
+and loopback URL; it does not launch a browser. A pending, missing, altered,
+linked or mismatched descriptor is refused without initialization or binding.
+It accepts one project document, no workspace alternative or metadata overrides.
+Owned-runtime reuse, writer isolation and foreign-listener refusal remain the
+existing lifecycle's responsibility. This source entry point prepares a future
+file-open adapter; it does not register an OS file association, provide an
+installer or establish native file-open qualification or platform support.
+
 Stop, then reopen the same object using its final descriptor and the same port:
 
 ```sh
