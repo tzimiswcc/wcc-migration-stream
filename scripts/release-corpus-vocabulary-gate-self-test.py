@@ -78,10 +78,21 @@ def main() -> int:
     for filename in (".gitattributes", ".gitignore", "CODEOWNERS", "LICENSE", "NOTICE"):
         assert gate.text_name_allowed(filename)
     assert not gate.text_name_allowed("DEPENDENCY-NOTICES")
-    swift_paths = ["native/macos/DocumentOpenAdapter.swift", "tests/native/macos/DocumentOpenAdapterTests.swift"]
+    swift_paths = [
+        "native/macos/DocumentOpenAdapter.swift",
+        "tests/native/macos/DocumentOpenAdapterTests.swift",
+        "native/macos/ApplicationBootstrap.swift",
+        "tests/native/macos/ApplicationBootstrapTests.swift",
+    ]
     for name in swift_paths:
         assert gate.text_name_allowed(name), name
-    for name in ("native/macos/Unreviewed.swift", "tests/native/macos/Extra.swift", "private/DocumentOpenAdapter.swift", "native/macos/DocumentOpenAdapter.SWIFT"):
+    for name in (
+        "native/macos/Unreviewed.swift", "tests/native/macos/Extra.swift",
+        "private/DocumentOpenAdapter.swift", "native/macos/DocumentOpenAdapter.SWIFT",
+        "native/macos/ApplicationBootstrapExtra.swift",
+        "tests/native/macos/ApplicationBootstrapExtraTests.swift",
+        "native/macos/ApplicationBootstrap.SWIFT",
+    ):
         assert not gate.text_name_allowed(name), name
 
     assert gate.text_name_allowed("web/src/favicon.svg")

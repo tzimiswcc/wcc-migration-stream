@@ -45,6 +45,8 @@ TEXT_SUFFIXES = {
 SWIFT_TEXT_PATHS = {
     "native/macos/DocumentOpenAdapter.swift",
     "tests/native/macos/DocumentOpenAdapterTests.swift",
+    "native/macos/ApplicationBootstrap.swift",
+    "tests/native/macos/ApplicationBootstrapTests.swift",
 }
 TEXT_FILENAMES = {
     ".gitattributes",
