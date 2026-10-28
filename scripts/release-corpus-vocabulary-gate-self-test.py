@@ -83,6 +83,7 @@ def main() -> int:
         "tests/native/macos/DocumentOpenAdapterTests.swift",
         "native/macos/ApplicationBootstrap.swift",
         "tests/native/macos/ApplicationBootstrapTests.swift",
+        "native/macos/MigrationStreamApplication.swift",
     ]
     for name in swift_paths:
         assert gate.text_name_allowed(name), name
@@ -92,6 +93,9 @@ def main() -> int:
         "native/macos/ApplicationBootstrapExtra.swift",
         "tests/native/macos/ApplicationBootstrapExtraTests.swift",
         "native/macos/ApplicationBootstrap.SWIFT",
+        "native/macos/MigrationStreamApplicationExtra.swift",
+        "native/macos/MigrationStreamApplication.SWIFT",
+        "private/MigrationStreamApplication.swift",
     ):
         assert not gate.text_name_allowed(name), name
 

@@ -47,6 +47,7 @@ SWIFT_TEXT_PATHS = {
     "tests/native/macos/DocumentOpenAdapterTests.swift",
     "native/macos/ApplicationBootstrap.swift",
     "tests/native/macos/ApplicationBootstrapTests.swift",
+    "native/macos/MigrationStreamApplication.swift",
 }
 TEXT_FILENAMES = {
     ".gitattributes",
