@@ -35,7 +35,7 @@ final class DocumentOpenAdapter: NSObject, NSApplicationDelegate {
     },
     errorPresenter: @escaping @MainActor (Failure) -> Void
   ) throws {
-    let root = try Self.nativePath(trustedRuntimeRoot)
+    let root = try Self.nativePath(trustedRuntimeRoot, allowDirectorySeparator: true)
     executable = URL(fileURLWithPath: root, isDirectory: true)
       .appendingPathComponent("libexec", isDirectory: true)
       .appendingPathComponent("migration-stream-local-runtime", isDirectory: false)
@@ -81,7 +81,8 @@ final class DocumentOpenAdapter: NSObject, NSApplicationDelegate {
     }
   }
 
-  private static func nativePath(_ url: URL) throws -> String {
+  private static func nativePath(_ url: URL, allowDirectorySeparator: Bool = false) throws -> String
+  {
     guard url.baseURL == nil, url.isFileURL,
       let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
       components.host == nil || components.host == "",
@@ -90,12 +91,18 @@ final class DocumentOpenAdapter: NSObject, NSApplicationDelegate {
       let path = components.percentEncodedPath.removingPercentEncoding,
       path.hasPrefix("/"), !path.utf8.contains(0)
     else { throw Failure.invalidDocument }
+    // Foundation omits a directory URL's terminal marker from its native form.
+    // Permit that marker only on the trusted runtime root; never rewrite documents.
+    var nativePath = path
+    if allowDirectorySeparator && url.hasDirectoryPath && path != "/" && path.hasSuffix("/") {
+      nativePath.removeLast()
+    }
     let native = url.withUnsafeFileSystemRepresentation { pointer -> Data? in
       guard let pointer else { return nil }
       return Data(bytes: pointer, count: strlen(pointer))
     }
-    guard native == Data(path.utf8) else { throw Failure.invalidDocument }
-    return path
+    guard native == Data(nativePath.utf8) else { throw Failure.invalidDocument }
+    return nativePath
   }
 
   private struct Envelope: Decodable {

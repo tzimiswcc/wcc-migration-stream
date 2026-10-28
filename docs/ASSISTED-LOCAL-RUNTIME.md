@@ -209,8 +209,8 @@ platform-support claim. The existing bundle verifier and lifecycle are unchanged
 The caller's native wrapper and real document events still require separate
 implementation and exact-artifact acceptance.
 
-With an existing macOS AppKit SDK and Swift 6 compiler, run the injected-only
-source proof without starting an application, controller process or browser:
+With an existing macOS AppKit SDK and Swift 6 compiler, run the source proof
+suite without starting an application, product controller or browser:
 
 ```sh
 xcrun swiftc -swift-version 6 -warnings-as-errors \
@@ -220,6 +220,15 @@ xcrun swiftc -swift-version 6 -warnings-as-errors \
 /absolute/private/temporary/document-open-adapter-tests
 ```
 
-These tests call the real handler with injected process/browser/error functions.
-They establish source behavior, not native association or installer acceptance;
-Linux source CI does not compile or qualify AppKit.
+Nine proof groups call the real handler with injected process/browser/error
+functions. Seven additional cases exercise the unchanged production Foundation
+`Process` runner against a private copy of the test executable acting only as a
+synthetic helper, with browser/error presentation injected. Helpers self-expire
+after 50 seconds, and the whole test executable has a 70-second fail-safe. The
+suite includes one real 45-second deadline and bounded cleanup case, output
+caps, pipe backpressure, exact native arguments and a fixed sentinel checking
+that a parent-only environment variable is absent. It removes its own
+private fixture files. No product controller, runtime, browser, native document
+event or network service is launched. These are source-process proofs, not
+native association or installer acceptance; Linux source CI does not compile
+or qualify AppKit.
