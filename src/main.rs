@@ -164,6 +164,12 @@ enum ProjectCommand {
         #[arg(long)]
         project: PathBuf,
     },
+    /// Explicitly resume only the exact retained interrupted initialization.
+    /// Leaves project binding as a separate operation.
+    ResumeInitialization {
+        #[arg(long)]
+        project: PathBuf,
+    },
     /// Explicitly bind a pending receipt to its already active workspace.
     Bind {
         #[arg(long)]
@@ -576,6 +582,9 @@ fn project_failure(
         "INITIALIZE" => {
             "Inspect the retained pending descriptor and use the existing explicit workspace initialization/recovery workflow, then project bind. Retrying create does not resume it."
         }
+        "RESUME_INITIALIZATION" => {
+            "Inspect the retained project and lifecycle. Resume only its exact pending initialization explicitly after resolving the reported failure; bind separately when active."
+        }
         _ => {
             "Inspect the retained pending or final descriptor. Binding requires an active workspace; use project bind explicitly if final publication is still pending."
         }
@@ -640,6 +649,39 @@ fn project_response(
             Some(project.descriptor_path.clone()),
         )
     })
+}
+
+fn resume_project_initialization(project: &std::path::Path) -> CommandResult<serde_json::Value> {
+    let directory = project.parent().unwrap_or(std::path::Path::new("."));
+    let failure = |cause| {
+        project_failure(
+            cause,
+            "RESUME_INITIALIZATION",
+            directory,
+            Some(project.to_path_buf()),
+        )
+    };
+    let pending = open_project(project).map_err(failure)?;
+    let command = pending
+        .lifecycle
+        .pending_command
+        .as_ref()
+        .filter(|command| {
+            pending.descriptor.binding.is_none()
+                && pending.lifecycle.state == ObjectWorkspaceState::InitializeRequired
+                && command.schema_version == INITIALIZE_OBJECT_WORKSPACE_COMMAND_SCHEMA
+        })
+        .ok_or_else(|| {
+            failure(KernelError::Conflict(
+                "project has no exact interrupted initialization to resume; inspect its lifecycle"
+                    .to_owned(),
+            ))
+        })?;
+    // The service retains the original command/CAS/key and owns the writer lock.
+    // Never rebuild the command from current state or silently bind the project.
+    pending.workspace.initialize(command).map_err(failure)?;
+    let active = open_project(project).map_err(failure)?;
+    project_response(&active, "RESUME_INITIALIZATION")
 }
 
 fn execute_project(command: ProjectCommand) -> CommandResult<serde_json::Value> {
@@ -709,6 +751,7 @@ fn execute_project(command: ProjectCommand) -> CommandResult<serde_json::Value> 
             project_response(&bound, "BIND")
         }
         ProjectCommand::Inspect { project } => Ok(project_view(&open_project(project)?)?),
+        ProjectCommand::ResumeInitialization { project } => resume_project_initialization(&project),
         ProjectCommand::Bind { project } => {
             let directory = project
                 .parent()
