@@ -127,11 +127,16 @@ final class ApplicationBootstrap {
   let coordinator: OpenObjectCoordinator
   private init(_ coordinator: OpenObjectCoordinator) { self.coordinator = coordinator }
 
+  /// Resolve only platform Bundle metadata; callers still validate the absolute file URL.
+  static func resourceURL(in bundle: Bundle) -> URL? {
+    bundle.resourceURL?.absoluteURL
+  }
+
   static func make(errorPresenter: @escaping OpenObjectCoordinator.ErrorPresenter) throws
     -> ApplicationBootstrap
   {
     let coordinator = try OpenObjectCoordinator(
-      resourceURL: Bundle.main.resourceURL, errorPresenter: errorPresenter)
+      resourceURL: resourceURL(in: .main), errorPresenter: errorPresenter)
     return ApplicationBootstrap(coordinator)
   }
 
