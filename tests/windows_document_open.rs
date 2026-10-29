@@ -430,7 +430,7 @@ mod native_projection {
 mod process_owner_tests {
     use super::*;
     use document_open::process_owner::{Backend, Child, Owner, Read};
-    use std::time::Duration;
+    use std::{cell::Cell, time::Duration};
 
     #[derive(Clone, Copy)]
     enum Event {
@@ -445,6 +445,9 @@ mod process_owner_tests {
         exit: Result<Option<i32>, OperationFailed>,
         killed_exit: bool,
         state: Rc<RefCell<State>>,
+        elapsed: Rc<Cell<Duration>>,
+        read_delay: [Duration; 2],
+        poll_delay: Duration,
     }
     #[derive(Default)]
     struct State {
@@ -454,13 +457,16 @@ mod process_owner_tests {
         invocations: Vec<ControllerInvocation>,
     }
     struct FakeBackend {
-        elapsed: Duration,
+        elapsed: Rc<Cell<Duration>>,
+        spawn_delay: Duration,
         state: Rc<RefCell<State>>,
         child: Option<FakeChild>,
     }
     impl Child for FakeChild {
         fn read(&mut self, stderr: bool, buffer: &mut [u8; 4096]) -> Result<Read, OperationFailed> {
             let index = usize::from(stderr);
+            self.elapsed
+                .set(self.elapsed.get() + std::mem::take(&mut self.read_delay[index]));
             self.state.borrow_mut().reads[index] += 1;
             match self.streams[index].pop_front().unwrap_or(self.fallback) {
                 Event::Pending => Ok(Read::Pending),
@@ -473,6 +479,8 @@ mod process_owner_tests {
             }
         }
         fn poll(&mut self) -> Result<Option<i32>, OperationFailed> {
+            self.elapsed
+                .set(self.elapsed.get() + std::mem::take(&mut self.poll_delay));
             self.exit
         }
         fn kill(&mut self) -> Result<(), OperationFailed> {
@@ -491,15 +499,16 @@ mod process_owner_tests {
             &mut self,
             invocation: &ControllerInvocation,
         ) -> Result<FakeChild, OperationFailed> {
+            self.elapsed.set(self.elapsed.get() + self.spawn_delay);
             self.state.borrow_mut().spawns += 1;
             self.state.borrow_mut().invocations.push(invocation.clone());
             self.child.take().ok_or(OperationFailed)
         }
         fn now(&self) -> Duration {
-            self.elapsed
+            self.elapsed.get()
         }
         fn sleep(&mut self, duration: Duration) {
-            self.elapsed += duration;
+            self.elapsed.set(self.elapsed.get() + duration);
         }
     }
     fn fixture(
@@ -517,7 +526,11 @@ mod process_owner_tests {
             .unwrap();
         let invocation = calls.borrow().processes[0].0.clone();
         let state = Rc::new(RefCell::new(State::default()));
+        let elapsed = Rc::new(Cell::new(Duration::ZERO));
         let child = FakeChild {
+            elapsed: elapsed.clone(),
+            read_delay: [Duration::ZERO; 2],
+            poll_delay: Duration::ZERO,
             streams: streams.map(VecDeque::from),
             fallback,
             exit,
@@ -526,7 +539,8 @@ mod process_owner_tests {
         };
         (
             Owner::new(FakeBackend {
-                elapsed: Duration::ZERO,
+                elapsed,
+                spawn_delay: Duration::ZERO,
                 state: state.clone(),
                 child: Some(child),
             }),
@@ -583,7 +597,7 @@ mod process_owner_tests {
             let (mut owner, state, invocation) = fixture(streams, Event::Pending, Ok(None), true);
             assert!(run(&mut owner, &invocation).is_err());
             assert_eq!(state.borrow().kills, 1);
-            assert!(owner.backend.elapsed < Duration::from_secs(1));
+            assert!(owner.backend.elapsed.get() < Duration::from_secs(1));
         }
     }
     #[test]
@@ -599,7 +613,7 @@ mod process_owner_tests {
         let (mut owner, state, invocation) =
             fixture([vec![], vec![]], Event::Closed, Ok(None), true);
         assert!(run(&mut owner, &invocation).is_err());
-        assert_eq!(owner.backend.elapsed, Duration::from_secs(45));
+        assert_eq!(owner.backend.elapsed.get(), Duration::from_secs(45));
         assert_eq!(state.borrow().kills, 1);
     }
     #[test]
@@ -607,7 +621,7 @@ mod process_owner_tests {
         let (mut owner, state, invocation) =
             fixture([vec![], vec![]], Event::Pending, Ok(Some(0)), true);
         assert!(run(&mut owner, &invocation).is_err());
-        assert_eq!(owner.backend.elapsed, Duration::from_secs(45));
+        assert_eq!(owner.backend.elapsed.get(), Duration::from_secs(45));
         assert_eq!(state.borrow().kills, 0);
     }
     #[test]
@@ -643,7 +657,7 @@ mod process_owner_tests {
             false,
         );
         assert!(run(&mut owner, &invocation).is_err());
-        assert_eq!(owner.backend.elapsed, Duration::from_secs(2));
+        assert_eq!(owner.backend.elapsed.get(), Duration::from_secs(2));
         assert!(run(&mut owner, &invocation).is_err());
         assert_eq!(state.borrow().spawns, 1);
         assert_eq!(state.borrow().kills, 1);
@@ -655,7 +669,7 @@ mod process_owner_tests {
         let (mut owner, state, invocation) =
             fixture([vec![], vec![]], Event::Pending, Ok(None), false);
         assert!(run(&mut owner, &invocation).is_err());
-        assert_eq!(owner.backend.elapsed, Duration::from_secs(47));
+        assert_eq!(owner.backend.elapsed.get(), Duration::from_secs(47));
         assert!(run(&mut owner, &invocation).is_err());
         assert_eq!((state.borrow().spawns, state.borrow().kills), (1, 1));
     }
@@ -686,6 +700,61 @@ mod process_owner_tests {
             assert_eq!(state.borrow().kills, 1);
         }
     }
+    #[test]
+    fn owner_late_read_result_refuses_before_next_capture_operation() {
+        for stream in 0..2 {
+            for seconds in [45, 46] {
+                let (mut owner, state, invocation) =
+                    fixture([vec![], vec![]], Event::Closed, Ok(Some(0)), true);
+                owner.backend.child.as_mut().unwrap().read_delay[stream] =
+                    Duration::from_secs(seconds);
+                assert!(run(&mut owner, &invocation).is_err());
+                assert_eq!(
+                    state.borrow().reads,
+                    if stream == 0 { [1, 0] } else { [1, 1] }
+                );
+                assert_eq!(state.borrow().kills, 0); // cleanup observes the already-exited child
+            }
+        }
+    }
+
+    #[test]
+    fn owner_late_exit_poll_result_cannot_be_success() {
+        for seconds in [45, 46] {
+            let (mut owner, state, invocation) =
+                fixture([vec![], vec![]], Event::Closed, Ok(Some(0)), true);
+            owner.backend.child.as_mut().unwrap().poll_delay = Duration::from_secs(seconds);
+            assert!(run(&mut owner, &invocation).is_err());
+            assert_eq!(state.borrow().reads, [1, 1]);
+            assert_eq!(state.borrow().kills, 0);
+        }
+    }
+
+    #[test]
+    fn owner_slow_spawn_counts_against_capture_budget() {
+        for seconds in [45, 46] {
+            let (mut owner, state, invocation) =
+                fixture([vec![], vec![]], Event::Closed, Ok(None), true);
+            owner.backend.spawn_delay = Duration::from_secs(seconds);
+            assert!(run(&mut owner, &invocation).is_err());
+            assert_eq!(state.borrow().reads, [0, 0]);
+            assert_eq!((state.borrow().spawns, state.borrow().kills), (1, 1));
+        }
+    }
+
+    #[test]
+    fn owner_delayed_calls_within_budget_still_complete() {
+        let (mut owner, state, invocation) =
+            fixture([vec![], vec![]], Event::Closed, Ok(Some(0)), true);
+        owner.backend.spawn_delay = Duration::from_secs(10);
+        let child = owner.backend.child.as_mut().unwrap();
+        child.read_delay = [Duration::from_secs(10); 2];
+        child.poll_delay = Duration::from_millis(14_999);
+        assert_eq!(run(&mut owner, &invocation).unwrap().exit_code, 0);
+        assert_eq!(owner.backend.elapsed.get(), Duration::from_millis(44_999));
+        assert_eq!(state.borrow().kills, 0);
+    }
+
     #[cfg(windows)]
     #[test]
     fn owner_native_owner_construction_has_no_process_side_effect() {

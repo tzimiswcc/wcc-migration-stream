@@ -312,21 +312,35 @@ pub(crate) mod process_owner {
             result
         }
 
+        fn check_deadline(&self, start: Duration) -> Result<(), OperationFailed> {
+            if self.backend.now().saturating_sub(start) >= DEADLINE {
+                Err(OperationFailed)
+            } else {
+                Ok(())
+            }
+        }
+
         fn capture(&mut self, start: Duration) -> Result<ControllerOutput, OperationFailed> {
             let mut streams = [Vec::new(), Vec::new()];
             let mut closed = [false, false];
             let mut exit = None;
             loop {
-                if self.backend.now().saturating_sub(start) >= DEADLINE {
-                    return Err(OperationFailed);
-                }
-                let child = self.retained.as_mut().ok_or(OperationFailed)?;
+                self.check_deadline(start)?;
                 for index in 0..2 {
                     if closed[index] {
                         continue;
                     }
+                    self.check_deadline(start)?;
                     let mut buffer = [0; 4096];
-                    match child.read(index == 1, &mut buffer)? {
+                    let read = self
+                        .retained
+                        .as_mut()
+                        .ok_or(OperationFailed)?
+                        .read(index == 1, &mut buffer)?;
+                    // An OS call cannot be interrupted here, but once it
+                    // returns its known-late result must never be admitted.
+                    self.check_deadline(start)?;
+                    match read {
                         Read::Pending => {}
                         Read::Closed => closed[index] = true,
                         Read::Bytes(count) => {
@@ -343,9 +357,13 @@ pub(crate) mod process_owner {
                 // Even a flood on both streams cannot postpone the deadline or
                 // exit poll. An exited parent with inherited open pipes still
                 // has a finite capture deadline, with no reader-thread join.
+                self.check_deadline(start)?;
                 if exit.is_none() {
-                    exit = child.poll()?;
+                    let observed = self.retained.as_mut().ok_or(OperationFailed)?.poll()?;
+                    self.check_deadline(start)?;
+                    exit = observed;
                 }
+                self.check_deadline(start)?;
                 if let Some(exit_code) = exit
                     && closed == [true, true]
                 {
