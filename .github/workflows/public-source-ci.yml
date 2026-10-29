@@ -62,10 +62,16 @@ jobs:
       - name: Test synthetic document-open coordination and native argument projection
         shell: pwsh
         run: cargo +1.99.1 test --locked --test windows_document_open
+      - name: Test fixed browser request and COM policy with injected calls only
+        shell: pwsh
+        run: cargo +1.99.1 test --locked -p migration-stream-windows-native browser_submission_tests
       - name: Test only synthetic native Windows controller processes
         timeout-minutes: 3
         shell: pwsh
         run: cargo +1.99.1 test --locked --test windows_process_owner_native
-      - name: Check only the Windows document-open source target with strict Clippy
+      - name: Check Windows document-open integration and engineering launcher with strict Clippy
         shell: pwsh
-        run: cargo +1.99.1 clippy --locked --test windows_document_open -- -D warnings
+        run: cargo +1.99.1 clippy --locked --test windows_document_open --bin migration-stream-document-open -- -D warnings
+      - name: Check native browser test projection with strict Clippy
+        shell: pwsh
+        run: cargo +1.99.1 clippy --locked -p migration-stream-windows-native --tests -- -D warnings
