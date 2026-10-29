@@ -1,0 +1,9 @@
+# Source template only. Do not install before all bindings are reviewed.
+[Desktop Entry]
+Type=Application
+Name=Migration Stream
+Comment=Open a bound Migration Stream object
+Exec=@ABSOLUTE_PYTHON@ -I @ABSOLUTE_BOOTSTRAP@ %f
+Terminal=false
+NoDisplay=true
+DBusActivatable=false
