@@ -281,7 +281,8 @@ from local non-Windows source checks.
 
 The separate `windows-engineering-layout-qualification.yml` workflow is manual
 only. It requires the exact reviewed source commit as an input and checks it
-against both the event SHA and checkout. GitHub requires this workflow to exist
+against both the event SHA and checkout. A mismatched event/attempt skips the
+job before tool setup. GitHub requires this workflow to exist
 on the default branch before dispatch; once present, a reviewed branch can be
 selected with `--ref`. See [GitHub's manual-run contract][manual-workflow]. Source
 review, merge, and earlier synthetic CI do not qualify this new build workflow

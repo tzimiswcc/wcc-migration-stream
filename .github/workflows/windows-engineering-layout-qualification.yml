@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   engineering-files:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.sha == inputs.expected_source_commit && github.run_attempt == 1 }}
     runs-on: windows-2025
     timeout-minutes: 45
     env:
