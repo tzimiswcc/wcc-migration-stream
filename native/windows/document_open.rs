@@ -16,6 +16,10 @@ pub struct WindowsPath(Vec<u16>);
 impl WindowsPath {
     /// Accept a drive-absolute or UNC native path without rewriting any units.
     /// Device/extended namespaces and normalization-dependent names are refused.
+    ///
+    /// # Errors
+    /// Returns `Failure::InvalidPath` when units exceed the lexical bound or
+    /// use a relative, unsupported namespace or otherwise refused path form.
     pub fn from_units(units: Vec<u16>) -> Result<Self, Failure> {
         let drive = units.len() >= 4
             && matches!(units[0], 65..=90 | 97..=122)
@@ -47,6 +51,11 @@ impl WindowsPath {
     }
 
     #[cfg(windows)]
+    /// Retain the original native UTF-16 path units.
+    ///
+    /// # Errors
+    /// Returns `Failure::InvalidPath` for the same lexical refusals as
+    /// `WindowsPath::from_units`; no normalization or lossy conversion occurs.
     pub fn from_native(path: &std::ffi::OsStr) -> Result<Self, Failure> {
         use std::os::windows::ffi::OsStrExt;
         Self::from_units(path.encode_wide().collect())
@@ -115,6 +124,11 @@ pub struct ControllerOutput {
 /// Enforce the supplied limits while draining both pipes, use no inherited
 /// environment or stdin, and bound cleanup to the directly owned child.
 pub trait ControllerRunner {
+    /// Execute one supplied fixed controller invocation within the given bounds.
+    ///
+    /// # Errors
+    /// Returns `OperationFailed` if execution, bounded capture or directly owned
+    /// child cleanup cannot be established. Raw process errors are not exposed.
     fn run(
         &mut self,
         invocation: &ControllerInvocation,
@@ -134,6 +148,11 @@ impl BrowserDestination {
 }
 
 pub trait Browser {
+    /// Submit the typed fixed destination to the configured presenter.
+    ///
+    /// # Errors
+    /// Returns `OperationFailed` if submission fails; success does not establish
+    /// completed URI handoff or rendering.
     fn open(&mut self, destination: BrowserDestination) -> Result<(), OperationFailed>;
 }
 
@@ -145,6 +164,11 @@ pub struct DocumentOpenCoordinator<R, B> {
 }
 
 impl<R: ControllerRunner, B: Browser> DocumentOpenCoordinator<R, B> {
+    /// Construct a coordinator using only the supplied trusted runtime root.
+    ///
+    /// # Errors
+    /// Returns `Failure::InvalidPath` if the derived fixed controller path does
+    /// not fit the accepted lexical path form or length bound.
     pub fn new(runtime_root: WindowsPath, runner: R, browser: B) -> Result<Self, Failure> {
         let mut executable = runtime_root.0;
         executable.extend("\\libexec\\migration-stream-local-runtime.exe".encode_utf16());
@@ -158,6 +182,11 @@ impl<R: ControllerRunner, B: Browser> DocumentOpenCoordinator<R, B> {
 
     /// Exclusive mutable access serializes calls. One successful document stays
     /// pinned even if browser presentation fails; there is no object switching.
+    ///
+    /// # Errors
+    /// Refuses invalid cardinality, a different pinned document, controller
+    /// failure, an invalid response or browser submission failure. A browser
+    /// failure retains the document pin established by a validated response.
     pub fn open_documents(&mut self, documents: &[WindowsPath]) -> Result<(), Failure> {
         let [document] = documents else {
             return Err(Failure::InvalidDocument);
@@ -491,6 +520,11 @@ pub enum LauncherFailure {
 /// image pinning. The operator must already trust the launcher and runtime.
 pub trait EngineeringLayoutChecks {
     type Held;
+    /// Retain the exact launcher/layout metadata for the operation's lifetime.
+    ///
+    /// # Errors
+    /// Returns `OperationFailed` if required metadata cannot be retained or its
+    /// identity checks fail. This does not authenticate a publisher or spawn image.
     fn retain(
         &mut self,
         executable: &WindowsPath,
@@ -502,6 +536,11 @@ pub trait EngineeringLayoutChecks {
 
 /// The executable and operands are native UTF-16 from the real entrypoint.
 /// Unsupported current-executable namespaces refuse without prefix stripping.
+///
+/// # Errors
+/// Returns `Arguments` for invalid document cardinality/path, `Layout` for an
+/// unsupported executable/layout or failed metadata retention, and `Open` for
+/// the existing coordinator's controller/response/browser refusals.
 pub fn open_engineering_document<R: ControllerRunner, B: Browser, L: EngineeringLayoutChecks>(
     executable_units: Vec<u16>,
     operands: Vec<Vec<u16>>,
