@@ -67,6 +67,8 @@
     ".github/ISSUE_TEMPLATE/proposal.yml",
     ".github/pull_request_template.md",
     ".github/workflows/public-source-ci.yml",
+    ".github/workflows/windows-engineering-layout-qualification.yml",
+    "scripts/windows-engineering-qualification-self-test.py",
     "native/macos/DocumentOpenAdapter.swift",
     "tests/native/macos/DocumentOpenAdapterTests.swift",
     "native/macos/ApplicationBootstrap.swift",

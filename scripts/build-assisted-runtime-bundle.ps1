@@ -5,11 +5,15 @@ param(
     [switch]$NoArchive,
     [ValidateSet('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc')][string]$Target,
     [string]$RetainedBuildRoot,
-    [string]$AssemblerResultFile
+    [string]$AssemblerResultFile,
+    [switch]$RetainEngineeringTools
 )
 
 # Build-time only. The unpacked Windows runtime has no build-tool dependency.
 $ErrorActionPreference = 'Stop'
+if ($RetainEngineeringTools -and -not $RetainedBuildRoot) {
+    throw '-RetainEngineeringTools requires an explicit retained private build root'
+}
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if (-not ('MigrationStreamBundleBuildDirectoryIdentity' -as [type])) {
     Add-Type -TypeDefinition @'
@@ -98,11 +102,20 @@ function Get-PrivateDirectoryAuthority([string]$Path) {
     }
 }
 
+function Get-PrivateReleaseBinaryNames([switch]$IncludeEngineeringTools) {
+    $names = @('migration-stream-local-runtime.exe', 'migration-stream.exe', 'migration-stream-workbench.exe', 'migration-stream-bundle.exe')
+    if ($IncludeEngineeringTools) {
+        $names += @('migration-stream-document-open.exe', 'migration-stream-windows-engineering-layout.exe')
+    }
+    return $names
+}
+
 function Copy-PrivateReleaseBinaries {
     param(
         [Parameter(Mandatory = $true)][string]$SourceRoot,
         [Parameter(Mandatory = $true)][string]$SourceBoundaryRoot,
-        [Parameter(Mandatory = $true)][string]$DestinationRoot
+        [Parameter(Mandatory = $true)][string]$DestinationRoot,
+        [switch]$IncludeEngineeringTools
     )
 
     $sourceRootItem = Get-Item -LiteralPath $SourceRoot -Force
@@ -140,7 +153,7 @@ function Copy-PrivateReleaseBinaries {
     [long]$maximumMemberBytes = 128MB
     [long]$maximumTotalBytes = 512MB
     [long]$totalBytes = 0
-    foreach ($name in @('migration-stream-local-runtime.exe', 'migration-stream.exe', 'migration-stream-workbench.exe', 'migration-stream-bundle.exe')) {
+    foreach ($name in (Get-PrivateReleaseBinaryNames -IncludeEngineeringTools:$IncludeEngineeringTools)) {
         $source = Join-Path $sourceRoot $name
         $destination = Join-Path $destinationRoot $name
         $sourceItem = Get-Item -LiteralPath $source -Force
@@ -524,8 +537,9 @@ try {
         $binaries = Copy-PrivateReleaseBinaries `
             -SourceRoot $releaseDirectory `
             -SourceBoundaryRoot $targetDirectory `
-            -DestinationRoot (Join-Path $buildRoot 'release-binaries')
-        foreach ($name in @('migration-stream-local-runtime.exe', 'migration-stream.exe', 'migration-stream-workbench.exe', 'migration-stream-bundle.exe')) {
+            -DestinationRoot (Join-Path $buildRoot 'release-binaries') `
+            -IncludeEngineeringTools:$RetainEngineeringTools
+        foreach ($name in (Get-PrivateReleaseBinaryNames -IncludeEngineeringTools:$RetainEngineeringTools)) {
             Assert-ExactPeMachine -Path (Join-Path $binaries $name) -ExpectedMachine $targetContract.PeMachine -Label $name
         }
         $assemblerArguments = @('--repository-root', $root, '--git-executable', $gitExecutable, '--frontend-assets-root', $assets, '--release-binaries-root', $binaries, '--output-directory', $Output, '--product-commit', $commit, '--source-state', $sourceState, '--source-snapshot-sha256', $sourceSha, '--frontend-assets-sha256', $frontendSha)
