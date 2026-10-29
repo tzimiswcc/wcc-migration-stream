@@ -75,7 +75,12 @@
     "scripts/assemble-macos-engineering-app.py",
     "scripts/assemble-macos-engineering-app-self-test.py",
     "native/windows/document_open.rs",
-    "docs/WINDOWS-DOCUMENT-OPEN.md"
+    "docs/WINDOWS-DOCUMENT-OPEN.md",
+    "native/linux/document_open_launcher.py",
+    "native/linux/test_document_open_launcher.py",
+    "native/linux/launcher_bootstrap.py.in",
+    "native/linux/MigrationStream.desktop.in",
+    "native/linux/README.md"
   ],
   "excluded": [
     "config/claude/**",

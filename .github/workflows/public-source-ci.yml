@@ -35,6 +35,8 @@ jobs:
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt,clippy
       - name: Select pinned Rust
         run: rustup default 1.99.1
+      - name: Test source-only Linux document-open launcher with synthetic fixtures
+        run: python3 -B -m unittest discover -s native/linux -p test_document_open_launcher.py
       - name: Run candidate-compatible source gates
         shell: bash
         run: |
