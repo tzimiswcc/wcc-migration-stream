@@ -35,6 +35,10 @@ path = "src/bin/migration-stream-local.rs"
 name = "migration-stream-bundle"
 path = "src/bin/migration-stream-bundle.rs"
 
+[[bin]]
+name = "migration-stream-document-open"
+path = "src/bin/migration-stream-document-open.rs"
+
 [[test]]
 name = "windows_process_owner_native"
 path = "tests/windows_process_owner_native.rs"

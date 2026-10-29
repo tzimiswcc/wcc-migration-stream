@@ -157,6 +157,121 @@ mod native {
         read_child_pipe(pipe, buffer)
     }
 
+    struct FixedBrowserCalls;
+    impl super::browser_submission_policy::Calls for FixedBrowserCalls {
+        fn initialize(&mut self) -> i32 {
+            use windows_sys::Win32::System::Com::{
+                COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE, CoInitializeEx,
+            };
+            // SAFETY: null reserved argument and documented STA flags. This
+            // synchronous function never transfers the COM lifetime off thread.
+            unsafe {
+                CoInitializeEx(
+                    std::ptr::null(),
+                    (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE).cast_unsigned(),
+                )
+            }
+        }
+        fn submit(&mut self) -> bool {
+            fixed_browser_request(|info| {
+                // SAFETY: the request builder keeps its struct and fixed UTF-16
+                // storage alive until this non-escaping call returns. COM STA
+                // is initialized on this thread; no parameters/handle requested.
+                unsafe { windows_sys::Win32::UI::Shell::ShellExecuteExW(info) != 0 }
+            })
+        }
+        fn uninitialize(&mut self) {
+            // SAFETY: policy balances only S_OK/S_FALSE initialization, on this
+            // same calling thread, after all ShellExecuteExW storage was used.
+            unsafe { windows_sys::Win32::System::Com::CoUninitialize() };
+        }
+    }
+
+    fn fixed_browser_request(
+        call: impl FnOnce(&mut windows_sys::Win32::UI::Shell::SHELLEXECUTEINFOW) -> bool,
+    ) -> bool {
+        use windows_sys::Win32::UI::Shell::{
+            SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW,
+        };
+        let verb = [111_u16, 112, 101, 110, 0]; // fixed open verb
+        let url: Vec<u16> = "http://127.0.0.1:4173"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let Ok(size) = u32::try_from(std::mem::size_of::<SHELLEXECUTEINFOW>()) else {
+            return false;
+        };
+        let mut info = SHELLEXECUTEINFOW {
+            cbSize: size,
+            fMask: SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI,
+            lpVerb: verb.as_ptr(),
+            lpFile: url.as_ptr(),
+            nShow: 1, // SW_SHOWNORMAL; no extra binding feature required
+            ..SHELLEXECUTEINFOW::default()
+        };
+        call(&mut info)
+    }
+
+    #[cfg(test)]
+    mod browser_submission_tests {
+        use super::fixed_browser_request;
+        use windows_sys::Win32::UI::Shell::{
+            SEE_MASK_FLAG_NO_UI, SEE_MASK_NOASYNC, SHELLEXECUTEINFOW,
+        };
+        #[test]
+        fn exact_fixed_request_and_bool_mapping_use_no_native_call() {
+            for accepted in [false, true] {
+                assert_eq!(
+                    fixed_browser_request(|info| {
+                        assert_eq!(
+                            usize::try_from(info.cbSize).unwrap(),
+                            std::mem::size_of::<SHELLEXECUTEINFOW>()
+                        );
+                        assert_eq!(info.fMask, SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI);
+                        assert_eq!(info.nShow, 1);
+                        assert!(
+                            info.lpParameters.is_null()
+                                && info.lpDirectory.is_null()
+                                && info.hwnd.is_null()
+                                && info.hProcess.is_null()
+                        );
+                        assert!(!info.lpVerb.is_null() && !info.lpFile.is_null());
+                        let verb: Vec<u16> =
+                            "open".encode_utf16().chain(std::iter::once(0)).collect();
+                        let url: Vec<u16> = "http://127.0.0.1:4173"
+                            .encode_utf16()
+                            .chain(std::iter::once(0))
+                            .collect();
+                        // SAFETY: the tested builder owns both exact buffers for
+                        // this closure's entire lifetime. No pointer escapes it.
+                        let actual_verb =
+                            unsafe { std::slice::from_raw_parts(info.lpVerb, verb.len()) };
+                        // SAFETY: same fixed builder-owned buffer/lifetime above.
+                        let actual_url =
+                            unsafe { std::slice::from_raw_parts(info.lpFile, url.len()) };
+                        assert_eq!(actual_verb, verb);
+                        assert_eq!(actual_url, url);
+                        accepted
+                    }),
+                    accepted
+                );
+            }
+        }
+    }
+
+    /// Submit only the fixed owned-loopback URL to the configured handler.
+    /// API success does not prove URI handoff survival or browser rendering.
+    ///
+    /// # Errors
+    /// COM initialization or Shell submission failure maps to a fixed error.
+    pub fn submit_fixed_owned_loopback() -> io::Result<()> {
+        if super::browser_submission_policy::submit(&mut FixedBrowserCalls) {
+            Ok(())
+        } else {
+            Err(io::Error::other("fixed browser submission failed"))
+        }
+    }
+
     const SYSTEM_ROOT: [u16; 10] = [83, 121, 115, 116, 101, 109, 82, 111, 111, 116];
     const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
 
@@ -4695,5 +4810,95 @@ mod tests {
                 .expect("large response exchange"),
             response
         );
+    }
+}
+
+// Private injected call seam. Pure tests exercise the same balancing/result
+// policy as the parameterless native wrapper, without any COM/Shell call.
+#[cfg(any(windows, test))]
+mod browser_submission_policy {
+    pub(super) trait Calls {
+        fn initialize(&mut self) -> i32;
+        fn submit(&mut self) -> bool;
+        fn uninitialize(&mut self);
+    }
+    struct Initialized<'a, C: Calls>(&'a mut C);
+    impl<C: Calls> Drop for Initialized<'_, C> {
+        fn drop(&mut self) {
+            self.0.uninitialize();
+        }
+    }
+    pub(super) fn submit<C: Calls>(calls: &mut C) -> bool {
+        if !matches!(calls.initialize(), 0 | 1) {
+            return false;
+        }
+        let guard = Initialized(calls);
+        guard.0.submit()
+    }
+
+    #[cfg(test)]
+    mod browser_submission_tests {
+        use super::{Calls, submit};
+        struct Fake {
+            result: i32,
+            accepted: bool,
+            calls: Vec<&'static str>,
+            panic: bool,
+        }
+        impl Calls for Fake {
+            fn initialize(&mut self) -> i32 {
+                self.calls.push("initialize");
+                self.result
+            }
+            fn submit(&mut self) -> bool {
+                self.calls.push("submit");
+                assert!(!self.panic, "synthetic panic");
+                self.accepted
+            }
+            fn uninitialize(&mut self) {
+                self.calls.push("uninitialize");
+            }
+        }
+        #[test]
+        fn success_and_already_initialized_balance_once_on_same_call_path() {
+            for result in [0, 1] {
+                for accepted in [false, true] {
+                    let mut fake = Fake {
+                        result,
+                        accepted,
+                        calls: vec![],
+                        panic: false,
+                    };
+                    assert_eq!(submit(&mut fake), accepted);
+                    assert_eq!(fake.calls, ["initialize", "submit", "uninitialize"]);
+                }
+            }
+        }
+        #[test]
+        fn changed_mode_failure_or_unknown_status_never_submit_or_uninitialize() {
+            for result in [0x8001_0106_u32.cast_signed(), i32::MIN, -1, 2] {
+                let mut fake = Fake {
+                    result,
+                    accepted: true,
+                    calls: vec![],
+                    panic: false,
+                };
+                assert!(!submit(&mut fake));
+                assert_eq!(fake.calls, ["initialize"]);
+            }
+        }
+        #[test]
+        fn unwind_balances_successful_initialization_without_native_calls() {
+            let mut fake = Fake {
+                result: 0,
+                accepted: true,
+                calls: vec![],
+                panic: true,
+            };
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| submit(&mut fake)));
+            assert!(result.is_err());
+            assert_eq!(fake.calls, ["initialize", "submit", "uninitialize"]);
+        }
     }
 }

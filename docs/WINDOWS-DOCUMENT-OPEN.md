@@ -3,7 +3,8 @@
 `native/windows/document_open.rs` provides a callable coordinator for one
 already-bound project document. It invokes the existing portable controller's
 `open` command; it does not implement another Start, workspace or project core.
-The module has no application entry point or automatically executed operations.
+The callable module has no automatically executed operations. The manual
+engineering entrypoint described below supplies the source composition.
 
 An integration owner supplies the trusted intact bundled runtime root, a bounded
 controller runner and a browser presenter. The controller executable is always
@@ -14,7 +15,8 @@ separate native arguments. It receives a 45-second deadline and 65,536-byte cap
 for each output stream. A real runner must enforce those bounds during capture,
 drain both streams and bound cleanup of its directly owned controller child.
 A concrete `WindowsProcessRunner` is now available for explicit Windows composition;
-its native process behavior still requires separate Windows validation.
+its native process evidence is limited to the separate synthetic fixture lane
+below, rather than a packaged application or runtime acceptance.
 
 `WindowsPath` retains UTF-16 units without UTF-8 conversion, including unpaired
 surrogates. Its Windows-only native constructor uses `OsStrExt::encode_wide`.
@@ -68,9 +70,9 @@ an empty explicit environment iterator alone does not prove inheritance policy.
 
 No registry/file association, installer, package, signing, release, native
 Windows runner/device acceptance or platform-support claim is included.
-Selection does not initialize, adopt, bind or repair a project. A future native
-entry point and exact-artifact acceptance remain prerequisites;
-the current runtime target and core gates remain unchanged.
+Selection does not initialize, adopt, bind or repair a project. The manual engineering
+entrypoint below does not establish exact-artifact acceptance; the current
+runtime target and core gates remain unchanged.
 
 ## Bounded controller process owner
 
@@ -173,3 +175,55 @@ stage names and eight-byte versioned records. Logs contain fixed case/stage/cate
 labels and numeric OS/error-kind/exit codes, never paths, argv, environment values,
 controller output or raw error text. Diagnostic time remains inside the existing
 acceptance bounds; failed diagnostics cannot turn a case into a pass.
+
+## Manual engineering launcher source
+
+`migration-stream-document-open` is a manual console engineering launcher. Its
+source composition is exactly one native document operand, the retained existing
+coordinator, `WindowsProcessRunner`, and fixed-loopback Shell submission. It
+accepts no flags, runtime-root/command/port override or environment/cwd/PATH
+fallback. It adds no picker, registry association, installer or bundle staging.
+The existing runtime builder continues to stage its existing four executables.
+
+The explicit engineering layout is a launcher directory containing
+`migration-stream-document-open.exe` and an intact adjacent `Runtime` directory;
+the controller remains `Runtime\libexec\migration-stream-local-runtime.exe`.
+The launcher derives that layout only from `current_exe`, accepting an ordinary
+fully qualified drive spelling and exact launcher basename. Extended/device/UNC
+executable namespaces refuse without prefix stripping; document lexical rules
+remain unchanged. Retained `RealFile`/`RealDirectory` checks refuse reparse or
+invalid metadata and remain alive through controller/browser submission. These
+checks are not publisher authentication or atomic spawn-image pinning. Operator
+trust in both launcher and runtime is a precondition.
+
+The narrow native browser function takes no URL or path. It initializes COM STA
+with `COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE`, refuses initialization
+failure/changed mode, and balances S_OK/S_FALSE on the same thread. It calls
+`ShellExecuteExW` with fixed `open`, fixed `http://127.0.0.1:4173`, null parameters,
+and `SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI`. No ASYNCOK, NOZONECHECKS, process
+handle or fallback is requested. All UTF-16/struct storage survives API return.
+The cached windows-sys Registry feature is enabled only because it gates this
+structure/function binding; the launcher performs no direct registry operation
+or registration change.
+
+Microsoft documents that NOASYNC does not apply to URIs and that NO_UI exempts
+security prompts. API success therefore means submission only: URI handoff
+survival after immediate console exit and browser rendering remain unqualified.
+There is no arbitrary delay, security bypass, off-thread handoff or invented
+completion signal. Failure output is fixed and omits document paths, OS errors
+and controller text. No native launch or platform-support claim follows.
+
+References: [ShellExecuteExW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecuteexw),
+[SHELLEXECUTEINFOW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shellexecuteinfow),
+[CoInitializeEx](https://learn.microsoft.com/en-us/windows/win32/api/combaseapi/nf-combaseapi-coinitializeex).
+
+Focused pure composition and COM policy tests use injected operations only:
+
+```sh
+cargo test --locked --test windows_document_open engineering_composition_tests
+cargo test --locked -p migration-stream-windows-native browser_submission_tests
+```
+
+They execute no product/helper/launcher, COM, browser, picker or project process.
+Non-Windows runs do not compile the real retained-handle/Shell projection; Windows
+source compilation and eventual exact-artifact evaluation remain separate.

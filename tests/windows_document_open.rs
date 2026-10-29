@@ -766,3 +766,241 @@ mod process_owner_tests {
         .unwrap();
     }
 }
+
+mod engineering_composition_tests {
+    use super::*;
+    use document_open::{EngineeringLayoutChecks, LauncherFailure, open_engineering_document};
+    use std::cell::Cell;
+
+    struct Held(Rc<Cell<bool>>);
+    impl Drop for Held {
+        fn drop(&mut self) {
+            self.0.set(false);
+        }
+    }
+    struct Checks {
+        held: Rc<Cell<bool>>,
+        paths: Vec<[WindowsPath; 4]>,
+        fail: bool,
+    }
+    impl EngineeringLayoutChecks for Checks {
+        type Held = Held;
+        fn retain(
+            &mut self,
+            exe: &WindowsPath,
+            dir: &WindowsPath,
+            runtime: &WindowsPath,
+            controller: &WindowsPath,
+        ) -> Result<Held, OperationFailed> {
+            self.paths.push([
+                exe.clone(),
+                dir.clone(),
+                runtime.clone(),
+                controller.clone(),
+            ]);
+            if self.fail {
+                return Err(OperationFailed);
+            }
+            self.held.set(true);
+            Ok(Held(self.held.clone()))
+        }
+    }
+    struct CheckedRunner {
+        runner: Runner,
+        held: Rc<Cell<bool>>,
+    }
+    impl ControllerRunner for CheckedRunner {
+        fn run(
+            &mut self,
+            invocation: &ControllerInvocation,
+            seconds: u64,
+            limit: usize,
+        ) -> Result<ControllerOutput, OperationFailed> {
+            assert!(self.held.get());
+            self.runner.run(invocation, seconds, limit)
+        }
+    }
+    struct CheckedBrowser {
+        browser: Presenter,
+        held: Rc<Cell<bool>>,
+    }
+    impl Browser for CheckedBrowser {
+        fn open(&mut self, destination: BrowserDestination) -> Result<(), OperationFailed> {
+            assert!(self.held.get());
+            self.browser.open(destination)
+        }
+    }
+    fn units(value: &str) -> Vec<u16> {
+        value.encode_utf16().collect()
+    }
+    fn launch(
+        exe: Vec<u16>,
+        documents: Vec<Vec<u16>>,
+        checks: &mut Checks,
+        calls: &Rc<RefCell<Calls>>,
+    ) -> Result<(), LauncherFailure> {
+        open_engineering_document(
+            exe,
+            documents,
+            checks,
+            CheckedRunner {
+                runner: Runner(calls.clone()),
+                held: checks.held.clone(),
+            },
+            CheckedBrowser {
+                browser: Presenter(calls.clone()),
+                held: checks.held.clone(),
+            },
+        )
+    }
+    fn setup() -> (Checks, Rc<RefCell<Calls>>) {
+        (
+            Checks {
+                held: Rc::new(Cell::new(false)),
+                paths: vec![],
+                fail: false,
+            },
+            Rc::new(RefCell::new(Calls {
+                outputs: VecDeque::from([Ok(output(&envelope()))]),
+                ..Calls::default()
+            })),
+        )
+    }
+    fn executable() -> Vec<u16> {
+        units(r"C:\Engineering & % π\migration-stream-document-open.exe")
+    }
+    fn document() -> Vec<u16> {
+        let mut value = units(r"D:\Synthetic & % π\");
+        value.push(0xd800);
+        value.extend(units(r"\project.mstream"));
+        value
+    }
+    #[test]
+    fn composition_uses_fixed_adjacent_runtime_and_holds_metadata_through_browser() {
+        let (mut checks, calls) = setup();
+        let doc = document();
+        launch(executable(), vec![doc.clone()], &mut checks, &calls).unwrap();
+        assert_eq!(
+            checks.paths,
+            [[
+                path(r"C:\Engineering & % π\migration-stream-document-open.exe"),
+                path(r"C:\Engineering & % π"),
+                path(r"C:\Engineering & % π\Runtime"),
+                path(r"C:\Engineering & % π\Runtime\libexec\migration-stream-local-runtime.exe")
+            ]]
+        );
+        let calls = calls.borrow();
+        assert_eq!(calls.processes.len(), 1);
+        assert_eq!(calls.processes[0].0.arguments()[2], doc);
+        assert_eq!(calls.processes[0].0.executable(), &checks.paths[0][3]);
+        assert_eq!(calls.browsers, ["http://127.0.0.1:4173"]);
+        assert!(!checks.held.get());
+    }
+    #[test]
+    fn composition_bad_cardinality_flags_and_documents_refuse_before_metadata() {
+        for documents in [
+            vec![],
+            vec![document(), document()],
+            vec![units("--port")],
+            vec![units("--workspace")],
+            vec![units("relative.mstream")],
+            vec![units(r"\\?\C:\Synthetic\project.mstream")],
+        ] {
+            let (mut checks, calls) = setup();
+            assert_eq!(
+                launch(executable(), documents, &mut checks, &calls),
+                Err(LauncherFailure::Arguments)
+            );
+            assert_eq!(checks.paths.len(), 0);
+            assert_eq!(calls.borrow().processes.len(), 0);
+            assert_eq!(calls.borrow().browsers.len(), 0);
+        }
+    }
+    #[test]
+    fn composition_executable_namespace_and_basename_refuse_without_fallback() {
+        for exe in [
+            r"relative.exe",
+            r"C:launcher.exe",
+            r"\\server\share\migration-stream-document-open.exe",
+            r"\\?\C:\Engineering\migration-stream-document-open.exe",
+            r"\\.\C:\Engineering\migration-stream-document-open.exe",
+            r"C:\Engineering\different.exe",
+            r"C:\Engineering\..\migration-stream-document-open.exe",
+            r"C:\migration-stream-document-open.exe",
+        ] {
+            let (mut checks, calls) = setup();
+            assert_eq!(
+                launch(units(exe), vec![document()], &mut checks, &calls),
+                Err(LauncherFailure::Layout)
+            );
+            assert_eq!(checks.paths.len(), 0);
+            assert_eq!(calls.borrow().processes.len(), 0);
+            assert_eq!(calls.borrow().browsers.len(), 0);
+        }
+    }
+    #[test]
+    fn composition_failed_layout_retention_cannot_launch_or_present() {
+        let (mut checks, calls) = setup();
+        checks.fail = true;
+        assert_eq!(
+            launch(executable(), vec![document()], &mut checks, &calls),
+            Err(LauncherFailure::Layout)
+        );
+        assert_eq!(checks.paths.len(), 1);
+        assert!(!checks.held.get());
+        assert_eq!(calls.borrow().processes.len(), 0);
+        assert_eq!(calls.borrow().browsers.len(), 0);
+    }
+    #[test]
+    fn composition_transport_status_and_loopback_failures_never_present() {
+        for failure in 0..4 {
+            let (mut checks, calls) = setup();
+            let mut value = envelope();
+            let response = match failure {
+                0 => Err(OperationFailed),
+                1 => {
+                    value["result"]["classification"] = json!("FOREIGN");
+                    Ok(output(&value))
+                }
+                2 => {
+                    value["result"]["url"] = json!("http://localhost:4173");
+                    Ok(output(&value))
+                }
+                _ => {
+                    let mut output = output(&value);
+                    output.exit_code = 1;
+                    Ok(output)
+                }
+            };
+            calls.borrow_mut().outputs = VecDeque::from([response]);
+            assert!(matches!(
+                launch(executable(), vec![document()], &mut checks, &calls),
+                Err(LauncherFailure::Open(_))
+            ));
+            assert_eq!(calls.borrow().processes.len(), 1);
+            assert_eq!(calls.borrow().browsers.len(), 0);
+            assert!(!checks.held.get());
+        }
+    }
+    #[test]
+    fn composition_browser_submission_failure_is_private_and_releases_metadata() {
+        let (mut checks, calls) = setup();
+        calls.borrow_mut().browser_fails = true;
+        assert_eq!(
+            launch(executable(), vec![document()], &mut checks, &calls),
+            Err(LauncherFailure::Open(Failure::Browser))
+        );
+        assert_eq!(calls.borrow().browsers, ["http://127.0.0.1:4173"]);
+        assert!(!checks.held.get());
+        assert_eq!(
+            document_open::ENGINEERING_LAUNCH_ERROR,
+            "Migration Stream could not open the selected document."
+        );
+    }
+    #[cfg(windows)]
+    #[test]
+    fn composition_native_bindings_construct_without_metadata_or_shell_calls() {
+        let _checks = document_open::WindowsEngineeringLayout;
+        let _presenter = document_open::WindowsLoopbackBrowser;
+    }
+}
