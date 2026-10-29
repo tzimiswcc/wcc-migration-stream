@@ -56,6 +56,30 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Check engineering workflow contracts and parse PowerShell without execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -B scripts/windows-engineering-qualification-self-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $parseOnly = Join-Path $env:RUNNER_TEMP ('migration-stream-parse-only-' + [Guid]::NewGuid() + '.ps1')
+          python -B scripts/windows-engineering-qualification-self-test.py --write-workflow-powershell $parseOnly
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($entry in @(@('builder','scripts/build-assisted-runtime-bundle.ps1'),@('qualification',$parseOnly))) {
+            if ((Get-Item -LiteralPath $entry[1]).Length -gt 128KB) { Write-Output 'PowerShell source size refused'; exit 1 }
+            $tokens = $null
+            $parseErrors = $null
+            [Management.Automation.Language.Parser]::ParseFile($entry[1], [ref]$tokens, [ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -ne 0) {
+              Write-Output ('PowerShell static parse failed: ' + $entry[0])
+              foreach ($errorRecord in @($parseErrors | Select-Object -First 8)) {
+                $category = if ($errorRecord.ErrorId -cmatch '^[A-Za-z0-9_]{1,64}$') { $errorRecord.ErrorId } else { 'unknown' }
+                Write-Output ('Parse category=' + $category + ' line=' + $errorRecord.Extent.StartLineNumber)
+              }
+              exit 1
+            }
+          }
+          Write-Output 'PowerShell static parse passed (two source scripts; no execution)'
       - name: Install pinned Rust source-test toolchain
         shell: pwsh
         run: rustup toolchain install 1.99.1 --profile minimal --component clippy

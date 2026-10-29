@@ -7,6 +7,8 @@ They are not a general YAML/PowerShell parser or hosted artifact qualification.
 import json
 from pathlib import Path
 import re
+import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -122,6 +124,39 @@ def check_contract(builder, workflow, corpus):
         require(path in corpus["include"], "exact new source allowlist entry missing")
 
 
+MAXIMUM_WORKFLOW_BYTES = 64 * 1024
+RUN_DELIMITER = (
+    "      - name: One private build and file-only engineering assembly\n"
+    "        shell: pwsh\n"
+    "        run: |\n"
+)
+
+
+def extract_workflow_powershell(workflow):
+    require(len(workflow.encode("utf-8")) <= MAXIMUM_WORKFLOW_BYTES, "workflow size bound")
+    workflow = workflow.replace("\r\n", "\n")
+    require("\r" not in workflow and workflow.count(RUN_DELIMITER) == 1,
+            "exact qualification run delimiter required")
+    require(workflow.count("        run: |\n") == 1, "only one qualification body allowed")
+    lines = workflow.split(RUN_DELIMITER, 1)[1].splitlines()
+    require(lines and all(not line or line.startswith("          ") for line in lines),
+            "qualification body indentation or trailing step refused")
+    body = "\n".join(line[10:] if line else "" for line in lines) + "\n"
+    require("$qualificationMetadata = [ordered]@{" in body, "qualification body marker required")
+    return body
+
+
+def write_workflow_powershell(workflow_path, destination):
+    require(destination.is_absolute(), "static parse destination must be absolute")
+    with workflow_path.open("rb") as source:
+        raw = source.read(MAXIMUM_WORKFLOW_BYTES + 1)
+    require(len(raw) <= MAXIMUM_WORKFLOW_BYTES, "workflow size bound")
+    body = extract_workflow_powershell(raw.decode("utf-8", errors="strict"))
+    # Exclusive creation refuses existing files and dangling links. Never execute.
+    with destination.open("x", encoding="utf-8", newline="\n") as output:
+        output.write(body)
+
+
 class QualificationContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -183,5 +218,41 @@ class QualificationContractTests(unittest.TestCase):
         self.reject(corpus=corpus)
 
 
+    def test_exact_workflow_body_extraction_is_source_only(self):
+        body = extract_workflow_powershell(self.workflow)
+        self.assertTrue(body.startswith("$ErrorActionPreference"))
+        self.assertIn("-RetainEngineeringTools", body)
+        self.assertNotIn("runs-on:", body)
+        self.assertEqual(extract_workflow_powershell(self.workflow.replace("\n", "\r\n")), body)
+
+    def test_extraction_refuses_ambiguity_trailing_steps_indentation_and_size(self):
+        for source in (
+            self.workflow + RUN_DELIMITER,
+            self.workflow + "      - name: unexpected next step\n",
+            self.workflow.replace("          $ErrorActionPreference", "         $ErrorActionPreference", 1),
+            self.workflow.replace("One private build and file-only engineering assembly", "other", 1),
+            self.workflow + "x" * MAXIMUM_WORKFLOW_BYTES,
+        ):
+            with self.assertRaises(ValueError):
+                extract_workflow_powershell(source)
+
+    def test_extraction_writes_only_fresh_synthetic_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, output = root / "synthetic.yml", root / "parse-only.ps1"
+            source.write_text(self.workflow, encoding="utf-8")
+            write_workflow_powershell(source, output)
+            captured = output.read_bytes()
+            self.assertEqual(captured.decode(), extract_workflow_powershell(self.workflow))
+            with self.assertRaises(FileExistsError):
+                write_workflow_powershell(source, output)
+            self.assertEqual(output.read_bytes(), captured)
+            with self.assertRaises(ValueError):
+                write_workflow_powershell(source, Path("relative.ps1"))
+
+
 if __name__ == "__main__":
-    unittest.main()
+    if len(sys.argv) == 3 and sys.argv[1] == "--write-workflow-powershell":
+        write_workflow_powershell(WORKFLOW, Path(sys.argv[2]))
+    else:
+        unittest.main()
