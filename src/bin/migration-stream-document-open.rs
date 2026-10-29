@@ -1,7 +1,8 @@
 //! Manual engineering console launcher; no association or installer is added.
 #[cfg(windows)]
 #[path = "../../native/windows/document_open.rs"]
-mod document_open;
+// Shared callable primitives are public source API; visibility adds no CLI route.
+pub mod document_open;
 
 fn main() -> std::process::ExitCode {
     #[cfg(windows)]
