@@ -69,9 +69,16 @@ jobs:
         timeout-minutes: 3
         shell: pwsh
         run: cargo +1.99.1 test --locked --test windows_process_owner_native
+      - name: Test create-only engineering layout with synthetic files only
+        timeout-minutes: 3
+        shell: pwsh
+        run: |
+          cargo +1.99.1 test --locked --lib windows_engineering_layout_
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo +1.99.1 test --locked --bin migration-stream-windows-engineering-layout
       - name: Check Windows document-open integration and engineering launcher with strict Clippy
         shell: pwsh
-        run: cargo +1.99.1 clippy --locked --test windows_document_open --bin migration-stream-document-open -- -D warnings
+        run: cargo +1.99.1 clippy --locked --lib --test windows_document_open --bin migration-stream-document-open --bin migration-stream-windows-engineering-layout -- -D warnings
       - name: Check native browser test projection with strict Clippy
         shell: pwsh
         run: cargo +1.99.1 clippy --locked -p migration-stream-windows-native --tests -- -D warnings
