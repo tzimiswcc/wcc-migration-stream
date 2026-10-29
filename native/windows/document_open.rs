@@ -476,3 +476,138 @@ pub(crate) mod process_owner {
 
 #[cfg(windows)]
 pub use process_owner::native::WindowsProcessRunner;
+
+/// Fixed private failure text; no path, OS message or controller output is shown.
+pub const ENGINEERING_LAUNCH_ERROR: &str = "Migration Stream could not open the selected document.";
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum LauncherFailure {
+    Arguments,
+    Layout,
+    Open(Failure),
+}
+
+/// Metadata retention boundary, not publisher authentication or atomic spawn
+/// image pinning. The operator must already trust the launcher and runtime.
+pub trait EngineeringLayoutChecks {
+    type Held;
+    fn retain(
+        &mut self,
+        executable: &WindowsPath,
+        directory: &WindowsPath,
+        runtime: &WindowsPath,
+        controller: &WindowsPath,
+    ) -> Result<Self::Held, OperationFailed>;
+}
+
+/// The executable and operands are native UTF-16 from the real entrypoint.
+/// Unsupported current-executable namespaces refuse without prefix stripping.
+pub fn open_engineering_document<R: ControllerRunner, B: Browser, L: EngineeringLayoutChecks>(
+    executable_units: Vec<u16>,
+    operands: Vec<Vec<u16>>,
+    checks: &mut L,
+    runner: R,
+    browser: B,
+) -> Result<(), LauncherFailure> {
+    let [operand]: [Vec<u16>; 1] = operands
+        .try_into()
+        .map_err(|_| LauncherFailure::Arguments)?;
+    let document = WindowsPath::from_units(operand).map_err(|_| LauncherFailure::Arguments)?;
+    let executable =
+        WindowsPath::from_units(executable_units).map_err(|_| LauncherFailure::Layout)?;
+    if executable.units().get(1..3) != Some(&[58, 92]) {
+        return Err(LauncherFailure::Layout); // ordinary fully qualified drive only
+    }
+    let separator = executable
+        .units()
+        .iter()
+        .rposition(|unit| *unit == 92)
+        .ok_or(LauncherFailure::Layout)?;
+    let name: Vec<u16> = "migration-stream-document-open.exe"
+        .encode_utf16()
+        .collect();
+    if executable.units()[separator + 1..] != name {
+        return Err(LauncherFailure::Layout);
+    }
+    let directory = WindowsPath::from_units(executable.units()[..separator].to_vec())
+        .map_err(|_| LauncherFailure::Layout)?;
+    let mut units = directory.units().to_vec();
+    units.extend("\\Runtime".encode_utf16());
+    let runtime = WindowsPath::from_units(units).map_err(|_| LauncherFailure::Layout)?;
+    let mut units = runtime.units().to_vec();
+    units.extend("\\libexec\\migration-stream-local-runtime.exe".encode_utf16());
+    let controller = WindowsPath::from_units(units).map_err(|_| LauncherFailure::Layout)?;
+    // Keep the exact metadata handles alive through controller and presenter.
+    let _held = checks
+        .retain(&executable, &directory, &runtime, &controller)
+        .map_err(|_| LauncherFailure::Layout)?;
+    let mut coordinator = DocumentOpenCoordinator::new(runtime, runner, browser)
+        .map_err(|_| LauncherFailure::Layout)?;
+    coordinator
+        .open_documents(&[document])
+        .map_err(LauncherFailure::Open)
+}
+
+#[cfg(windows)]
+mod engineering_native {
+    use super::{
+        Browser, BrowserDestination, EngineeringLayoutChecks, OperationFailed, WindowsPath,
+    };
+    use migration_stream_windows_native::{RealDirectory, RealFile};
+    use std::{ffi::OsString, os::windows::ffi::OsStringExt, path::PathBuf};
+
+    pub struct WindowsEngineeringLayout;
+    pub struct HeldLayout {
+        _files: [RealFile; 2],
+        _directories: [RealDirectory; 2],
+    }
+    fn path(value: &WindowsPath) -> PathBuf {
+        PathBuf::from(OsString::from_wide(value.units()))
+    }
+    impl EngineeringLayoutChecks for WindowsEngineeringLayout {
+        type Held = HeldLayout;
+        fn retain(
+            &mut self,
+            executable: &WindowsPath,
+            directory: &WindowsPath,
+            runtime: &WindowsPath,
+            controller: &WindowsPath,
+        ) -> Result<HeldLayout, OperationFailed> {
+            let files = [
+                RealFile::capture(&path(executable)),
+                RealFile::capture(&path(controller)),
+            ];
+            let [executable, controller] = files.map(|file| file.map_err(|_| OperationFailed));
+            let files = [executable?, controller?];
+            let directories = [
+                RealDirectory::capture(&path(directory)),
+                RealDirectory::capture(&path(runtime)),
+            ];
+            let [directory, runtime] =
+                directories.map(|directory| directory.map_err(|_| OperationFailed));
+            let directories = [directory?, runtime?];
+            for file in &files {
+                file.verify().map_err(|_| OperationFailed)?;
+            }
+            for directory in &directories {
+                directory.verify().map_err(|_| OperationFailed)?;
+            }
+            Ok(HeldLayout {
+                _files: files,
+                _directories: directories,
+            })
+        }
+    }
+    pub struct WindowsLoopbackBrowser;
+    impl Browser for WindowsLoopbackBrowser {
+        fn open(&mut self, destination: BrowserDestination) -> Result<(), OperationFailed> {
+            if destination.as_str() != super::LOOPBACK {
+                return Err(OperationFailed);
+            }
+            migration_stream_windows_native::submit_fixed_owned_loopback()
+                .map_err(|_| OperationFailed)
+        }
+    }
+}
+#[cfg(windows)]
+pub use engineering_native::{WindowsEngineeringLayout, WindowsLoopbackBrowser};
