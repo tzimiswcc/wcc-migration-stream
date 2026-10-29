@@ -245,7 +245,9 @@ bundle verifier retains this provenance gate. A generic metadata-free build
 refuses. The existing runtime build driver and its manifest remain unchanged.
 The caller must retain independent build provenance for the outer launcher;
 its expected SHA-256 and matching Windows PE64 architecture bind bytes and
-architecture only, not a compiler, publisher, signature or minimum OS version.
+architecture only, not a compiler, publisher, signature or minimum OS version. PE64
+validation uses the exact bounded immutable launcher-byte capture that is hashed
+and copied; an earlier separate path read cannot authorize different bytes.
 
 The output contains only `migration-stream-document-open.exe` and an intact
 `Runtime` subtree. The document launcher digest is reported separately from the

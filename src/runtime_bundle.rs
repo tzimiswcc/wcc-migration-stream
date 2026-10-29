@@ -677,6 +677,45 @@ fn copy_engineering_runtime(stage: &Path, snapshot: &[EngineeringNode]) -> Resul
     Ok(staged_runtime)
 }
 
+// The outer launcher proof must bind the exact capture subsequently hashed and
+// copied. A separate named-file PE read can prove a different version of bytes.
+fn verify_engineering_launcher_bytes(bytes: &[u8], target: &BundleTarget) -> Result<()> {
+    let machine = match (target.os.as_str(), target.architecture.as_str()) {
+        ("windows", "x64") => 0x8664_u16,
+        ("windows", "arm64") => 0xaa64_u16,
+        _ => {
+            return Err(bundle_invalid(
+                "engineering launcher requires a Windows PE64 target",
+            ));
+        }
+    };
+    if bytes.len() < 256 || u64::try_from(bytes.len()).unwrap_or(u64::MAX) > MAXIMUM_MEMBER_BYTES {
+        return Err(bundle_invalid(
+            "captured engineering launcher exceeds PE64 size bounds",
+        ));
+    }
+    let offset = usize::try_from(u32::from_le_bytes([
+        bytes[60], bytes[61], bytes[62], bytes[63],
+    ]))
+    .map_err(|_| bundle_invalid("captured PE header offset exceeds host bounds"))?;
+    if offset > 1024 * 1024 || offset.saturating_add(26) > bytes.len() {
+        return Err(bundle_invalid(
+            "captured PE header offset exceeds its bound",
+        ));
+    }
+    let header = &bytes[offset..offset + 26];
+    if bytes[..2] != *b"MZ"
+        || header[..4] != *b"PE\0\0"
+        || u16::from_le_bytes([header[4], header[5]]) != machine
+        || u16::from_le_bytes([header[24], header[25]]) != 0x20b
+    {
+        return Err(bundle_invalid(
+            "captured engineering launcher is not the expected PE64 target",
+        ));
+    }
+    Ok(())
+}
+
 fn verify_engineering_outer(root: &Path, launcher_bytes: &[u8]) -> Result<()> {
     let names = fs::read_dir(root)
         .map_err(|e| KernelError::io(root, e))?
@@ -787,8 +826,8 @@ where
             "engineering runtime is not an exact Windows target",
         ));
     }
-    verify_platform_executable(&launcher, &source.target)?;
     let launcher_bytes = read_regular_file_bounded(&launcher, MAXIMUM_MEMBER_BYTES)?;
+    verify_engineering_launcher_bytes(&launcher_bytes, &source.target)?;
     if sha256_hex(&launcher_bytes) != request.expected_launcher_sha256 {
         return Err(bundle_invalid("document launcher digest differs"));
     }
@@ -5566,6 +5605,40 @@ mod tests {
             fs::read(request.output_directory.join("sentinel")).expect("untouched"),
             b"keep"
         );
+    }
+
+    #[test]
+    fn windows_engineering_layout_captured_bytes_bind_exact_architecture() {
+        let x64 = target_for("windows", "x64").expect("x64 target");
+        let arm64 = target_for("windows", "arm64").expect("ARM64 target");
+        let earlier_named_bytes = engineering_pe(0x8664);
+        verify_engineering_launcher_bytes(&earlier_named_bytes, &x64).expect("earlier x64 version");
+        // A valid earlier path proof cannot authorize a different captured buffer.
+        let captured = engineering_pe(0xaa64);
+        assert_ne!(sha256_hex(&earlier_named_bytes), sha256_hex(&captured));
+        assert!(verify_engineering_launcher_bytes(&captured, &x64).is_err());
+        verify_engineering_launcher_bytes(&captured, &arm64).expect("same capture is ARM64");
+        assert!(verify_engineering_launcher_bytes(&earlier_named_bytes, &arm64).is_err());
+    }
+
+    #[test]
+    fn windows_engineering_layout_captured_bytes_refuse_malformed_pe_contract() {
+        let target = target_for("windows", "x64").expect("target");
+        let valid = engineering_pe(0x8664);
+        let mut invalid = vec![valid[..255].to_vec()];
+        for (offset, value) in [(0, b'X'), (64, b'X'), (88, 0)] {
+            let mut bytes = valid.clone();
+            bytes[offset] = value;
+            invalid.push(bytes);
+        }
+        for offset in [250_u32, 1_048_577, u32::MAX] {
+            let mut bytes = valid.clone();
+            bytes[60..64].copy_from_slice(&offset.to_le_bytes());
+            invalid.push(bytes);
+        }
+        for captured in invalid {
+            assert!(verify_engineering_launcher_bytes(&captured, &target).is_err());
+        }
     }
 
     #[test]
