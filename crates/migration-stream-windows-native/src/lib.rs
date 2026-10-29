@@ -86,6 +86,77 @@ mod native {
         UI::Shell::{FOLDERID_LocalAppData, SHGetKnownFolderPath},
     };
 
+    /// Result of a bounded, single-reader anonymous child-pipe poll.
+    #[derive(Debug, Eq, PartialEq)]
+    pub enum ChildPipeRead {
+        Pending,
+        Closed,
+        Read(usize),
+    }
+
+    fn read_child_pipe<T: std::os::windows::io::AsRawHandle + io::Read>(
+        pipe: &mut T,
+        buffer: &mut [u8; 4096],
+    ) -> io::Result<ChildPipeRead> {
+        let mut available = 0;
+        // SAFETY: the exclusive borrowed ChildStdout/ChildStderr keeps its pipe
+        // handle alive. No data buffer is supplied; only available is written.
+        let ok = unsafe {
+            windows_sys::Win32::System::Pipes::PeekNamedPipe(
+                pipe.as_raw_handle().cast(),
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                &raw mut available,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            let error = io::Error::last_os_error();
+            return if error.raw_os_error()
+                == Some(windows_sys::Win32::Foundation::ERROR_BROKEN_PIPE as i32)
+            {
+                Ok(ChildPipeRead::Closed)
+            } else {
+                Err(error)
+            };
+        }
+        if available == 0 {
+            return Ok(ChildPipeRead::Pending);
+        }
+        // There is only one reader, with exclusive access, so a read of no
+        // more than the reported available bytes need not await a future write.
+        let count = usize::try_from(available)
+            .unwrap_or(usize::MAX)
+            .min(buffer.len());
+        match pipe.read(&mut buffer[..count])? {
+            0 => Ok(ChildPipeRead::Closed),
+            read => Ok(ChildPipeRead::Read(read)),
+        }
+    }
+
+    /// Poll only this directly owned child's stdout; no thread or EOF wait.
+    ///
+    /// # Errors
+    /// Returns the pipe's OS/read error; callers must not display its contents.
+    pub fn read_child_stdout(
+        pipe: &mut std::process::ChildStdout,
+        buffer: &mut [u8; 4096],
+    ) -> io::Result<ChildPipeRead> {
+        read_child_pipe(pipe, buffer)
+    }
+
+    /// Poll only this directly owned child's stderr; no thread or EOF wait.
+    ///
+    /// # Errors
+    /// Returns the pipe's OS/read error; callers must not display its contents.
+    pub fn read_child_stderr(
+        pipe: &mut std::process::ChildStderr,
+        buffer: &mut [u8; 4096],
+    ) -> io::Result<ChildPipeRead> {
+        read_child_pipe(pipe, buffer)
+    }
+
     const SYSTEM_ROOT: [u16; 10] = [83, 121, 115, 116, 101, 109, 82, 111, 111, 116];
     const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
 

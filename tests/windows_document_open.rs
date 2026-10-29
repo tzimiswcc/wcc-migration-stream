@@ -425,3 +425,275 @@ mod native_projection {
         // env_clear/null-stdin/piped policy needs static review, not a spawn probe.
     }
 }
+
+// Pure process-owner fixtures. No std::process::Command is spawned by these tests.
+mod process_owner_tests {
+    use super::*;
+    use document_open::process_owner::{Backend, Child, Owner, Read};
+    use std::time::Duration;
+
+    #[derive(Clone, Copy)]
+    enum Event {
+        Pending,
+        Closed,
+        Bytes(usize),
+        Error,
+    }
+    struct FakeChild {
+        streams: [VecDeque<Event>; 2],
+        fallback: Event,
+        exit: Result<Option<i32>, OperationFailed>,
+        killed_exit: bool,
+        state: Rc<RefCell<State>>,
+    }
+    #[derive(Default)]
+    struct State {
+        spawns: usize,
+        kills: usize,
+        reads: [usize; 2],
+        invocations: Vec<ControllerInvocation>,
+    }
+    struct FakeBackend {
+        elapsed: Duration,
+        state: Rc<RefCell<State>>,
+        child: Option<FakeChild>,
+    }
+    impl Child for FakeChild {
+        fn read(&mut self, stderr: bool, buffer: &mut [u8; 4096]) -> Result<Read, OperationFailed> {
+            let index = usize::from(stderr);
+            self.state.borrow_mut().reads[index] += 1;
+            match self.streams[index].pop_front().unwrap_or(self.fallback) {
+                Event::Pending => Ok(Read::Pending),
+                Event::Closed => Ok(Read::Closed),
+                Event::Error => Err(OperationFailed),
+                Event::Bytes(count) => {
+                    buffer.fill(if stderr { b'e' } else { b'o' });
+                    Ok(Read::Bytes(count))
+                }
+            }
+        }
+        fn poll(&mut self) -> Result<Option<i32>, OperationFailed> {
+            self.exit
+        }
+        fn kill(&mut self) -> Result<(), OperationFailed> {
+            self.state.borrow_mut().kills += 1;
+            if self.killed_exit {
+                self.exit = Ok(Some(1));
+                Ok(())
+            } else {
+                Err(OperationFailed)
+            }
+        }
+    }
+    impl Backend for FakeBackend {
+        type Child = FakeChild;
+        fn spawn(
+            &mut self,
+            invocation: &ControllerInvocation,
+        ) -> Result<FakeChild, OperationFailed> {
+            self.state.borrow_mut().spawns += 1;
+            self.state.borrow_mut().invocations.push(invocation.clone());
+            self.child.take().ok_or(OperationFailed)
+        }
+        fn now(&self) -> Duration {
+            self.elapsed
+        }
+        fn sleep(&mut self, duration: Duration) {
+            self.elapsed += duration;
+        }
+    }
+    fn fixture(
+        streams: [Vec<Event>; 2],
+        fallback: Event,
+        exit: Result<Option<i32>, OperationFailed>,
+        killed_exit: bool,
+    ) -> (Owner<FakeBackend>, Rc<RefCell<State>>, ControllerInvocation) {
+        let (mut coordinator, calls) = super::fixture([Ok(output(&envelope()))]);
+        let mut units: Vec<u16> = r"C:\Synthetic & %;\".encode_utf16().collect();
+        units.push(0xd800);
+        units.extend(r"\project.mstream".encode_utf16());
+        coordinator
+            .open_documents(&[WindowsPath::from_units(units).unwrap()])
+            .unwrap();
+        let invocation = calls.borrow().processes[0].0.clone();
+        let state = Rc::new(RefCell::new(State::default()));
+        let child = FakeChild {
+            streams: streams.map(VecDeque::from),
+            fallback,
+            exit,
+            killed_exit,
+            state: state.clone(),
+        };
+        (
+            Owner::new(FakeBackend {
+                elapsed: Duration::ZERO,
+                state: state.clone(),
+                child: Some(child),
+            }),
+            state,
+            invocation,
+        )
+    }
+    fn run(
+        owner: &mut Owner<FakeBackend>,
+        invocation: &ControllerInvocation,
+    ) -> Result<ControllerOutput, OperationFailed> {
+        owner.run(invocation, 45, 65_536)
+    }
+    #[test]
+    fn owner_dual_stream_capture_and_native_invocation_are_exact() {
+        let (mut owner, state, invocation) = fixture(
+            [
+                vec![Event::Bytes(3), Event::Closed],
+                vec![Event::Bytes(4), Event::Closed],
+            ],
+            Event::Pending,
+            Ok(Some(0)),
+            true,
+        );
+        let result = run(&mut owner, &invocation).unwrap();
+        assert_eq!(
+            (result.exit_code, result.stdout, result.stderr),
+            (0, b"ooo".to_vec(), b"eeee".to_vec())
+        );
+        assert!(invocation.arguments()[2].contains(&0xd800));
+        assert_eq!(state.borrow().invocations, [invocation]);
+        assert_eq!(state.borrow().kills, 0);
+    }
+    #[test]
+    fn owner_nonzero_exit_preserves_output_for_coordinator_refusal() {
+        let (mut owner, state, invocation) =
+            fixture([vec![], vec![]], Event::Closed, Ok(Some(17)), true);
+        assert_eq!(run(&mut owner, &invocation).unwrap().exit_code, 17);
+        assert_eq!(state.borrow().kills, 0);
+    }
+    #[test]
+    fn owner_exact_stream_caps_are_allowed() {
+        let bytes = vec![Event::Bytes(4096); 16];
+        let (mut owner, _, invocation) =
+            fixture([bytes.clone(), bytes], Event::Closed, Ok(Some(0)), true);
+        let out = run(&mut owner, &invocation).unwrap();
+        assert_eq!((out.stdout.len(), out.stderr.len()), (65_536, 65_536));
+    }
+    #[test]
+    fn owner_overflow_in_either_stream_cleans_direct_child() {
+        for stream in 0..2 {
+            let mut streams = [vec![], vec![]];
+            streams[stream] = vec![Event::Bytes(4096); 17];
+            let (mut owner, state, invocation) = fixture(streams, Event::Pending, Ok(None), true);
+            assert!(run(&mut owner, &invocation).is_err());
+            assert_eq!(state.borrow().kills, 1);
+            assert!(owner.backend.elapsed < Duration::from_secs(1));
+        }
+    }
+    #[test]
+    fn owner_both_stream_floods_remain_fair_and_bounded() {
+        let (mut owner, state, invocation) =
+            fixture([vec![], vec![]], Event::Bytes(4096), Ok(None), true);
+        assert!(run(&mut owner, &invocation).is_err());
+        assert!(state.borrow().reads.iter().all(|n| *n <= 17));
+        assert_eq!(state.borrow().kills, 1);
+    }
+    #[test]
+    fn owner_deadline_requires_exit_even_after_both_pipes_close() {
+        let (mut owner, state, invocation) =
+            fixture([vec![], vec![]], Event::Closed, Ok(None), true);
+        assert!(run(&mut owner, &invocation).is_err());
+        assert_eq!(owner.backend.elapsed, Duration::from_secs(45));
+        assert_eq!(state.borrow().kills, 1);
+    }
+    #[test]
+    fn owner_inherited_open_pipes_cannot_hang_after_parent_exit() {
+        let (mut owner, state, invocation) =
+            fixture([vec![], vec![]], Event::Pending, Ok(Some(0)), true);
+        assert!(run(&mut owner, &invocation).is_err());
+        assert_eq!(owner.backend.elapsed, Duration::from_secs(45));
+        assert_eq!(state.borrow().kills, 0);
+    }
+    #[test]
+    fn owner_read_and_unknown_poll_errors_never_become_success() {
+        for poll_error in [false, true] {
+            let (mut owner, state, invocation) = fixture(
+                [
+                    vec![if poll_error {
+                        Event::Closed
+                    } else {
+                        Event::Error
+                    }],
+                    vec![Event::Closed],
+                ],
+                Event::Pending,
+                if poll_error {
+                    Err(OperationFailed)
+                } else {
+                    Ok(None)
+                },
+                true,
+            );
+            assert!(run(&mut owner, &invocation).is_err());
+            assert_eq!(state.borrow().kills, 1);
+        }
+    }
+    #[test]
+    fn owner_failed_cleanup_retains_authority_and_refuses_new_spawn() {
+        let (mut owner, state, invocation) = fixture(
+            [vec![], vec![]],
+            Event::Pending,
+            Err(OperationFailed),
+            false,
+        );
+        assert!(run(&mut owner, &invocation).is_err());
+        assert_eq!(owner.backend.elapsed, Duration::from_secs(2));
+        assert!(run(&mut owner, &invocation).is_err());
+        assert_eq!(state.borrow().spawns, 1);
+        assert_eq!(state.borrow().kills, 1);
+        drop(owner);
+        assert_eq!(state.borrow().kills, 2); // last direct-handle request; no wait
+    }
+    #[test]
+    fn owner_live_child_after_deadline_has_only_two_seconds_cleanup() {
+        let (mut owner, state, invocation) =
+            fixture([vec![], vec![]], Event::Pending, Ok(None), false);
+        assert!(run(&mut owner, &invocation).is_err());
+        assert_eq!(owner.backend.elapsed, Duration::from_secs(47));
+        assert!(run(&mut owner, &invocation).is_err());
+        assert_eq!((state.borrow().spawns, state.borrow().kills), (1, 1));
+    }
+
+    #[test]
+    fn owner_spawn_failure_and_wrong_limits_do_not_retry() {
+        let (mut owner, state, invocation) =
+            fixture([vec![], vec![]], Event::Closed, Ok(Some(0)), true);
+        for (seconds, limit) in [(0, 65_536), (46, 65_536), (45, 65_537), (45, 0)] {
+            assert!(owner.run(&invocation, seconds, limit).is_err());
+        }
+        assert_eq!(state.borrow().spawns, 0);
+        owner.backend.child = None;
+        assert!(run(&mut owner, &invocation).is_err());
+        assert_eq!(state.borrow().spawns, 1);
+        assert_eq!(state.borrow().kills, 0);
+    }
+    #[test]
+    fn owner_invalid_reader_count_cannot_index_or_allocate_outside_cap() {
+        for count in [0, 4097, usize::MAX] {
+            let (mut owner, state, invocation) = fixture(
+                [vec![Event::Bytes(count)], vec![]],
+                Event::Pending,
+                Ok(None),
+                true,
+            );
+            assert!(run(&mut owner, &invocation).is_err());
+            assert_eq!(state.borrow().kills, 1);
+        }
+    }
+    #[cfg(windows)]
+    #[test]
+    fn owner_native_owner_construction_has_no_process_side_effect() {
+        let _coordinator = DocumentOpenCoordinator::new(
+            path(r"C:\Synthetic Runtime"),
+            document_open::WindowsProcessRunner::default(),
+            Presenter(Rc::new(RefCell::new(Calls::default()))),
+        )
+        .unwrap();
+    }
+}
