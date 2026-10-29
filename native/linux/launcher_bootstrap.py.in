@@ -1,0 +1,30 @@
+# SOURCE TEMPLATE ONLY: substitute every @...@ binding before use.
+# Restrict substituted paths to absolute ASCII /[A-Za-z0-9_./-]+ paths.
+# The interpreter is selected explicitly by MigrationStream.desktop.in.
+import sys
+
+sys.path.insert(0, "@ABSOLUTE_ADAPTER_DIRECTORY@")
+from document_open_launcher import Failure, launch, native_absolute, run_bounded
+
+# These are trusted installation bindings, never command-line/environment values.
+RUNTIME_ROOT = b"@ABSOLUTE_RUNTIME_ROOT@"
+PRESENTER_ARGV = (b"@ABSOLUTE_PRESENTER@",)
+# Operator supplies only the environment required by the chosen desktop session.
+# No environment is copied implicitly from this process.
+PRESENTER_ENVIRONMENT = {}
+
+native_absolute(RUNTIME_ROOT)
+native_absolute(PRESENTER_ARGV[0])
+
+
+def present(destination):
+    output = run_bounded(
+        [*PRESENTER_ARGV, destination], timeout=10,
+        environment=PRESENTER_ENVIRONMENT,
+    )
+    if output.status != 0:
+        raise Failure("browser presentation failed")
+
+
+if __name__ == "__main__":
+    raise SystemExit(launch(sys.argv[1:], trusted_runtime_root=RUNTIME_ROOT, browser=present))
