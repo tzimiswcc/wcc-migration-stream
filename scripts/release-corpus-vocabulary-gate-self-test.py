@@ -87,6 +87,18 @@ def main() -> int:
     ]
     for name in swift_paths:
         assert gate.text_name_allowed(name), name
+    template_paths = [
+        "native/linux/launcher_bootstrap.py.in",
+        "native/linux/MigrationStream.desktop.in",
+    ]
+    for name in template_paths:
+        assert gate.text_name_allowed(name), name
+    for name in (
+        "native/linux/Extra.py.in", "native/linux/Extra.desktop.in",
+        "private/launcher_bootstrap.py.in", "private/MigrationStream.desktop.in",
+        "native/linux/launcher_bootstrap.py.IN", "native/linux/migrationstream.desktop.in",
+    ):
+        assert not gate.text_name_allowed(name), name
     for name in (
         "native/macos/Unreviewed.swift", "tests/native/macos/Extra.swift",
         "private/DocumentOpenAdapter.swift", "native/macos/DocumentOpenAdapter.SWIFT",
@@ -108,7 +120,7 @@ def main() -> int:
         (root / "config").mkdir()
         (root / "fixtures").mkdir()
         (root / "config" / "release-corpus.json").write_text(
-            json.dumps({"include": ["fixtures/**", "web/**", *swift_paths], "excluded": []}), encoding="utf-8"
+            json.dumps({"include": ["fixtures/**", "web/**", *swift_paths, *template_paths], "excluded": []}), encoding="utf-8"
         )
 
         asset = root / "web/src/favicon.svg"
@@ -121,7 +133,7 @@ def main() -> int:
         result, output = invoke(root, ["web/src/unreviewed.svg"])
         assert result == 1 and "selected file has no approved text name" in output, output
 
-        for name in swift_paths:
+        for name in [*swift_paths, *template_paths]:
             swift = root / name
             swift.parent.mkdir(parents=True, exist_ok=True)
             swift.write_text('let title = "Synthetic document"\n', encoding="utf-8")

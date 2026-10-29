@@ -49,6 +49,11 @@ SWIFT_TEXT_PATHS = {
     "tests/native/macos/ApplicationBootstrapTests.swift",
     "native/macos/MigrationStreamApplication.swift",
 }
+# These uninstalled Linux templates are UTF-8 source; other .in paths stay refused.
+TEMPLATE_TEXT_PATHS = {
+    "native/linux/launcher_bootstrap.py.in",
+    "native/linux/MigrationStream.desktop.in",
+}
 TEXT_FILENAMES = {
     ".gitattributes",
     ".gitignore",
@@ -203,6 +208,7 @@ def text_name_allowed(name: str) -> bool:
     # This reviewed local asset is UTF-8 source text; other SVG paths remain unapproved.
     return (
         name in SWIFT_TEXT_PATHS
+        or name in TEMPLATE_TEXT_PATHS
         or name == "web/src/favicon.svg"
         or path.name in TEXT_FILENAMES
         or path.suffix.lower() in TEXT_SUFFIXES
