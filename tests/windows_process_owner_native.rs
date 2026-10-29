@@ -21,7 +21,7 @@ mod fixture {
     };
     use migration_stream_windows_native::{
         CurrentUser, KillOnCloseJob, ManagedProcess, PrivateRuntimeDirectory, RealDirectory,
-        RealFile,
+        RealFile, system_root_directory,
     };
     use std::{
         cell::RefCell,
@@ -47,6 +47,140 @@ mod fixture {
     const SENTINEL: &str = "MIGRATION_STREAM_SYNTHETIC_PARENT_SENTINEL";
     const HELPER: &str = "migration-stream-local-runtime.exe";
     const CAP: usize = 65_536;
+
+    // One create-only eight-byte record per fixed stage, confined to the owned
+    // synthetic case directory. Never serialize an error, path, argv or output.
+    const STAGES: [&str; 9] = [
+        "driver-start",
+        "driver-path",
+        "driver-env",
+        "invocation",
+        "owner-enter",
+        "owner-return",
+        "ready",
+        "witness",
+        "assertions",
+    ];
+    fn mark(
+        root: &Path,
+        case: &str,
+        stage: &str,
+        category: u8,
+        kind: u8,
+        code: Option<i32>,
+    ) -> Result<()> {
+        if !CASES.contains(&case) || !STAGES.contains(&stage) {
+            return Err(());
+        }
+        let mut record = [1, category, kind, u8::from(code.is_some()), 0, 0, 0, 0];
+        record[4..].copy_from_slice(&code.unwrap_or(0).to_le_bytes());
+        write_new(
+            &root
+                .join("documents")
+                .join(case)
+                .join(format!("diagnostic-{stage}")),
+            &record,
+        )
+    }
+    fn kind_code(error: &std::io::Error) -> u8 {
+        use std::io::ErrorKind;
+        match error.kind() {
+            ErrorKind::NotFound => 1,
+            ErrorKind::PermissionDenied => 2,
+            ErrorKind::AlreadyExists => 3,
+            ErrorKind::InvalidInput => 4,
+            ErrorKind::TimedOut => 5,
+            ErrorKind::WouldBlock => 6,
+            ErrorKind::Other => 7,
+            ErrorKind::UnexpectedEof => 8,
+            _ => 0,
+        }
+    }
+    fn mark_result<T>(root: &Path, case: &str, stage: &str, result: Result<T>) -> Result<T> {
+        mark(
+            root,
+            case,
+            stage,
+            if result.is_ok() { 1 } else { 2 },
+            0,
+            None,
+        )?;
+        result
+    }
+    fn mark_io<T>(root: &Path, case: &str, stage: &str, result: std::io::Result<T>) -> Result<T> {
+        match result {
+            Ok(value) => {
+                mark(root, case, stage, 1, 0, None)?;
+                Ok(value)
+            }
+            Err(error) => {
+                mark(
+                    root,
+                    case,
+                    stage,
+                    3,
+                    kind_code(&error),
+                    error.raw_os_error(),
+                )?;
+                Err(())
+            }
+        }
+    }
+    fn outer_io(case: &str, stage: &str, error: &std::io::Error) {
+        println!(
+            "DIAG case={case} stage={stage} category=os-error kind={} code-present={} code={}",
+            kind_code(error),
+            error.raw_os_error().is_some(),
+            error.raw_os_error().unwrap_or(0)
+        );
+    }
+    fn report_markers(root: &Path, case: &str) {
+        for stage in STAGES {
+            let path = root
+                .join("documents")
+                .join(case)
+                .join(format!("diagnostic-{stage}"));
+            let metadata = match fs::symlink_metadata(&path) {
+                Ok(value) => value,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    println!("DIAG case={case} stage={stage} category=missing");
+                    continue;
+                }
+                Err(error) => {
+                    outer_io(case, stage, &error);
+                    continue;
+                }
+            };
+            if !metadata.file_type().is_file() || metadata.len() != 8 {
+                println!("DIAG case={case} stage={stage} category=invalid-marker");
+                continue;
+            }
+            let mut bytes = Vec::new();
+            let read = File::open(path).and_then(|file| file.take(9).read_to_end(&mut bytes));
+            if let Err(error) = read {
+                outer_io(case, stage, &error);
+                continue;
+            }
+            if bytes.len() != 8 || bytes[0] != 1 || bytes[1] > 5 || bytes[2] > 8 || bytes[3] > 1 {
+                println!("DIAG case={case} stage={stage} category=invalid-marker");
+                continue;
+            }
+            let category = [
+                "entered",
+                "ok",
+                "refused",
+                "os-error",
+                "owner-output",
+                "owner-refused",
+            ][usize::from(bytes[1])];
+            let code = i32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+            println!(
+                "DIAG case={case} stage={stage} category={category} kind={} code-present={} code={code}",
+                bytes[2],
+                bytes[3] == 1
+            );
+        }
+    }
 
     pub fn run() -> Result<()> {
         let arguments: Vec<_> = std::env::args_os().skip(1).collect();
@@ -147,13 +281,22 @@ mod fixture {
         Ok(())
     }
 
-    fn wait_for_exit(child: &ManagedProcess, deadline: Instant) -> Result<u32> {
+    fn wait_for_exit(
+        child: &ManagedProcess,
+        deadline: Instant,
+        case: &str,
+        stage: &str,
+    ) -> Result<u32> {
         loop {
-            let observed = child.try_wait().map_err(|_| ())?;
+            let observed = child
+                .try_wait()
+                .map_err(|error| outer_io(case, stage, &error))?;
             if Instant::now() >= deadline {
+                println!("DIAG case={case} stage={stage} category=deadline");
                 return Err(());
             }
             if let Some(code) = observed {
+                println!("DIAG case={case} stage={stage} category=known-exit code={code}");
                 return Ok(code);
             }
             thread::sleep(Duration::from_millis(10));
@@ -166,10 +309,20 @@ mod fixture {
         executable: Rc<RealFile>,
         directory: Rc<RealDirectory>,
     ) -> Result<()> {
-        let job = KillOnCloseJob::new().map_err(|_| ())?;
+        // The existing native Job contract requires canonical SystemRoot.
+        // Retain/replay its public capability, never ambient environment values.
+        let system_root =
+            system_root_directory().map_err(|error| outer_io(case, "system-root", &error))?;
+        system_root
+            .verify()
+            .map_err(|error| outer_io(case, "system-root", &error))?;
+        println!("DIAG case={case} stage=job-create category=entered");
+        let job = KillOnCloseJob::new().map_err(|error| outer_io(case, "job-create", &error))?;
+        println!("DIAG case={case} stage=job-create category=ok");
         let deadline = Instant::now() + Duration::from_secs(60);
         // Admission failure refuses: no unsupervised spawn fallback. The Job
         // disallows breakaway; the production Command uses no breakaway flag.
+        println!("DIAG case={case} stage=job-admission category=entered");
         let child = job
             .spawn_and_assign(
                 executable,
@@ -178,16 +331,36 @@ mod fixture {
                     OsString::from(case),
                     root.as_os_str().to_owned(),
                 ],
-                &[(OsString::from(SENTINEL), OsString::from("synthetic-only"))],
+                &[
+                    (
+                        OsString::from("SystemRoot"),
+                        system_root.environment_path().as_os_str().to_owned(),
+                    ),
+                    (OsString::from(SENTINEL), OsString::from("synthetic-only")),
+                ],
                 directory,
             )
-            .map_err(|_| ())?;
-        let outcome = wait_for_exit(&child, deadline)
+            .map_err(|error| outer_io(case, "job-admission", &error))?;
+        println!("DIAG case={case} stage=job-admission category=ok");
+        // Any failed post-admission replay goes directly to the same owned
+        // Job cleanup below; never drop a running child through an early `?`.
+        let outcome = system_root
+            .verify()
+            .map_err(|error| outer_io(case, "system-root-replay", &error))
+            .and_then(|()| wait_for_exit(&child, deadline, case, "driver-exit"))
             .and_then(|code| if code == 0 { Ok(()) } else { Err(()) });
         // Driver must prove owner cleanup before exiting zero. This outer Job
         // termination occurs afterward and cannot turn a failed case into PASS.
-        let terminated = job.terminate(91).map_err(|_| ());
-        let reaped = wait_for_exit(&child, Instant::now() + Duration::from_secs(5));
+        let terminated = job
+            .terminate(91)
+            .map_err(|error| outer_io(case, "job-cleanup", &error));
+        let reaped = wait_for_exit(
+            &child,
+            Instant::now() + Duration::from_secs(5),
+            case,
+            "driver-reap",
+        );
+        report_markers(root, case);
         outcome.and(terminated).and(reaped.map(|_| ()))
     }
 
@@ -250,30 +423,62 @@ mod fixture {
     }
 
     fn driver(case: &str, root: &Path) -> Result<()> {
-        WindowsPath::from_native(root.as_os_str()).map_err(|_| ())?;
-        if std::env::var_os(SENTINEL) != Some(OsString::from("synthetic-only")) {
-            return Err(());
-        }
-        let call = invocation(root, case)?;
+        mark(root, case, "driver-start", 0, 0, None)?;
+        mark_result(
+            root,
+            case,
+            "driver-path",
+            WindowsPath::from_native(root.as_os_str()).map_err(|_| ()),
+        )?;
+        let environment = if std::env::var_os(SENTINEL) == Some(OsString::from("synthetic-only")) {
+            Ok(())
+        } else {
+            Err(())
+        };
+        mark_result(root, case, "driver-env", environment)?;
+        let call = mark_result(root, case, "invocation", invocation(root, case))?;
+        mark(root, case, "owner-enter", 0, 0, None)?;
         let start = Instant::now();
         let mut runner = WindowsProcessRunner::default();
         let result = runner.run(&call, 45, CAP);
+        mark(
+            root,
+            case,
+            "owner-return",
+            if result.is_ok() { 4 } else { 5 },
+            0,
+            result.as_ref().ok().map(|output| output.exit_code),
+        )?;
         let folder = root.join("documents").join(case);
-        if fs::read(folder.join("ready")).map_err(|_| ())? != b"held-v1" {
+        let ready = mark_io(root, case, "ready", fs::read(folder.join("ready")))?;
+        if ready != b"held-v1" {
             return Err(());
         }
         // Helper deliberately forgets its exclusive file, with no close path.
         // Reopening before outer Job cleanup witnesses OS handle release for
         // this trusted synthetic helper; no PID lookup or PID-only kill.
-        let _released = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .share_mode(0)
-            .open(folder.join("held"))
-            .map_err(|_| ())?;
-        // Include readiness/OS-release observation in the accepted time bound;
-        // a delayed witness cannot allow 50-second self-expiry to masquerade as cleanup.
+        let _released = mark_io(
+            root,
+            case,
+            "witness",
+            OpenOptions::new()
+                .read(true)
+                .write(true)
+                .share_mode(0)
+                .open(folder.join("held")),
+        )?;
+        // Diagnostic writes/readiness/release observation remain inside the
+        // existing bound; they cannot let self-expiry masquerade as cleanup.
         let elapsed = start.elapsed();
+        let assertions = assert_case(case, result, elapsed);
+        mark_result(root, case, "assertions", assertions)
+    }
+
+    fn assert_case(
+        case: &str,
+        result: std::result::Result<ControllerOutput, OperationFailed>,
+        elapsed: Duration,
+    ) -> Result<()> {
         match case {
             "native" => {
                 let output = result.map_err(|_| ())?;
