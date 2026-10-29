@@ -227,3 +227,50 @@ cargo test --locked -p migration-stream-windows-native browser_submission_tests
 They execute no product/helper/launcher, COM, browser, picker or project process.
 Non-Windows runs do not compile the real retained-handle/Shell projection; Windows
 source compilation and eventual exact-artifact evaluation remain separate.
+
+## Create-only engineering layout assembler source
+
+`migration-stream-windows-engineering-layout` is a build-time console tool for
+already-built, operator-trusted artifacts on native Windows. Required arguments
+are `--launcher`, `--expected-launcher-sha256` (64 lowercase hexadecimal digits),
+`--runtime`, `--output-directory`, and
+`--engineering-policy local-unsigned-engineering`. Paths must be absolute;
+the output parent must already exist and the output itself must be absent.
+Inputs and output must not overlap. There are no execution or verifier-bypass
+flags. No launcher, controller, browser, installer or registration is run.
+
+The assembler itself must carry the same compiled product commit, source state,
+source snapshot and frontend asset identity as the runtime: the existing direct
+bundle verifier retains this provenance gate. A generic metadata-free build
+refuses. The existing runtime build driver and its manifest remain unchanged.
+The caller must retain independent build provenance for the outer launcher;
+its expected SHA-256 and matching Windows PE64 architecture bind bytes and
+architecture only, not a compiler, publisher, signature or minimum OS version.
+
+The output contains only `migration-stream-document-open.exe` and an intact
+`Runtime` subtree. The document launcher digest is reported separately from the
+runtime manifest's platform-launcher member digest. Every runtime verification
+field must match across source, stage and published output except the relocated
+bundle root. Runtime files, manifest and graph are copied without rewriting.
+
+Capture streams directory enumeration with limits of 4096 entries (including
+root), 64 directory levels, 512-byte relative paths, 128 MiB per file and
+512 MiB plus 1 MiB manifest allowance in total. Source identities, bytes, modes
+and graph are replayed before publication. On Windows, existing retained path
+checks reject reparse ancestors and hard-link aliases; Unix mode semantics are
+not approximated on Windows. These checks are not atomic spawn-image pinning.
+
+A uniquely owned stage is created in the output parent and published with the
+existing no-replace directory protocol. An existing output is never overwritten.
+Only a provably owned unpublished stage is eligible for cleanup. Windows
+intentionally retains a partial when safe recursive deletion cannot be proved;
+inspect that private partial manually. After a move or ambiguous publication
+failure, visible output is preserved, not automatically removed. Successful
+assembly is not signing, installation, execution, compatibility, release or
+platform-support qualification.
+
+Focused source verification uses `cargo test --lib windows_engineering_layout_`.
+Tests use temporary synthetic PE headers, canonical synthetic runtime manifests
+and a private injected verifier seam; no packaged program is executed. Windows
+hosted tests and production library/new-bin lint must be reported separately
+from local non-Windows source checks.

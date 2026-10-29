@@ -406,6 +406,454 @@ pub struct BundleVerification {
     pub total_member_bytes: u64,
 }
 
+/// Explicit inputs for a create-only, local Windows engineering layout.
+/// The expected launcher digest binds bytes, not publisher or compiler provenance.
+#[derive(Debug)]
+pub struct WindowsEngineeringLayoutRequest {
+    pub launcher: PathBuf,
+    pub expected_launcher_sha256: String,
+    pub runtime: PathBuf,
+    pub output_directory: PathBuf,
+    pub engineering_policy: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowsEngineeringLayoutResult {
+    pub output_directory: PathBuf,
+    /// Outer document launcher; distinct from the runtime's platform launcher.
+    pub document_launcher_sha256: String,
+    pub runtime: BundleVerification,
+}
+
+/// Assemble an already-built launcher beside an intact runtime without running either.
+///
+/// # Errors
+/// Refuses non-Windows hosts, invalid policy/paths/digests/PE targets, changed or
+/// oversized inputs, runtime verification failure, and publication collisions.
+/// Windows cleanup preserves an unpublished partial when exact recursive removal
+/// cannot be established. Visible output is never removed after publication.
+pub fn assemble_windows_engineering_layout(
+    request: &WindowsEngineeringLayoutRequest,
+) -> Result<WindowsEngineeringLayoutResult> {
+    if std::env::consts::OS != "windows" {
+        return Err(bundle_invalid(
+            "Windows engineering layout requires a native Windows host",
+        ));
+    }
+    assemble_windows_engineering_layout_with(request, |path| verify_bundle_root(path))
+}
+
+const ENGINEERING_LAUNCHER: &str = "migration-stream-document-open.exe";
+const ENGINEERING_GRAPH_ENTRIES: usize = 4096;
+const ENGINEERING_GRAPH_DEPTH: usize = 64;
+
+struct EngineeringNode {
+    relative: PathBuf,
+    identity: OwnedPathIdentity,
+    bytes: Option<Vec<u8>>,
+    mode: u32,
+}
+
+// Capture before calling the verifier, so even a hostile unverified graph has
+// finite entry/depth/byte bounds. read_dir streams; admission precedes descent.
+fn engineering_snapshot(root: &Path) -> Result<Vec<EngineeringNode>> {
+    let mut nodes = Vec::new();
+    let mut bytes = 0_u64;
+    engineering_snapshot_directory(root, root, &mut nodes, &mut bytes, 0)?;
+    nodes.sort_by(|a, b| a.relative.cmp(&b.relative));
+    Ok(nodes)
+}
+
+fn engineering_snapshot_directory(
+    root: &Path,
+    directory: &Path,
+    nodes: &mut Vec<EngineeringNode>,
+    total: &mut u64,
+    depth: usize,
+) -> Result<()> {
+    if depth > ENGINEERING_GRAPH_DEPTH || nodes.len() >= ENGINEERING_GRAPH_ENTRIES {
+        return Err(bundle_invalid("engineering layout graph exceeds its bound"));
+    }
+    let identity = capture_owned_directory(directory)?;
+    let relative = directory
+        .strip_prefix(root)
+        .map_err(|_| bundle_invalid("engineering source escaped root"))?
+        .to_path_buf();
+    nodes.push(EngineeringNode {
+        relative,
+        mode: engineering_mode(&identity.metadata),
+        identity,
+        bytes: None,
+    });
+    for entry in fs::read_dir(directory).map_err(|e| KernelError::io(directory, e))? {
+        let entry = entry.map_err(|e| KernelError::io(directory, e))?;
+        if nodes.len() >= ENGINEERING_GRAPH_ENTRIES {
+            return Err(bundle_invalid("engineering layout graph exceeds its bound"));
+        }
+        let path = entry.path();
+        let relative = path
+            .strip_prefix(root)
+            .map_err(|_| bundle_invalid("engineering source escaped root"))?
+            .to_path_buf();
+        validate_member_path(&path_to_manifest_string(&relative)?)?;
+        let metadata = fs::symlink_metadata(&path).map_err(|e| KernelError::io(&path, e))?;
+        if metadata.file_type().is_symlink() {
+            return Err(bundle_invalid("engineering source contains a link"));
+        }
+        if metadata.is_dir() {
+            engineering_snapshot_directory(root, &path, nodes, total, depth + 1)?;
+        } else {
+            let (file, metadata) = open_retained_regular_file(&path)?;
+            let identity = capture_open_file_identity(&path, &file)?;
+            let bytes = read_regular_file_bounded(&path, MAXIMUM_MEMBER_BYTES)?;
+            *total = total
+                .checked_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX))
+                .filter(|n| *n <= MAXIMUM_BUNDLE_BYTES + MAXIMUM_MANIFEST_BYTES)
+                .ok_or_else(|| bundle_invalid("engineering runtime exceeds total byte bound"))?;
+            if !same_owned_file_identity(&path, &file, &metadata, &identity)? {
+                return Err(bundle_invalid("engineering source changed during capture"));
+            }
+            nodes.push(EngineeringNode {
+                relative,
+                identity,
+                mode: engineering_mode(&metadata),
+                bytes: Some(bytes),
+            });
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn engineering_mode(metadata: &fs::Metadata) -> u32 {
+    use std::os::unix::fs::MetadataExt as _;
+    metadata.mode() & 0o777
+}
+
+#[cfg(not(unix))]
+fn engineering_mode(_metadata: &fs::Metadata) -> u32 {
+    0o444
+}
+
+fn engineering_same_content(a: &[EngineeringNode], b: &[EngineeringNode]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(a, b)| a.relative == b.relative && a.bytes == b.bytes && a.mode == b.mode)
+}
+
+fn replay_engineering_snapshot(root: &Path, expected: &[EngineeringNode]) -> Result<()> {
+    let current = engineering_snapshot(root)?;
+    if current.len() != expected.len() {
+        return Err(bundle_invalid("engineering source graph changed"));
+    }
+    for (a, b) in expected.iter().zip(current.iter()) {
+        let path = root.join(&a.relative);
+        if a.relative != b.relative || a.bytes != b.bytes || a.mode != b.mode {
+            return Err(bundle_invalid("engineering source bytes or graph changed"));
+        }
+        if a.bytes.is_some() {
+            let (file, metadata) = open_retained_regular_file(&path)?;
+            if !same_owned_file_identity(&path, &file, &metadata, &a.identity)? {
+                return Err(bundle_invalid("engineering source file replaced"));
+            }
+        } else {
+            verify_owned_bundle_directory(
+                &path,
+                &a.identity,
+                "engineering source directory replaced",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn engineering_same_verification(a: &BundleVerification, b: &BundleVerification) -> Result<()> {
+    let mut a = serde_json::to_value(a)?;
+    let mut b = serde_json::to_value(b)?;
+    a.as_object_mut()
+        .expect("verification object")
+        .remove("bundleRoot");
+    b.as_object_mut()
+        .expect("verification object")
+        .remove("bundleRoot");
+    if a != b {
+        return Err(bundle_invalid(
+            "engineering runtime verification identity changed",
+        ));
+    }
+    Ok(())
+}
+
+fn engineering_absolute(path: &Path) -> Result<()> {
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
+    {
+        return Err(bundle_invalid(
+            "engineering input must be one explicit absolute path",
+        ));
+    }
+    Ok(())
+}
+
+struct EngineeringInputs {
+    runtime_identity: OwnedPathIdentity,
+    runtime: PathBuf,
+    launcher_file: File,
+    launcher_metadata: fs::Metadata,
+    launcher_identity: OwnedPathIdentity,
+    launcher: PathBuf,
+    parent_identity: OwnedPathIdentity,
+    parent: PathBuf,
+    output: PathBuf,
+    name: String,
+}
+
+// Capture the selected spelling before canonicalization: Windows capabilities
+// reject reparse ancestors and aliases rather than silently following them.
+fn engineering_inputs(request: &WindowsEngineeringLayoutRequest) -> Result<EngineeringInputs> {
+    let runtime_identity = capture_owned_directory(&request.runtime)?;
+    let runtime = require_real_directory(&request.runtime, "engineering runtime")?;
+    let (launcher_file, launcher_metadata) = open_retained_regular_file(&request.launcher)?;
+    let launcher_identity = capture_open_file_identity(&request.launcher, &launcher_file)?;
+    let launcher = request
+        .launcher
+        .canonicalize()
+        .map_err(|e| KernelError::io(&request.launcher, e))?;
+    let parent = request
+        .output_directory
+        .parent()
+        .ok_or_else(|| bundle_invalid("output has no parent"))?;
+    let parent_identity = capture_owned_directory(parent)?;
+    let parent = require_real_directory(parent, "engineering output parent")?;
+    let name = request
+        .output_directory
+        .file_name()
+        .and_then(|s| s.to_str())
+        .filter(|s| safe_component(s))
+        .ok_or_else(|| bundle_invalid("unsafe engineering output name"))?;
+    let output = parent.join(name);
+    if path_lexically_exists(&output)?
+        || launcher.starts_with(&runtime)
+        || output.starts_with(&runtime)
+        || runtime.starts_with(&output)
+        || launcher.starts_with(&output)
+    {
+        return Err(bundle_invalid(
+            "engineering output exists or inputs overlap",
+        ));
+    }
+    Ok(EngineeringInputs {
+        runtime_identity,
+        runtime,
+        launcher_file,
+        launcher_metadata,
+        launcher_identity,
+        launcher,
+        parent_identity,
+        parent,
+        output,
+        name: name.to_owned(),
+    })
+}
+
+fn copy_engineering_runtime(stage: &Path, snapshot: &[EngineeringNode]) -> Result<PathBuf> {
+    let staged_runtime = stage.join("Runtime");
+    for node in snapshot {
+        let path = staged_runtime.join(&node.relative);
+        if let Some(bytes) = &node.bytes {
+            write_new_file(&path, bytes, node.mode)?;
+        } else {
+            create_owned_directory(&path)?;
+        }
+    }
+    // Restore source directory modes only after their children are complete.
+    for node in snapshot.iter().rev().filter(|n| n.bytes.is_none()) {
+        set_mode(&staged_runtime.join(&node.relative), node.mode)?;
+    }
+    Ok(staged_runtime)
+}
+
+fn verify_engineering_outer(root: &Path, launcher_bytes: &[u8]) -> Result<()> {
+    let names = fs::read_dir(root)
+        .map_err(|e| KernelError::io(root, e))?
+        .take(3)
+        .map(|entry| {
+            entry
+                .map(|e| e.file_name())
+                .map_err(|e| KernelError::io(root, e))
+        })
+        .collect::<Result<BTreeSet<_>>>()?;
+    if names
+        != BTreeSet::from([
+            std::ffi::OsString::from(ENGINEERING_LAUNCHER),
+            std::ffi::OsString::from("Runtime"),
+        ])
+        || read_regular_file_bounded(&root.join(ENGINEERING_LAUNCHER), MAXIMUM_MEMBER_BYTES)?
+            != launcher_bytes
+    {
+        return Err(bundle_invalid("engineering outer layout differs"));
+    }
+    Ok(())
+}
+
+fn publish_engineering_layout<F>(
+    stage: &Path,
+    output: &Path,
+    stage_identity: &OwnedPathIdentity,
+    source: &BundleVerification,
+    launcher_bytes: &[u8],
+    verify: &mut F,
+) -> Result<BundleVerification>
+where
+    F: FnMut(&Path) -> Result<BundleVerification>,
+{
+    if let Err(error) = verify_engineering_outer(stage, launcher_bytes) {
+        return Err(rollback_assembly_outputs(
+            error,
+            Some((stage, stage_identity)),
+            None,
+            None,
+        ));
+    }
+    if let Err(failure) = publish_bundle_directory_noreplace(stage, output, stage_identity) {
+        return Err(if failure.published {
+            failure.error
+        } else {
+            rollback_assembly_outputs(failure.error, Some((stage, stage_identity)), None, None)
+        });
+    }
+    // A post-move failure preserves the visible result for explicit inspection.
+    sync_directory(
+        output
+            .parent()
+            .ok_or_else(|| bundle_invalid("output has no parent"))?,
+    )?;
+    let final_runtime = verify(&output.join("Runtime"))?;
+    engineering_same_verification(source, &final_runtime)?;
+    verify_engineering_outer(output, launcher_bytes)?;
+    Ok(final_runtime)
+}
+
+fn validate_engineering_request(request: &WindowsEngineeringLayoutRequest) -> Result<()> {
+    if request.engineering_policy != "local-unsigned-engineering" {
+        return Err(bundle_invalid(
+            "explicit local-unsigned-engineering policy required",
+        ));
+    }
+    validate_sha256(
+        &request.expected_launcher_sha256,
+        "document launcher SHA-256",
+    )?;
+    for path in [
+        &request.launcher,
+        &request.runtime,
+        &request.output_directory,
+    ] {
+        engineering_absolute(path)?;
+    }
+    Ok(())
+}
+
+fn assemble_windows_engineering_layout_with<F>(
+    request: &WindowsEngineeringLayoutRequest,
+    mut verify: F,
+) -> Result<WindowsEngineeringLayoutResult>
+where
+    F: FnMut(&Path) -> Result<BundleVerification>,
+{
+    validate_engineering_request(request)?;
+    let EngineeringInputs {
+        runtime_identity,
+        runtime,
+        launcher_file,
+        launcher_metadata,
+        launcher_identity,
+        launcher,
+        parent_identity,
+        parent,
+        output,
+        name,
+    } = engineering_inputs(request)?;
+    let snapshot = engineering_snapshot(&runtime)?;
+    let source = verify(&runtime)?;
+    if source.target.os != "windows"
+        || source.target != target_for("windows", &source.target.architecture)?
+    {
+        return Err(bundle_invalid(
+            "engineering runtime is not an exact Windows target",
+        ));
+    }
+    verify_platform_executable(&launcher, &source.target)?;
+    let launcher_bytes = read_regular_file_bounded(&launcher, MAXIMUM_MEMBER_BYTES)?;
+    if sha256_hex(&launcher_bytes) != request.expected_launcher_sha256 {
+        return Err(bundle_invalid("document launcher digest differs"));
+    }
+    let stage = parent.join(format!(".{name}.part-{}", Uuid::new_v4()));
+    let stage_identity = create_owned_directory(&stage)?;
+    let prepared = (|| {
+        write_new_file(
+            &stage.join(ENGINEERING_LAUNCHER),
+            &launcher_bytes,
+            engineering_mode(&launcher_metadata),
+        )?;
+        let staged_runtime = copy_engineering_runtime(&stage, &snapshot)?;
+        let staged = verify(&staged_runtime)?;
+        let copied = engineering_snapshot(&staged_runtime)?;
+        if !engineering_same_content(&snapshot, &copied) {
+            return Err(bundle_invalid("staged runtime bytes or graph differ"));
+        }
+        engineering_same_verification(&source, &staged)?;
+        replay_engineering_snapshot(&runtime, &snapshot)?;
+        engineering_same_verification(&source, &verify(&runtime)?)?;
+        verify_owned_bundle_directory(
+            &request.runtime,
+            &runtime_identity,
+            "runtime root replaced",
+        )?;
+        verify_named_open_identity(&request.launcher, &launcher_file, &launcher_metadata)?;
+        if !same_owned_file_identity(
+            &request.launcher,
+            &launcher_file,
+            &launcher_metadata,
+            &launcher_identity,
+        )? || read_regular_file_bounded(&launcher, MAXIMUM_MEMBER_BYTES)? != launcher_bytes
+        {
+            return Err(bundle_invalid("document launcher changed"));
+        }
+        verify_owned_bundle_directory(
+            &parent,
+            &parent_identity,
+            "engineering output parent replaced",
+        )?;
+        Ok(())
+    })();
+    if let Err(error) = prepared {
+        return Err(rollback_assembly_outputs(
+            error,
+            Some((&stage, &stage_identity)),
+            None,
+            None,
+        ));
+    }
+    let final_runtime = publish_engineering_layout(
+        &stage,
+        &output,
+        &stage_identity,
+        &source,
+        &launcher_bytes,
+        &mut verify,
+    )?;
+    Ok(WindowsEngineeringLayoutResult {
+        output_directory: output,
+        document_launcher_sha256: request.expected_launcher_sha256.clone(),
+        runtime: final_runtime,
+    })
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BundleBuildIdentity {
@@ -4978,6 +5426,364 @@ mod tests {
     fn capture_test_file_identity(path: &Path) -> OwnedPathIdentity {
         let file = File::open(path).expect("open test file identity");
         capture_open_file_identity(path, &file).expect("capture test file identity")
+    }
+
+    fn engineering_pe(machine: u16) -> Vec<u8> {
+        let mut pe = vec![0_u8; 256];
+        pe[..2].copy_from_slice(b"MZ");
+        pe[60..64].copy_from_slice(&64_u32.to_le_bytes());
+        pe[64..68].copy_from_slice(b"PE\0\0");
+        pe[68..70].copy_from_slice(&machine.to_le_bytes());
+        pe[88..90].copy_from_slice(&0x20b_u16.to_le_bytes());
+        pe
+    }
+
+    fn engineering_fixture() -> (TestBundle, WindowsEngineeringLayoutRequest) {
+        let parent = tempfile::tempdir().expect("synthetic parent");
+        let directory = parent.path().join("runtime");
+        create_owned_directory(&directory).expect("runtime directory");
+        let mut manifest = minimal_manifest();
+        manifest.target = target_for("windows", "x64").expect("Windows target");
+        manifest.entrypoints = BundleEntrypoints {
+            launcher: WINDOWS_LAUNCHER_PATH.into(),
+            runtime_controller: WINDOWS_RUNTIME_CONTROLLER_PATH.into(),
+            integrity_cli: WINDOWS_CLI_PATH.into(),
+            workbench: WINDOWS_WORKBENCH_PATH.into(),
+        };
+        for member in &mut manifest.members {
+            member.path = match member.role {
+                BundleMemberRole::PlatformLauncher => WINDOWS_LAUNCHER_PATH.into(),
+                BundleMemberRole::RuntimeController => WINDOWS_RUNTIME_CONTROLLER_PATH.into(),
+                BundleMemberRole::IntegrityCli => WINDOWS_CLI_PATH.into(),
+                BundleMemberRole::Workbench => WINDOWS_WORKBENCH_PATH.into(),
+                _ => member.path.clone(),
+            };
+            let bytes = if matches!(
+                member.role,
+                BundleMemberRole::PlatformLauncher
+                    | BundleMemberRole::RuntimeController
+                    | BundleMemberRole::IntegrityCli
+                    | BundleMemberRole::Workbench
+            ) {
+                engineering_pe(0x8664)
+            } else {
+                b"synthetic member\n".to_vec()
+            };
+            member.size = u64::try_from(bytes.len()).expect("small fixture");
+            member.sha256 = sha256_hex(&bytes);
+            let path = directory.join(&member.path);
+            create_directory_tree(&directory, path.parent().expect("parent"))
+                .expect("member parents");
+            write_new_file(&path, &bytes, parse_mode(&member.mode).expect("mode")).expect("member");
+        }
+        manifest.members.sort_by(|a, b| a.path.cmp(&b.path));
+        rehash(&mut manifest);
+        write_new_file(
+            &directory.join(BUNDLE_MANIFEST_FILENAME),
+            &canonical_json_bytes(&serde_json::to_value(manifest).expect("value"))
+                .expect("canonical"),
+            0o444,
+        )
+        .expect("manifest");
+        seal_bundle_directories(&directory).expect("seal");
+        let launcher = parent.path().join("trusted.exe");
+        let pe = engineering_pe(0x8664);
+        write_new_file(&launcher, &pe, 0o555).expect("launcher");
+        let request = WindowsEngineeringLayoutRequest {
+            launcher,
+            expected_launcher_sha256: sha256_hex(&pe),
+            runtime: directory.clone(),
+            output_directory: parent.path().join("engineering"),
+            engineering_policy: "local-unsigned-engineering".into(),
+        };
+        (TestBundle { directory, parent }, request)
+    }
+
+    fn engineering_verify(path: &Path) -> Result<BundleVerification> {
+        verify_bundle_root_for_target(path, &target_for("windows", "x64")?)
+    }
+
+    #[test]
+    fn windows_engineering_layout_preserves_real_synthetic_manifest_and_graph() {
+        let (_fixture, request) = engineering_fixture();
+        let original = engineering_snapshot(&request.runtime).expect("snapshot");
+        let mut calls = Vec::new();
+        let result = assemble_windows_engineering_layout_with(&request, |path| {
+            calls.push(path.to_path_buf());
+            engineering_verify(path)
+        })
+        .expect("synthetic assembly");
+        assert_eq!(calls.len(), 4);
+        assert_eq!(calls[0], request.runtime.canonicalize().expect("canonical"));
+        assert_eq!(calls[2], calls[0]);
+        assert_eq!(
+            calls[3],
+            request
+                .output_directory
+                .canonicalize()
+                .expect("output")
+                .join("Runtime")
+        );
+        let copied = engineering_snapshot(&result.runtime.bundle_root).expect("copied snapshot");
+        assert!(engineering_same_content(&original, &copied));
+        assert_eq!(
+            result.document_launcher_sha256,
+            request.expected_launcher_sha256
+        );
+        assert_eq!(
+            fs::read_dir(&result.output_directory)
+                .expect("outer graph")
+                .count(),
+            2
+        );
+        assert!(!request.runtime.join(ENGINEERING_LAUNCHER).exists());
+    }
+
+    #[test]
+    fn windows_engineering_layout_rejects_policy_paths_overlap_and_existing_output() {
+        let (_fixture, mut request) = engineering_fixture();
+        request.engineering_policy = "release".into();
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |_| panic!("no verifier")).is_err()
+        );
+        request.engineering_policy = "local-unsigned-engineering".into();
+        let output = request.output_directory.clone();
+        request.output_directory = PathBuf::from("relative");
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |_| panic!("no verifier")).is_err()
+        );
+        request.output_directory = request.runtime.join("child");
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |_| panic!("no verifier")).is_err()
+        );
+        request.output_directory = output;
+        fs::create_dir(&request.output_directory).expect("foreign output");
+        fs::write(request.output_directory.join("sentinel"), b"keep").expect("sentinel");
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |_| panic!("no verifier")).is_err()
+        );
+        assert_eq!(
+            fs::read(request.output_directory.join("sentinel")).expect("untouched"),
+            b"keep"
+        );
+    }
+
+    #[test]
+    fn windows_engineering_layout_refuses_digest_architecture_and_truncated_pe() {
+        let mut bad_offset = engineering_pe(0x8664);
+        bad_offset[60..64].copy_from_slice(&1_048_577_u32.to_le_bytes());
+        for bytes in [engineering_pe(0xaa64), vec![0_u8; 10], bad_offset] {
+            let (_fixture, mut request) = engineering_fixture();
+            set_mode(&request.launcher, 0o644).expect("writable fixture");
+            fs::write(&request.launcher, &bytes).expect("invalid fixture");
+            request.expected_launcher_sha256 = sha256_hex(&bytes);
+            assert!(
+                assemble_windows_engineering_layout_with(&request, engineering_verify).is_err()
+            );
+            assert!(!request.output_directory.exists());
+        }
+        let (_fixture, mut request) = engineering_fixture();
+        request.expected_launcher_sha256 = "0".repeat(64);
+        assert!(assemble_windows_engineering_layout_with(&request, engineering_verify).is_err());
+        assert!(!request.output_directory.exists());
+    }
+
+    #[test]
+    fn windows_engineering_layout_refuses_verifier_failure_before_publication() {
+        for fail_at in [0, 1, 2, 3] {
+            let (_fixture, request) = engineering_fixture();
+            let mut call = 0;
+            let result = assemble_windows_engineering_layout_with(&request, |path| {
+                let current = call;
+                call += 1;
+                if current == fail_at {
+                    return Err(bundle_invalid("injected verifier refusal"));
+                }
+                engineering_verify(path)
+            });
+            assert!(result.is_err());
+            assert_eq!(
+                request.output_directory.exists(),
+                fail_at == 3,
+                "visible output preserved after move"
+            );
+            engineering_verify(&request.runtime).expect("source intact");
+        }
+    }
+
+    #[test]
+    fn windows_engineering_layout_compares_every_verification_field_except_root() {
+        let (_fixture, request) = engineering_fixture();
+        let source = engineering_verify(&request.runtime).expect("source");
+        let mutations: [fn(&mut BundleVerification); 12] = [
+            |v| v.manifest_sha256.push('x'),
+            |v| v.product_commit.push('x'),
+            |v| v.product_version.push('x'),
+            |v| v.source_state = BundleSourceState::ExplicitUncommittedSnapshot,
+            |v| v.source_snapshot_sha256.push('x'),
+            |v| v.target.architecture.push('x'),
+            |v| v.launcher_sha256.push('x'),
+            |v| v.runtime_controller_sha256.push('x'),
+            |v| v.integrity_cli_sha256.push('x'),
+            |v| v.workbench_sha256.push('x'),
+            |v| v.member_count += 1,
+            |v| v.total_member_bytes += 1,
+        ];
+        for mutate in mutations {
+            let mut changed = source.clone();
+            mutate(&mut changed);
+            assert!(engineering_same_verification(&source, &changed).is_err());
+        }
+        let mut relocated = source.clone();
+        relocated.bundle_root = PathBuf::from("relocated");
+        engineering_same_verification(&source, &relocated).expect("root only may differ");
+    }
+
+    #[test]
+    fn windows_engineering_layout_refuses_source_swap_even_with_identical_bytes() {
+        let (_fixture, request) = engineering_fixture();
+        let source = engineering_verify(&request.runtime).expect("source");
+        let mut calls = 0;
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |_| {
+                calls += 1;
+                if calls == 2 {
+                    set_mode(&request.launcher, 0o755)?;
+                    let moved = request.launcher.with_extension("old");
+                    fs::rename(&request.launcher, &moved)
+                        .map_err(|e| KernelError::io(&moved, e))?;
+                    write_new_file(&request.launcher, &engineering_pe(0x8664), 0o555)?;
+                }
+                Ok(source.clone())
+            })
+            .is_err()
+        );
+        assert!(!request.output_directory.exists());
+    }
+
+    #[test]
+    fn windows_engineering_layout_refuses_staged_mutation_even_if_injected_verifier_accepts() {
+        let (_fixture, request) = engineering_fixture();
+        let source = engineering_verify(&request.runtime).expect("source");
+        let mut calls = 0;
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |path| {
+                calls += 1;
+                if calls == 2 {
+                    let member = path.join(WINDOWS_RUNTIME_CONTROLLER_PATH);
+                    set_mode(&member, 0o644)?;
+                    fs::write(&member, b"changed").map_err(|e| KernelError::io(&member, e))?;
+                }
+                Ok(source.clone())
+            })
+            .is_err()
+        );
+        assert!(!request.output_directory.exists());
+    }
+
+    #[test]
+    fn windows_engineering_layout_collision_after_staging_preserves_foreign_output() {
+        let (_fixture, request) = engineering_fixture();
+        let mut calls = 0;
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |path| {
+                calls += 1;
+                if calls == 2 {
+                    fs::create_dir(&request.output_directory).expect("concurrent output");
+                    fs::write(request.output_directory.join("sentinel"), b"foreign")
+                        .expect("foreign sentinel");
+                }
+                engineering_verify(path)
+            })
+            .is_err()
+        );
+        assert_eq!(
+            fs::read(request.output_directory.join("sentinel")).expect("preserved"),
+            b"foreign"
+        );
+    }
+
+    #[test]
+    fn windows_engineering_layout_extra_outer_material_is_refused() {
+        let (_fixture, request) = engineering_fixture();
+        let mut calls = 0;
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |path| {
+                calls += 1;
+                if calls == 2 {
+                    fs::write(
+                        path.parent().expect("stage").join("unexpected"),
+                        b"synthetic",
+                    )
+                    .expect("unexpected");
+                }
+                engineering_verify(path)
+            })
+            .is_err()
+        );
+        assert!(!request.output_directory.exists());
+    }
+
+    #[test]
+    fn windows_engineering_layout_depth_count_and_file_size_are_bounded() {
+        let temp = tempfile::tempdir().expect("bounded graph");
+        let mut path = temp.path().to_path_buf();
+        for _ in 0..=ENGINEERING_GRAPH_DEPTH {
+            path = path.join("d");
+            fs::create_dir(&path).expect("depth");
+        }
+        assert!(engineering_snapshot(temp.path()).is_err());
+        let temp = tempfile::tempdir().expect("count graph");
+        for n in 0..ENGINEERING_GRAPH_ENTRIES {
+            fs::write(temp.path().join(format!("f{n}")), []).expect("entry");
+        }
+        assert!(engineering_snapshot(temp.path()).is_err());
+        let temp = tempfile::tempdir().expect("oversize graph");
+        let file = File::create(temp.path().join("large")).expect("sparse fixture");
+        file.set_len(MAXIMUM_MEMBER_BYTES + 1)
+            .expect("sparse bound");
+        assert!(engineering_snapshot(temp.path()).is_err());
+        let temp = tempfile::tempdir().expect("cumulative byte bound");
+        fs::write(temp.path().join("one"), b"x").expect("one remaining entry");
+        let mut total = MAXIMUM_BUNDLE_BYTES + MAXIMUM_MANIFEST_BYTES;
+        assert!(
+            engineering_snapshot_directory(
+                temp.path(),
+                temp.path(),
+                &mut Vec::new(),
+                &mut total,
+                0
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn windows_engineering_layout_hardlinks_are_refused_before_verifier() {
+        let (_fixture, request) = engineering_fixture();
+        fs::hard_link(&request.launcher, request.launcher.with_extension("alias"))
+            .expect("hard link");
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |_| panic!("no verifier")).is_err()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn windows_engineering_layout_symlink_and_dangling_output_are_refused() {
+        use std::os::unix::fs::symlink;
+        let (_fixture, mut request) = engineering_fixture();
+        let original = request.launcher.clone();
+        request.launcher = original.with_extension("link");
+        symlink(&original, &request.launcher).expect("link");
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |_| panic!("no verifier")).is_err()
+        );
+        request.launcher = original;
+        symlink("absent", &request.output_directory).expect("dangling output");
+        assert!(
+            assemble_windows_engineering_layout_with(&request, |_| panic!("no verifier")).is_err()
+        );
     }
 
     fn materialize_minimal_bundle() -> TestBundle {
