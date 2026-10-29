@@ -73,6 +73,8 @@ def check_contract(builder, workflow, corpus):
             "exact checkout without persisted credentials required")
     require("$env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT" in workflow,
             "event/expected commit admission missing")
+    require("github.sha == inputs.expected_source_commit && github.run_attempt == 1" in workflow,
+            "pre-provisioning exact source/attempt guard required")
     require("$env:GITHUB_RUN_ATTEMPT -cne '1'" in workflow, "fresh manual attempt required")
     require("--profile','minimal'" in workflow and "'install','1.99.1'" in workflow,
             "Rust pin missing")
