@@ -137,10 +137,13 @@ actual process owner. The helper accepts only `open`, `--`, one synthetic path;
 that path contains spaces, Unicode, metacharacters and an unpaired UTF-16 unit.
 No real project document or product executable is opened.
 
-Six cases cover native arguments/environment clearing/null stdin, simultaneous
+Six cases cover native arguments/environment clearing/observed stdin EOF, simultaneous
 65,536-byte stdout and stderr, overflow on each stream, known exit 17 and one
 actual 45-second timeout. The driver inherits one fixed synthetic environment
 sentinel; the helper must not inherit it. Nothing enumerates environment values.
+The Job already gives the driver NUL stdin, so helper EOF does not distinguish
+explicit null stdin from inherited NUL. The unchanged command source confirms
+`stdin(Stdio::null())`; this fixture does not uniquely discriminate that policy.
 Overflow helpers remain alive after write errors; timeout/overflow helpers have
 no voluntary exit before their 50-second self-expiry. They deliberately retain
 an exclusive synthetic file handle until process exit. The driver must observe

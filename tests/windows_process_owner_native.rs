@@ -134,6 +134,7 @@ mod fixture {
             driver_handle.verify().map_err(|_| ())?;
             helper_handle.verify().map_err(|_| ())?;
             fs::create_dir(root.join("documents").join(case)).map_err(|_| ())?;
+            println!("RUN synthetic Windows process case: {case}");
             run_contained_case(case, &root, Rc::clone(&driver_handle), private.directory())?;
             if fs::read(&driver).map_err(|_| ())? != bytes
                 || fs::read(&helper).map_err(|_| ())? != bytes
@@ -343,6 +344,9 @@ mod fixture {
         {
             return Err(());
         }
+        // Observe EOF only: the driver already has Job-provided NUL stdin.
+        // Explicit stdin(null) is confirmed by unchanged command source review,
+        // not uniquely discriminated from inherited NUL by this fixture.
         let mut stdin = [0];
         if std::io::stdin().read(&mut stdin).map_err(|_| ())? != 0 {
             return Err(());
