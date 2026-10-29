@@ -119,3 +119,40 @@ construction check creates the owner/coordinator without spawning. Non-Windows
 proofs do not compile or qualify `PeekNamedPipe`, native reads, `Command::spawn`,
 `Child::kill` or the complete Windows process owner. Native synthetic-process
 verification and eventual exact-artifact acceptance remain separate work.
+
+## Separate synthetic native process proof
+
+`windows_process_owner_native` is an explicit `harness=false` test target, not a
+product binary. On non-Windows hosts it prints an explicit skip. The Windows
+source workflow runs it with a three-minute external step timeout:
+
+```sh
+cargo test --locked --test windows_process_owner_native
+```
+
+The test copies only its own test executable into a fresh current-user protected
+synthetic directory, including the exact fixed runtime helper name. A contained
+case driver obtains the existing coordinator's native invocation and calls the
+actual process owner. The helper accepts only `open`, `--`, one synthetic path;
+that path contains spaces, Unicode, metacharacters and an unpaired UTF-16 unit.
+No real project document or product executable is opened.
+
+Six cases cover native arguments/environment clearing/null stdin, simultaneous
+65,536-byte stdout and stderr, overflow on each stream, known exit 17 and one
+actual 45-second timeout. The driver inherits one fixed synthetic environment
+sentinel; the helper must not inherit it. Nothing enumerates environment values.
+Overflow helpers remain alive after write errors; timeout/overflow helpers have
+no voluntary exit before their 50-second self-expiry. They deliberately retain
+an exclusive synthetic file handle until process exit. The driver must observe
+its release before outer Job cleanup; timeout refusal and that cleanup must
+occur before 49.5 seconds, so the fail-safe alone cannot satisfy the test.
+
+Each driver is assigned suspended to an existing kill-on-close Job before
+resuming; nested-Job refusal never falls back to an uncontained launch. Its
+60-second watchdog and five-second cleanup act only on retained synthetic Job
+and process handles. The Job cannot turn failed owner cleanup into a passing
+case because the driver validates first. Failed evidence directories remain
+private for diagnosis. OS calls and runner scheduling still have no hard
+real-time guarantee; unknown cleanup fails. This proves only these trusted
+synthetic process behaviors, not arbitrary descendant/orphan absence, a real
+runtime, browser, native document event, installer or supported platform.

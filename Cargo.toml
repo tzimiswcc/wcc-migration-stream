@@ -35,6 +35,11 @@ path = "src/bin/migration-stream-local.rs"
 name = "migration-stream-bundle"
 path = "src/bin/migration-stream-bundle.rs"
 
+[[test]]
+name = "windows_process_owner_native"
+path = "tests/windows_process_owner_native.rs"
+harness = false
+
 [dependencies]
 app-memory-usage-fetcher = "=0.3.0"
 axum = { version = "=0.8.9", default-features = false, features = ["http1", "json", "query", "tokio"] }
