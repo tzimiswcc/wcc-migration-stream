@@ -13,7 +13,8 @@ The runner receives exactly `open`, `--` and the selected document as three
 separate native arguments. It receives a 45-second deadline and 65,536-byte cap
 for each output stream. A real runner must enforce those bounds during capture,
 drain both streams and bound cleanup of its directly owned controller child.
-This source does not yet supply or qualify that Windows process owner.
+A concrete `WindowsProcessRunner` is now available for explicit Windows composition;
+its native process behavior still requires separate Windows validation.
 
 `WindowsPath` retains UTF-16 units without UTF-8 conversion, including unpaired
 surrogates. Its Windows-only native constructor uses `OsStrExt::encode_wide`.
@@ -68,5 +69,53 @@ an empty explicit environment iterator alone does not prove inheritance policy.
 No registry/file association, installer, package, signing, release, native
 Windows runner/device acceptance or platform-support claim is included.
 Selection does not initialize, adopt, bind or repair a project. A future native
-entry point/process owner and exact-artifact acceptance remain prerequisites;
+entry point and exact-artifact acceptance remain prerequisites;
 the current runtime target and core gates remain unchanged.
+
+## Bounded controller process owner
+
+On Windows, explicitly passing `WindowsProcessRunner::default()` supplies the
+blocking runner. It reuses the existing native `Command` builder unchanged:
+fixed trusted executable, exactly three native UTF-16 arguments, empty inherited
+environment, null stdin and separately piped output. It has no browser or entry
+point. Callers must execute this blocking operation off their UI thread.
+
+The owner polls each pipe through the existing Windows native boundary's narrow
+`ChildStdout`/`ChildStderr` helpers. Each poll reads at most 4,096 currently
+available bytes, with one exclusive reader and no blocking EOF reader threads.
+Both streams are serviced before the child exit poll. Each stream admits at most
+65,536 bytes; overflow, read/poll error or the 45-second deadline refuses without
+returning captured text. Both pipe closure and known child exit are required for
+success. A descendant retaining a pipe cannot create an unbounded EOF join.
+The supplied runner limits must equal the coordinator's fixed limits.
+
+On failure the owner requests termination of only its directly retained
+controller child and polls for known exit for at most two more seconds. Unknown
+exit is never treated as death. Failed cleanup retains that child handle and
+refuses later spawns on this owner. Dropping an unresolved owner makes one final
+direct-child termination request without waiting; this does not prove exit.
+It never kills a Job/process tree or a PID from JSON: the controller may have
+started a legitimate runtime whose lifecycle authority remains in the core.
+No controller result or OS error text is exposed by this owner.
+
+These are application-level polling budgets, not real-time OS guarantees.
+Windows process creation, pipe syscalls, termination and scheduling may exceed a
+budget while an OS call is in progress; a deadline begins before spawn but cannot
+interrupt that call. The trusted runtime path is an integration prerequisite,
+not newly verified or filesystem-pinned by this runner. No claim of bounded OS
+failure recovery, descendant termination or orphan absence follows.
+
+Focused pure source checks (no child processes, controller, browser or runtime):
+
+```sh
+cargo test --locked --test windows_document_open process_owner_tests
+cargo clippy --locked --test windows_document_open -- -D warnings
+```
+
+The fake child and virtual clock exercise the same capture/cleanup state machine,
+including both byte caps, fair draining, unknown poll/read failures, inherited
+open pipes, exact UTF-16 invocation and retained cleanup failure. A Windows-only
+construction check creates the owner/coordinator without spawning. Non-Windows
+proofs do not compile or qualify `PeekNamedPipe`, native reads, `Command::spawn`,
+`Child::kill` or the complete Windows process owner. Native synthetic-process
+verification and eventual exact-artifact acceptance remain separate work.

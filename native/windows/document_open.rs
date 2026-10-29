@@ -218,3 +218,243 @@ fn validate_output(output: &ControllerOutput) -> Result<(), Failure> {
     }
     Ok(())
 }
+
+// No background readers are created: inherited pipes cannot strand threads.
+#[cfg(any(windows, test))]
+pub(crate) mod process_owner {
+    use super::{ControllerInvocation, ControllerOutput, OperationFailed};
+    use std::time::Duration;
+
+    const DEADLINE: Duration = Duration::from_secs(super::CONTROLLER_TIMEOUT_SECONDS);
+    const CLEANUP: Duration = Duration::from_secs(2);
+    const POLL: Duration = Duration::from_millis(10);
+    const LIMIT: usize = super::OUTPUT_LIMIT;
+
+    pub(crate) enum Read {
+        Pending,
+        Closed,
+        Bytes(usize),
+    }
+
+    // Internal seam for deterministic synthetic children/clocks, not a second
+    // externally configurable launcher or a caller-supplied executable boundary.
+    pub(crate) trait Child {
+        fn read(&mut self, stderr: bool, buffer: &mut [u8; 4096]) -> Result<Read, OperationFailed>;
+        fn poll(&mut self) -> Result<Option<i32>, OperationFailed>;
+        fn kill(&mut self) -> Result<(), OperationFailed>;
+    }
+
+    pub(crate) trait Backend {
+        type Child: Child;
+        fn spawn(
+            &mut self,
+            invocation: &ControllerInvocation,
+        ) -> Result<Self::Child, OperationFailed>;
+        fn now(&self) -> Duration;
+        fn sleep(&mut self, duration: Duration);
+    }
+
+    pub(crate) struct Owner<B: Backend> {
+        pub(crate) backend: B,
+        retained: Option<B::Child>,
+    }
+
+    impl<B: Backend> Owner<B> {
+        pub(crate) fn new(backend: B) -> Self {
+            Self {
+                backend,
+                retained: None,
+            }
+        }
+
+        fn cleanup(&mut self) {
+            let Some(child) = self.retained.as_mut() else {
+                return;
+            };
+            // Unknown is never proof of exit. Retain the owned handle on every
+            // failure; future calls refuse before spawning another controller.
+            if matches!(child.poll(), Ok(Some(_))) {
+                self.retained = None;
+                return;
+            }
+            let start = self.backend.now();
+            let _ = child.kill();
+            loop {
+                if matches!(child.poll(), Ok(Some(_))) {
+                    self.retained = None;
+                    return;
+                }
+                if self.backend.now().saturating_sub(start) >= CLEANUP {
+                    return;
+                }
+                self.backend.sleep(POLL);
+            }
+        }
+
+        pub(crate) fn run(
+            &mut self,
+            invocation: &ControllerInvocation,
+            seconds: u64,
+            limit: usize,
+        ) -> Result<ControllerOutput, OperationFailed> {
+            if self.retained.is_some()
+                || seconds != super::CONTROLLER_TIMEOUT_SECONDS
+                || limit != LIMIT
+            {
+                return Err(OperationFailed);
+            }
+            let start = self.backend.now();
+            self.retained = Some(self.backend.spawn(invocation)?);
+            let result = self.capture(start);
+            if result.is_err() {
+                self.cleanup();
+            }
+            result
+        }
+
+        fn capture(&mut self, start: Duration) -> Result<ControllerOutput, OperationFailed> {
+            let mut streams = [Vec::new(), Vec::new()];
+            let mut closed = [false, false];
+            let mut exit = None;
+            loop {
+                if self.backend.now().saturating_sub(start) >= DEADLINE {
+                    return Err(OperationFailed);
+                }
+                let child = self.retained.as_mut().ok_or(OperationFailed)?;
+                for index in 0..2 {
+                    if closed[index] {
+                        continue;
+                    }
+                    let mut buffer = [0; 4096];
+                    match child.read(index == 1, &mut buffer)? {
+                        Read::Pending => {}
+                        Read::Closed => closed[index] = true,
+                        Read::Bytes(count) => {
+                            if count == 0
+                                || count > buffer.len()
+                                || count > LIMIT.saturating_sub(streams[index].len())
+                            {
+                                return Err(OperationFailed);
+                            }
+                            streams[index].extend_from_slice(&buffer[..count]);
+                        }
+                    }
+                }
+                // Even a flood on both streams cannot postpone the deadline or
+                // exit poll. An exited parent with inherited open pipes still
+                // has a finite capture deadline, with no reader-thread join.
+                if exit.is_none() {
+                    exit = child.poll()?;
+                }
+                if let Some(exit_code) = exit
+                    && closed == [true, true]
+                {
+                    self.retained = None;
+                    let [stdout, stderr] = streams;
+                    return Ok(ControllerOutput {
+                        exit_code,
+                        stdout,
+                        stderr,
+                    });
+                }
+                self.backend.sleep(POLL);
+            }
+        }
+    }
+
+    impl<B: Backend> Drop for Owner<B> {
+        fn drop(&mut self) {
+            // Last-resort direct-child request only: Drop never waits and never
+            // signals runtime descendants or a PID supplied in controller JSON.
+            if let Some(child) = self.retained.as_mut() {
+                let _ = child.kill();
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    pub(crate) mod native {
+        use super::{Backend, Child, OperationFailed, Owner, Read};
+        use std::{
+            process,
+            time::{Duration, Instant},
+        };
+
+        pub(crate) struct NativeBackend(Instant);
+        impl Default for NativeBackend {
+            fn default() -> Self {
+                Self(Instant::now())
+            }
+        }
+        pub(crate) struct NativeChild(process::Child);
+        impl Child for NativeChild {
+            fn read(
+                &mut self,
+                stderr: bool,
+                buffer: &mut [u8; 4096],
+            ) -> Result<Read, OperationFailed> {
+                use migration_stream_windows_native::{
+                    ChildPipeRead, read_child_stderr, read_child_stdout,
+                };
+                let read = if stderr {
+                    read_child_stderr(self.0.stderr.as_mut().ok_or(OperationFailed)?, buffer)
+                } else {
+                    read_child_stdout(self.0.stdout.as_mut().ok_or(OperationFailed)?, buffer)
+                }
+                .map_err(|_| OperationFailed)?;
+                Ok(match read {
+                    ChildPipeRead::Pending => Read::Pending,
+                    ChildPipeRead::Closed => Read::Closed,
+                    ChildPipeRead::Read(count) => Read::Bytes(count),
+                })
+            }
+            fn poll(&mut self) -> Result<Option<i32>, OperationFailed> {
+                self.0
+                    .try_wait()
+                    .map(|status| status.map(|value| value.code().unwrap_or(-1)))
+                    .map_err(|_| OperationFailed)
+            }
+            fn kill(&mut self) -> Result<(), OperationFailed> {
+                self.0.kill().map_err(|_| OperationFailed)
+            }
+        }
+        impl Backend for NativeBackend {
+            type Child = NativeChild;
+            fn spawn(
+                &mut self,
+                invocation: &super::ControllerInvocation,
+            ) -> Result<NativeChild, OperationFailed> {
+                invocation
+                    .command()
+                    .spawn()
+                    .map(NativeChild)
+                    .map_err(|_| OperationFailed)
+            }
+            fn now(&self) -> Duration {
+                self.0.elapsed()
+            }
+            fn sleep(&mut self, duration: Duration) {
+                std::thread::sleep(duration);
+            }
+        }
+        /// Blocking process owner. Integrations must call it off their UI thread.
+        /// Only the controller is owned; runtime descendants are never killed.
+        #[derive(Default)]
+        pub struct WindowsProcessRunner(Option<Owner<NativeBackend>>);
+        impl super::super::ControllerRunner for WindowsProcessRunner {
+            fn run(
+                &mut self,
+                invocation: &super::ControllerInvocation,
+                seconds: u64,
+                limit: usize,
+            ) -> Result<super::super::ControllerOutput, OperationFailed> {
+                self.0
+                    .get_or_insert_with(|| Owner::new(NativeBackend::default()))
+                    .run(invocation, seconds, limit)
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+pub use process_owner::native::WindowsProcessRunner;
