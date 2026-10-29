@@ -999,8 +999,19 @@ mod engineering_composition_tests {
     }
     #[cfg(windows)]
     #[test]
-    fn composition_native_bindings_construct_without_metadata_or_shell_calls() {
-        let _checks = document_open::WindowsEngineeringLayout;
-        let _presenter = document_open::WindowsLoopbackBrowser;
+    fn composition_native_bindings_reject_empty_operands_before_operations() {
+        // Both native bindings are unit structs. Derived runner Default creates
+        // only Option::None; NativeBackend/clock/child initialization is inside
+        // its run method. Empty operands return before any of those operations.
+        assert_eq!(
+            open_engineering_document(
+                Vec::new(),
+                Vec::new(),
+                &mut document_open::WindowsEngineeringLayout,
+                document_open::WindowsProcessRunner::default(),
+                document_open::WindowsLoopbackBrowser,
+            ),
+            Err(LauncherFailure::Arguments)
+        );
     }
 }
