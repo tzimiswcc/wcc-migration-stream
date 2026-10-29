@@ -141,6 +141,11 @@ Six cases cover native arguments/environment clearing/observed stdin EOF, simult
 65,536-byte stdout and stderr, overflow on each stream, known exit 17 and one
 actual 45-second timeout. The driver inherits one fixed synthetic environment
 sentinel; the helper must not inherit it. Nothing enumerates environment values.
+The case driver's explicit environment contains only that sentinel and the
+verified `SystemRoot` supplied by the existing retained `system_root_directory()`
+capability, replayed around admission. Missing/invalid capability refuses; no
+ambient environment fallback or value logging is used. The native Job guard
+requires this entry before process creation; sentinel-only admission cannot run.
 The Job already gives the driver NUL stdin, so helper EOF does not distinguish
 explicit null stdin from inherited NUL. The unchanged command source confirms
 `stdin(Stdio::null())`; this fixture does not uniquely discriminate that policy.
@@ -159,3 +164,12 @@ private for diagnosis. OS calls and runner scheduling still have no hard
 real-time guarantee; unknown cleanup fails. This proves only these trusted
 synthetic process behaviors, not arbitrary descendant/orphan absence, a real
 runtime, browser, native document event, installer or supported platform.
+
+Fixed diagnostic stages identify Job creation/admission, exact driver exit code,
+driver startup/path/environment/invocation, owner return, readiness, exclusive
+handle release and assertions. Driver records are create-only eight-byte files
+under its owned synthetic case directory; outer readback admits only nine fixed
+stage names and eight-byte versioned records. Logs contain fixed case/stage/category
+labels and numeric OS/error-kind/exit codes, never paths, argv, environment values,
+controller output or raw error text. Diagnostic time remains inside the existing
+acceptance bounds; failed diagnostics cannot turn a case into a pass.
