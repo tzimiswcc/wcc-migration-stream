@@ -73,7 +73,9 @@
     "tests/native/macos/ApplicationBootstrapTests.swift",
     "native/macos/MigrationStreamApplication.swift",
     "scripts/assemble-macos-engineering-app.py",
-    "scripts/assemble-macos-engineering-app-self-test.py"
+    "scripts/assemble-macos-engineering-app-self-test.py",
+    "native/windows/document_open.rs",
+    "docs/WINDOWS-DOCUMENT-OPEN.md"
   ],
   "excluded": [
     "config/claude/**",
