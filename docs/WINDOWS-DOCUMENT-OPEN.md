@@ -59,6 +59,11 @@ pinning, controller/browser failures, exact ownership/loopback validation,
 malformed responses and output limits. They launch no controller, browser,
 runtime, native document event or network service. A non-Windows test run does
 not compile or qualify the Windows-only native `Command` projection.
+The manual source workflow adds a separate Windows-hosted job for this same
+synthetic target and strict Clippy. Two Windows-only tests construct native
+`OsString`/`Command` values and read their paths/arguments without spawning.
+Environment inheritance clearing and stdio policy remain static builder checks;
+an empty explicit environment iterator alone does not prove inheritance policy.
 
 No registry/file association, installer, package, signing, release, native
 Windows runner/device acceptance or platform-support claim is included.

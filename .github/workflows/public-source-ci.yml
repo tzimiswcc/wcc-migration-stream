@@ -45,3 +45,23 @@ jobs:
           python3 -B scripts/markdown-link-check.py --self-test
           python3 -B scripts/markdown-link-check.py
           test -z "$(git status --porcelain --untracked-files=all)"
+
+  windows-source:
+    name: Synthetic Windows document-open source checks
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install pinned Rust source-test toolchain
+        shell: pwsh
+        run: rustup toolchain install 1.99.1 --profile minimal --component clippy
+      - name: Test synthetic document-open coordination and native argument projection
+        shell: pwsh
+        run: cargo +1.99.1 test --locked --test windows_document_open
+      - name: Check only the Windows document-open source target with strict Clippy
+        shell: pwsh
+        run: cargo +1.99.1 clippy --locked --test windows_document_open -- -D warnings
