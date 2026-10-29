@@ -375,3 +375,53 @@ fn appended_fixed_controller_path_must_fit_native_path_bound() {
         Vec::<(ControllerInvocation, u64, usize)>::new()
     );
 }
+
+#[cfg(windows)]
+mod native_projection {
+    use std::{
+        ffi::OsString,
+        os::windows::ffi::{OsStrExt, OsStringExt},
+    };
+
+    use super::{WindowsPath, envelope, fixture, output};
+
+    #[test]
+    fn native_os_paths_retain_drive_unc_and_unpaired_utf16_units() {
+        for prefix in [r"C:\Synthetic & % customer\", r"\\server\share\Synthetic "] {
+            let mut units: Vec<_> = prefix.encode_utf16().collect();
+            units.push(0xd800);
+            units.extend(r"\project.mstream".encode_utf16());
+            let native = OsString::from_wide(&units);
+            let selected = WindowsPath::from_native(native.as_os_str()).unwrap();
+            assert_eq!(selected.units(), units);
+        }
+    }
+
+    #[test]
+    fn command_projection_keeps_the_fixed_program_and_three_native_arguments() {
+        let mut units: Vec<_> = r"C:\Synthetic & % customer\".encode_utf16().collect();
+        units.push(0xdfff);
+        units.extend(r"\project.mstream".encode_utf16());
+        let document = WindowsPath::from_native(OsString::from_wide(&units).as_os_str()).unwrap();
+        let (mut coordinator, calls) = fixture([Ok(output(&envelope()))]);
+        coordinator.open_documents(&[document]).unwrap();
+        let calls = calls.borrow();
+        let invocation = &calls.processes[0].0;
+        // Construct/read only. Never spawn, output, status or wait on this builder.
+        let command = invocation.command();
+        assert_eq!(
+            command.get_program().encode_wide().collect::<Vec<_>>(),
+            invocation.executable().units()
+        );
+        let arguments: Vec<Vec<u16>> = command
+            .get_args()
+            .map(|argument| argument.encode_wide().collect())
+            .collect();
+        assert_eq!(arguments, invocation.arguments());
+        assert_eq!(arguments[2], units);
+        assert_eq!(command.get_envs().count(), 0);
+        assert_eq!(command.get_current_dir(), None);
+        // Stable Command has no inheritance-clear/stdin getter. Their unchanged
+        // env_clear/null-stdin/piped policy needs static review, not a spawn probe.
+    }
+}
