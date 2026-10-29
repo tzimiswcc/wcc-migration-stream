@@ -62,6 +62,10 @@ jobs:
       - name: Test synthetic document-open coordination and native argument projection
         shell: pwsh
         run: cargo +1.99.1 test --locked --test windows_document_open
+      - name: Test only synthetic native Windows controller processes
+        timeout-minutes: 3
+        shell: pwsh
+        run: cargo +1.99.1 test --locked --test windows_process_owner_native
       - name: Check only the Windows document-open source target with strict Clippy
         shell: pwsh
         run: cargo +1.99.1 clippy --locked --test windows_document_open -- -D warnings
