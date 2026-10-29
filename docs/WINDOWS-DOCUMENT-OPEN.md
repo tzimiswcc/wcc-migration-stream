@@ -276,3 +276,80 @@ Tests use temporary synthetic PE headers, canonical synthetic runtime manifests
 and a private injected verifier seam; no packaged program is executed. Windows
 hosted tests and production library/new-bin lint must be reported separately
 from local non-Windows source checks.
+
+## Manual ephemeral Windows build qualification source
+
+The separate `windows-engineering-layout-qualification.yml` workflow is manual
+only. It requires the exact reviewed source commit as an input and checks it
+against both the event SHA and checkout. GitHub requires this workflow to exist
+on the default branch before dispatch; once present, a reviewed branch can be
+selected with `--ref`. See [GitHub's manual-run contract][manual-workflow]. Source
+review, merge, and earlier synthetic CI do not qualify this new build workflow
+or admit an executable run. The first real run needs a separate concrete
+execution admission after review.
+
+The intended lane is one ephemeral `windows-2025` x64 job, with Node 24.22.1,
+npm 12.2.1 and Rust 1.99.1. It selects existing runner Python 3.10 or later in
+the 3.x series and records its actual version and byte hash; it does not install
+or infer a product Python requirement. Native architecture checks, at least
+12 GiB free on the temporary drive and 8 GiB physical memory precede building.
+These are admission thresholds, not enforced target/cache disk or memory quotas.
+The 45-minute job timeout is an external ceiling, not a per-child interruption
+or cleanup proof.
+
+Online preparation installs the pinned toolchain/npm into the ephemeral runner
+and fills locked Windows npm/Cargo caches. npm cache preparation disables
+lifecycle scripts; the existing offline driver later runs normal locked build
+scripts. Resolver-offline npm and Cargo flags are applied only after cache
+preparation. They do not provide OS-level network isolation or prevent arbitrary
+third-party build-script networking. No provider/model call is selected.
+
+`-RetainEngineeringTools` is an opt-in builder flag requiring
+`-RetainedBuildRoot`. It adds exactly the document launcher and engineering
+assembler to the existing private single-copy/hash/length/PE checks, preserving
+the 128 MiB member and 512 MiB aggregate staging bounds. Without the flag, the
+existing four-file selection is unchanged. These tools remain outside Runtime;
+its manifest, source/compiled identity quartet and mandatory gates are unchanged.
+
+The driver still starts the controller with `__build-identity`, the kernel with
+`__bundle-build-identity`, the workbench with `--bundle-build-identity`, and the
+controller's Windows platform-launcher copy with `verify`. These metadata and
+file-verification modes include product process startup and, for async entry
+points, Tokio thread startup. They select no Start/Open/server/project/browser
+operation. Their existing `Command::output` collection checks size after return
+and has no individual deadline; the workflow does not claim capped streaming
+child capture or an environment sandbox.
+
+The existing driver builds all binaries once from the same exact commit,
+source snapshot, frontend snapshot and native target, using `-NoArchive`. Fresh
+private copies of the two engineering tools are compared with their Cargo
+outputs. The engineering assembler then receives the copied launcher's expected
+hash, the intact runtime and a nonexistent output. It directly verifies source,
+stage and final Runtime files without starting another product executable. The
+workflow checks its actual result schema, compiled source identity, target,
+counts, both manifest-file hashes, outer launcher bytes and exact two-entry
+outer layout. Full member/hash/graph verification remains in the existing
+production verifier rather than a new workflow manifest-admission copy.
+
+The bounded evidence contains only fixed keys, public source identities,
+versions, hashes, counts, stage and numeric exit status. Custom command logs,
+paths, environment and exception objects stay private to the ephemeral runner;
+standard GitHub action/runner setup logs retain their platform behavior. This is
+not a general log-redaction or environment-sandbox claim. Logs and evidence use
+create-only reservations; the first failure stops without an automatic retry.
+Re-run attempts refuse; any later qualification uses a separately admitted fresh
+manual run. No binary, layout, private log or cache is uploaded. Outputs
+are left for ephemeral runner teardown, preserving failed partials for the job's
+remaining lifetime. There is no output launch, browser/COM/Shell, OS registry,
+association, product installer, signing, release or support promotion.
+
+Hashes identify bytes; they do not authenticate a compiler, publisher or build
+provenance. The fixed command chain, recorded source/build inputs, selected tool
+hashes and copy checks form an external operator build receipt, with the runner
+image recorded when available. Metadata-free or mismatched assembler builds
+still refuse. Source-contract checks run with
+`python3 -B scripts/windows-engineering-qualification-self-test.py`; these are
+static mutation regressions, not PowerShell parsing/execution or real-artifact
+qualification.
+
+[manual-workflow]: https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow
