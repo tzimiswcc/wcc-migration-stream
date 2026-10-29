@@ -114,7 +114,7 @@ mod native {
         if ok == 0 {
             let error = io::Error::last_os_error();
             return if error.raw_os_error()
-                == Some(windows_sys::Win32::Foundation::ERROR_BROKEN_PIPE as i32)
+                == Some(windows_sys::Win32::Foundation::ERROR_BROKEN_PIPE.cast_signed())
             {
                 Ok(ChildPipeRead::Closed)
             } else {
