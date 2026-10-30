@@ -291,13 +291,16 @@ class QualificationTests(unittest.TestCase):
         runner = m.Runner(root, popen=lambda *_args, **_kwargs: child)
         self.assertEqual(runner([m.HDIUTIL, "info", "-plist"], limit=1024), b"x" * 1024)
 
-    def test_workflow_exact_manual_arm_lane_and_no_publication(self):
+    def test_workflow_exact_manual_arm_lane_and_explicit_optional_publication(self):
         text = (Path(__file__).resolve().parents[1] / ".github/workflows/macos-engineering-qualification.yml").read_text()
         for required in ("workflow_dispatch:", "runs-on: macos-26", "contents: read", "persist-credentials: false",
                          "github.sha == inputs.expected_source_commit", "github.run_attempt == 1", "architecture: arm64",
                          "npm@12.2.1", "1.99.1-aarch64-apple-darwin", "python3 -I -B scripts/macos-engineering-qualification.py"):
             self.assertIn(required, text)
-        for forbidden in ("push:", "pull_request:", "upload-artifact", "download-artifact", "secrets.", "macos-26-xlarge"):
+        for required in ("publish_engineering_candidate:", "default: false", "--publication-handoff",
+                         "github.ref == 'refs/heads/main'", "retention-days: 7", "digest-mismatch: error"):
+            self.assertIn(required, text)
+        for forbidden in ("push:", "pull_request:", "secrets.", "macos-26-xlarge"):
             self.assertNotIn(forbidden, text)
 
 

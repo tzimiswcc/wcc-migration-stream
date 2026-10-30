@@ -7,9 +7,15 @@ on:
         description: Exact reviewed 40-character source commit for this one native build and image qualification
         required: true
         type: string
+      publish_engineering_candidate:
+        description: Separate approval for one seven-day unsigned DMG upload and exact-ID passive replay
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: macos-engineering-image-${{ github.ref }}
@@ -17,13 +23,14 @@ concurrency:
 
 jobs:
   engineering-image:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.sha == inputs.expected_source_commit && github.run_attempt == 1 }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.sha == inputs.expected_source_commit && github.run_attempt == 1 && (!inputs.publish_engineering_candidate || github.ref == 'refs/heads/main') }}
     # Standard public ARM64 runner, not a paid larger-runner suffix.
     runs-on: macos-26
     timeout-minutes: 75
     env:
       EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
       RUSTUP_TOOLCHAIN: 1.99.1-aarch64-apple-darwin
+      PUBLISH_MACOS_ENGINEERING_CANDIDATE: ${{ inputs.publish_engineering_candidate && 'true' || 'false' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,7 +43,9 @@ jobs:
           architecture: arm64
       - name: Check qualification state machine with synthetic files only
         timeout-minutes: 3
-        run: python3 -I -B scripts/macos-engineering-qualification-self-test.py
+        run: |
+          python3 -I -B scripts/macos-engineering-qualification-self-test.py
+          python3 -I -B scripts/macos-engineering-candidate-self-test.py
       - name: Install project-pinned npm in runner-private tooling
         timeout-minutes: 10
         shell: bash
@@ -51,8 +60,61 @@ jobs:
         timeout-minutes: 10
         run: rustup toolchain install 1.99.1-aarch64-apple-darwin --profile minimal
       - name: One build, unsigned package and owned read-only image qualification
+        id: qualification
         timeout-minutes: 62
         shell: bash
         run: |
           set -euo pipefail
-          python3 -I -B scripts/macos-engineering-qualification.py --expected-source-commit "$EXPECTED_SOURCE_COMMIT"
+          arguments=(--expected-source-commit "$EXPECTED_SOURCE_COMMIT")
+          if [ "$PUBLISH_MACOS_ENGINEERING_CANDIDATE" = true ]; then
+            arguments+=(--publication-handoff)
+          fi
+          python3 -I -B scripts/macos-engineering-qualification.py "${arguments[@]}"
+      - name: Stage only the qualified image and two bounded receipts
+        id: candidate
+        if: ${{ inputs.publish_engineering_candidate == true }}
+        env:
+          QUALIFIED_WORKSPACE: ${{ steps.qualification.outputs.qualified_work }}
+          QUALIFICATION_SHA: ${{ steps.qualification.outputs.qualification_sha }}
+        run: python3 -I -B scripts/macos-engineering-candidate.py --stage
+      - name: Upload one unsigned Mac engineering candidate for seven days
+        id: upload_candidate
+        if: ${{ inputs.publish_engineering_candidate == true && steps.candidate.outputs.candidate_ready == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: migration-stream-macos-engineering-candidate-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/migration-stream-macos-candidate-${{ github.run_id }}/candidate/Migration Stream.dmg
+            ${{ runner.temp }}/migration-stream-macos-candidate-${{ github.run_id }}/candidate/engineering-package.json
+            ${{ runner.temp }}/migration-stream-macos-candidate-${{ github.run_id }}/candidate/qualification.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+          include-hidden-files: false
+          archive: true
+      - name: Admit only the returned artifact in this exact run
+        id: artifact
+        if: ${{ inputs.publish_engineering_candidate == true && steps.candidate.outputs.candidate_ready == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_ARTIFACT_ID: ${{ steps.upload_candidate.outputs.artifact-id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.upload_candidate.outputs.artifact-digest }}
+        run: python3 -I -B scripts/macos-engineering-candidate.py --admit-artifact
+      - name: Download only the returned Mac artifact by immutable ID
+        if: ${{ inputs.publish_engineering_candidate == true && steps.candidate.outputs.candidate_ready == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ steps.upload_candidate.outputs.artifact-id }}
+          repository: tzimiswcc/wcc-migration-stream
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/migration-stream-macos-candidate-${{ github.run_id }}/download
+          digest-mismatch: error
+      - name: Replay downloaded bytes and receipts without attaching the image
+        if: ${{ inputs.publish_engineering_candidate == true && steps.candidate.outputs.candidate_ready == 'true' }}
+        env:
+          CANDIDATE_ARTIFACT_ID: ${{ steps.upload_candidate.outputs.artifact-id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.upload_candidate.outputs.artifact-digest }}
+          CANDIDATE_AUTHORITY_SHA: ${{ steps.candidate.outputs.authority_sha }}
+          CANDIDATE_METADATA_SHA: ${{ steps.artifact.outputs.artifact_metadata_sha }}
+        run: python3 -I -B scripts/macos-engineering-candidate.py --replay

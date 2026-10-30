@@ -151,7 +151,8 @@ The manual [Apple-silicon qualification workflow](../.github/workflows/macos-eng
 uses GitHub's standard public `macos-26` ARM64 runner. [GitHub's runner table][arm-runner]
 and [macOS 26 announcement][arm-announcement] distinguish that label from Intel
 and paid larger runners. It admits one exact reviewed source commit and first
-workflow attempt, with read-only repository permission and no artifact upload.
+workflow attempt, with read-only repository permission. Artifact publication is
+an explicit, default-off option described below.
 Preparing this workflow does not run it or qualify the image.
 
 The [driver](../scripts/macos-engineering-qualification.py) refuses an Intel or
@@ -219,7 +220,8 @@ A success qualifies this unsigned engineering image's mounted and private-copy
 bytes/modes and Runtime reports on this hosted ARM64 OS. It does not establish
 Finder/UI, document events, installation, older-OS compatibility, signing,
 Gatekeeper, notarization or end-user acceptance. No paid Apple service, keychain,
-system installation, upload or security bypass is selected. The current local
+system installation or security bypass is selected. With the publication option
+off, no upload is selected. The current local
 host's mount refusal is not retried or reinterpreted.
 
 ```sh
@@ -231,6 +233,60 @@ child handles around small ordinary temporary files. All real process creation
 is blocked. They exercise ownership ambiguity, retained partials, exact-device
 detach, graph/mode/hash changes, read-only and identity gates, byte/deadline
 limits and manual workflow admission. They do not create or mount a DMG.
+
+## Optional seven-day engineering download
+
+The manual workflow's `publish_engineering_candidate` input defaults to `false`.
+Selecting it requires a separate approval for that run's public artifact delivery
+and restricts the job to the exact reviewed `main` commit, first attempt only.
+It uses the same 75-minute job and unchanged one-build/image qualification path;
+it does not introduce an automatic retry or a second product build.
+
+After successful image qualification, a bounded private handoff exports the
+qualification workspace and receipt hash. The
+[candidate helper](../scripts/macos-engineering-candidate.py) freshly checks
+source/main identity, the qualification result, original application graph and
+modes, DMG bytes and package-receipt hash. It copies exactly three regular,
+unaliased files into a create-only stage:
+
+- `Migration Stream.dmg`
+- `engineering-package.json`
+- `qualification.json`
+
+Only those fixed paths are uploaded, using the existing pinned artifact action,
+with seven-day retention and overwrite disabled. Raw build logs, private paths,
+the standalone `.app` directory and private publication authority are excluded.
+The application remains inside the DMG, preserving its qualified graph/modes
+instead of relying on ZIP filesystem-mode preservation.
+
+The helper admits only the one returned artifact ID, digest, run/source identity,
+repository and seven-day expiry. The pinned downloader obtains that exact ID
+with digest mismatch treated as an error. A final passive replay requires the
+download to contain the same three files, byte-for-byte, and rechecks the
+original package, application and local stage. It does not attach the downloaded
+image or start a Runtime or application. The final public job result identifies
+the artifact and hashes; it does not turn a hosted mount/copy result into an
+end-user installation or Gatekeeper qualification.
+
+The original packaging and qualification receipts retain their original
+`mountedContentsQualified: false` and `uploaded: false` fields respectively:
+packaging preceded the separately recorded mount qualification, and that
+qualification preceded upload. The final publication result records the later
+delivery. No historical receipt is rewritten to claim a later event.
+
+A failure after upload can leave an unqualified candidate downloadable until
+its seven-day expiry. The workflow stops and preserves that outcome; it does
+not delete the artifact, retry, sign, notarize, install, open the UI or create a
+release. Preparing this source does not authorize or perform a hosted run.
+
+```sh
+python3 -I -B scripts/macos-engineering-candidate-self-test.py
+```
+
+These offline tests use nonrunnable fake image bytes, injected publication and
+mock metadata responses. They test corruption, extra files, source changes,
+links, receipt claims, bounds, wrong artifacts and expiry. Real process and
+network creation is blocked; they do not build, mount, upload or install.
 
 [arm-runner]: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
 [arm-announcement]: https://github.blog/changelog/2026-02-26-macos-26-is-now-generally-available-for-github-hosted-runners/
