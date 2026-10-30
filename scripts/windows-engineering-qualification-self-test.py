@@ -79,6 +79,10 @@ def check_architecture_contract(workflow, driver, helper, source_ci):
                      "$verified.target.architecture -cne $targetTuple.architecture", "$verified.target.targetTriple -cne $targetTuple.target",
                      "preview_target=", "preview_architecture="):
         require(required in driver, "build/manifest/export target binding required")
+    require("Join-Path $qualificationRepository ('target/'+$targetTuple.target+'/release')" in driver,
+            "release binary lookup must follow selected native target")
+    require(not re.search(r"target/(?:x86_64|aarch64)-pc-windows-msvc/release", driver),
+            "hardcoded native release path refused")
     require("migration-stream-engineering-candidate-${{ inputs.architecture }}-${{ github.sha }}" in workflow
             and "'migration-stream-engineering-candidate-'+$targetTuple.architecture+'-'" in driver
             and "'migration-stream-engineering-candidate-'+$targetTuple.architecture+'-'" in workflow,
@@ -421,6 +425,7 @@ class QualificationContractTests(unittest.TestCase):
         self.reject(driver=self.driver.replace("Assert-PreviewNativeHost $targetTuple", "Write-Output $targetTuple", 1))
         self.reject(driver=self.driver.replace("Assert-PreviewRustHost $targetTuple", "Write-Output $targetTuple", 1))
         self.reject(source_ci=self.source_ci.replace("rustc +${{ matrix.toolchain }} -vV", "rustc --version", 1))
+        self.reject(driver=self.driver.replace("('target/'+$targetTuple.target+'/release')", "'target/x86_64-pc-windows-msvc/release'", 1))
 
     def test_expected_preview_target_and_export_cannot_be_lost(self):
         self.reject(helper=self.helper.replace("$receipt.build.target -ceq $tuple.target", "$true", 1))

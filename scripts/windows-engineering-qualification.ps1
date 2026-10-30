@@ -224,7 +224,7 @@ try {
   $qualificationMetadata.sourceSnapshotSha256 = Get-QualificationHash (Join-Path $qualificationRetained 'source-manifest.json')
   $qualificationMetadata.frontendAssetsSha256 = Get-QualificationHash (Join-Path $qualificationRetained 'frontend-manifest.json')
   $privateBinaries = Join-Path $qualificationRetained 'release-binaries'
-  $releaseBinaries = Join-Path $qualificationRepository 'target/x86_64-pc-windows-msvc/release'
+  $releaseBinaries = Join-Path $qualificationRepository ('target/'+$targetTuple.target+'/release')
   foreach ($entry in @(@('documentLauncherSha256','migration-stream-document-open.exe'),@('engineeringAssemblerSha256','migration-stream-windows-engineering-layout.exe'))) {
     $copied = Get-QualificationHash (Join-Path $privateBinaries $entry[1])
     if ($copied -cne (Get-QualificationHash (Join-Path $releaseBinaries $entry[1]))) { throw 'external build copy differs' }
