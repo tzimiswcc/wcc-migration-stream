@@ -12,6 +12,7 @@ import stat
 import struct
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -217,6 +218,47 @@ class DesktopPackagingTests(unittest.TestCase):
         with mock.patch.object(module, "arguments", return_value=self.request), mock.patch.object(module, "package", side_effect=OSError("private path must never print")), contextlib.redirect_stdout(output):
             self.assertEqual(module.main(), 1)
         self.assertEqual(json.loads(output.getvalue()), {"schemaVersion":module.SCHEMA,"ok":False,"code":"PACKAGING_REFUSED"})
+
+    def exercise_fake_image_child(self, *, exit_code=0, overflow=False, expired=False):
+        class Stream:
+            def __init__(self, descriptor): self.descriptor, self.closed = descriptor, False
+            def fileno(self): return self.descriptor
+            def close(self): self.closed = True
+        child = SimpleNamespace(stdout=Stream(501), stderr=Stream(502), returncode=None, terminated=False)
+        child.poll = lambda: child.returncode
+        def wait(timeout):
+            child.returncode = 0 if child.terminated else exit_code
+            return child.returncode
+        def terminate(): child.terminated = True
+        child.wait, child.terminate, child.kill = wait, terminate, terminate
+        class Selector:
+            def __init__(self): self.entries = {}
+            def register(self, stream, _events): self.entries[stream.fileno()] = stream
+            def get_map(self): return self.entries
+            def select(self, _timeout): return [(SimpleNamespace(fd=fd, fileobj=stream), None) for fd, stream in list(self.entries.items())]
+            def unregister(self, stream): del self.entries[stream.fileno()]
+            def close(self): self.entries.clear()
+        clock_calls = 0
+        def clock():
+            nonlocal clock_calls
+            clock_calls += 1
+            return 301 if expired and clock_calls > 1 else 0
+        def read(fd, _length): return b"x" * 4096 if overflow and fd == 501 else b""
+        with mock.patch.object(module.subprocess, "Popen", return_value=child) as spawn, mock.patch.object(module.selectors, "DefaultSelector", Selector), mock.patch.object(module.os, "set_blocking"), mock.patch.object(module.os, "read", side_effect=read), mock.patch.object(module.time, "monotonic", side_effect=clock):
+            try:
+                module._run_image_tool(["verify", "-quiet", "synthetic-image"])
+            finally:
+                spawn.assert_called_once_with(["/usr/bin/hdiutil", "verify", "-quiet", "synthetic-image"], env={}, shell=False, stdin=module.subprocess.DEVNULL, stdout=module.subprocess.PIPE, stderr=module.subprocess.PIPE)
+                self.assertTrue(child.stdout.closed and child.stderr.closed)
+                if overflow or expired: self.assertTrue(child.terminated)
+
+    def test_image_runner_fixed_invocation_and_nonzero_refusal(self):
+        self.exercise_fake_image_child()
+        with self.assertRaises(module.PackagingError): self.exercise_fake_image_child(exit_code=17)
+
+    def test_image_runner_output_cap_and_deadline_cleanup(self):
+        with self.assertRaises(module.PackagingError): self.exercise_fake_image_child(overflow=True)
+        with self.assertRaises(module.PackagingError): self.exercise_fake_image_child(expired=True)
 
     def test_final_publication_collision_preserves_foreign_output(self):
         calls = 0
