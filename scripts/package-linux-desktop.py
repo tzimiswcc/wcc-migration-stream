@@ -292,13 +292,38 @@ def _verify(root):
     return _json(_run([str(root / ELF_PATHS[0]), "verify"]))
 
 
+def _elf_headers(root, architecture, rows):
+    # Admit captured native bytes before any executable is invoked. A matching
+    # host/request alone does not establish the input controller's ISA.
+    for name in ELF_PATHS:
+        if name not in rows or rows[name][0] != "file":
+            raise PackagingError("native executable missing from captured graph")
+        descriptor = os.open(root / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            info = os.fstat(descriptor)
+            if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+                    or _signature(info) != rows[name][4]):
+                raise PackagingError("ELF identity changed before header read")
+            header = os.read(descriptor, 20)
+            if (_signature(os.fstat(descriptor)) != rows[name][4]
+                    or _signature((root / name).lstat()) != rows[name][4]):
+                raise PackagingError("ELF identity changed during header read")
+        finally:
+            os.close(descriptor)
+        if (len(header) != 20 or header[:7] != b"\x7fELF\x02\x01\x01"
+                or int.from_bytes(header[18:20], "little") != TARGETS[architecture][2]):
+            raise PackagingError("native executable architecture differs")
+
+
 def _report(value, root, request, version, rows):
     if (not isinstance(value, dict) or value.get("schemaVersion") != CLI_SCHEMA
             or value.get("ok") is not True or not isinstance(value.get("result"), dict)):
         raise PackagingError("production verify envelope refused")
     report = value["result"]
+    # BundleTarget omits minimumOsVersion when None; Linux's canonical target
+    # has exactly these three fields, rather than a serialized null fourth field.
     target = {"os": "linux", "architecture": request.architecture,
-              "targetTriple": TARGETS[request.architecture][1], "minimumOsVersion": None}
+              "targetTriple": TARGETS[request.architecture][1]}
     if (set(report) != REPORT_KEYS or report["bundleRoot"] != str(root) or report["target"] != target
             or report["productVersion"] != version or report["sourceState"] != "CLEAN"
             or report["productCommit"] != request.expected_product_commit
@@ -315,20 +340,7 @@ def _report(value, root, request, version, rows):
                       ("integrityCliSha256", ELF_PATHS[1]), ("workbenchSha256", ELF_PATHS[2])):
         if name not in rows or rows[name][0] != "file" or rows[name][3] != report[key]:
             raise PackagingError("production report does not bind captured bytes")
-    for name in ELF_PATHS:
-        descriptor = os.open(root / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        try:
-            if _signature(os.fstat(descriptor)) != rows[name][4]:
-                raise PackagingError("ELF identity changed before header read")
-            header = os.read(descriptor, 20)
-            if (_signature(os.fstat(descriptor)) != rows[name][4]
-                    or _signature((root / name).lstat()) != rows[name][4]):
-                raise PackagingError("ELF identity changed during header read")
-        finally:
-            os.close(descriptor)
-        if (len(header) != 20 or header[:7] != b"\x7fELF\x02\x01\x01"
-                or int.from_bytes(header[18:20], "little") != TARGETS[request.architecture][2]):
-            raise PackagingError("native executable architecture differs")
+    _elf_headers(root, request.architecture, rows)
     return {key: report[key] for key in report if key != "bundleRoot"}
 
 
@@ -482,6 +494,7 @@ def _package(request, *, verify, dependencies, native, publish, repository=None)
     version = cargo["version"]
     ubuntu = native(request.architecture)
     source = _snapshot(request.runtime)
+    _elf_headers(request.runtime, request.architecture, source)
     report = _report(verify(request.runtime), request.runtime, request, version, source)
     if _snapshot(request.runtime) != source:
         raise PackagingError("source changed during production verification")
@@ -494,6 +507,7 @@ def _package(request, *, verify, dependencies, native, publish, repository=None)
     runtime = portable / "Runtime"
     _copy(request.runtime, runtime, source)
     copied = _snapshot(runtime)
+    _elf_headers(runtime, request.architecture, copied)
     if _report(verify(runtime), runtime, request, version, copied) != report:
         raise PackagingError("copied production verification differs")
     if _snapshot(runtime) != copied or _snapshot(request.runtime) != source:
