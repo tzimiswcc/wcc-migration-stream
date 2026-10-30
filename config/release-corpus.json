@@ -108,7 +108,10 @@
     "scripts/macos-engineering-qualification.py",
     "scripts/macos-engineering-qualification-self-test.py",
     "scripts/prepare-nsis-tool.py",
-    "scripts/prepare-nsis-tool-self-test.py"
+    "scripts/prepare-nsis-tool-self-test.py",
+    "scripts/windows-combine-fixed-inputs.py",
+    "scripts/windows-combine-fixed-inputs-self-test.py",
+    ".github/workflows/windows-combine-fixed-inputs.yml"
   ],
   "excluded": [
     "config/claude/**",

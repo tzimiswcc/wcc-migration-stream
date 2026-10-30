@@ -1,0 +1,78 @@
+name: Manual one fixed native-pair Combine-only qualification
+on:
+  workflow_dispatch:
+    inputs:
+      expected_tooling_commit:
+        description: Exact reviewed main tooling commit; product bytes remain a61 native inputs
+        required: true
+        type: string
+      authorize_fixed_input_compile:
+        description: New approval for one15min download/passive replay/NSIS compile; no rebuild or upload
+        type: boolean
+        required: true
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: windows-fixed-native-pair-combine
+  cancel-in-progress: false
+jobs:
+  fixed-combine:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.authorize_fixed_input_compile == true && github.ref == 'refs/heads/main' && github.sha == inputs.expected_tooling_commit && github.run_attempt == 1 }}
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_tooling_commit }}
+      REUSE_FIXED_NATIVE_PAIR: 'true'
+      PUBLISH_NATIVE_TRANSFERS: 'true'
+      X64_ARTIFACT_ID: '12978336770'
+      X64_ARTIFACT_DIGEST: 'b385d5fd4aa7146464c78718a8a27c0546713790b5971642a0b70dd0ae3605dd'
+      X64_ARCHIVE_SHA: 'f15c7672614b5014d1e31c11b25c00598e4c65a5c5ca52f095369946f9b250eb'
+      X64_RECEIPT_SHA: '7a11ebd8d7d3b7c9b98473a4ec954c4da9aaf53715a0721e52b41439b902d070'
+      X64_TREE: '98fa8ce2dcb4114db7607df62ab3118c850b6c0c'
+      X64_SNAPSHOT: '79a91c758f5b440011d8c71c1c1125591ed5b91c9b08eda9045175093bbe916e'
+      ARM64_ARTIFACT_ID: '12978508130'
+      ARM64_ARTIFACT_DIGEST: '9f6d2f9de222677116bd3863fcda9ca664b6c2240f1de6e7ac01a1e4f1700be2'
+      ARM64_ARCHIVE_SHA: '1c1a38c7e2d682fe9e7cd9c1531aaa25695d174ad8a7e1e55fbd3c277438845b'
+      ARM64_RECEIPT_SHA: '8ac32182415859da3cf73bf9120bb2865554aaffd8cedf0c6572c3aa5d0f0bc3'
+      ARM64_TREE: '98fa8ce2dcb4114db7607df62ab3118c850b6c0c'
+      ARM64_SNAPSHOT: '79a91c758f5b440011d8c71c1c1125591ed5b91c9b08eda9045175093bbe916e'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Admit immutable product inputs, tooling source and expiry before download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & ./scripts/windows-desktop-installer-qualification.ps1 -Operation AdmitTransfers -ReuseFixedNativePair
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Download only original x64 input by exact ID and digest
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: 12978336770
+          repository: tzimiswcc/wcc-migration-stream
+          run-id: 41057681963
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/migration-stream-desktop-download-x64-${{ github.run_id }}
+          digest-mismatch: error
+      - name: Download only original arm64 input by exact ID and digest
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: 12978508130
+          repository: tzimiswcc/wcc-migration-stream
+          run-id: 41057681963
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/migration-stream-desktop-download-arm64-${{ github.run_id }}
+          digest-mismatch: error
+      - name: Re-admit expiry and compile one ephemeral installer without execution or upload
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & ./scripts/windows-desktop-installer-qualification.ps1 -Operation Combine -ReuseFixedNativePair
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
