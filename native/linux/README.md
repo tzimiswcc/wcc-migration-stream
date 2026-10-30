@@ -190,7 +190,11 @@ over 128 MiB and total captured bytes over 513 MiB. Archive writes are capped
 at 1 GiB, each tool stream at 64 KiB, each verifier at 120 seconds, dependency
 analysis at 60 seconds and the CLI operation at 360 seconds. Modes and bytes
 inside Runtime are preserved; all tar members are explicit regular files or
-directories, never hardlink entries. A bounded receipt outside Runtime records
+directories, never hardlink entries.
+Both package formats use explicit POSIX USTAR headers, with no PAX extensions.
+Names or metadata that USTAR cannot represent refuse instead of changing
+formats; this is stricter than the Runtime's own maximum path length.
+The bounded receipt outside Runtime records
 its graph, production verifier identity and both artifact digests. Private
 working directories are retained beside the output even on success; a refusal
 may also retain its private unpublished result directory. There is no automatic
