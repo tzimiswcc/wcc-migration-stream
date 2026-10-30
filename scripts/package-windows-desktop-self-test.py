@@ -93,6 +93,13 @@ class WindowsDesktopSourceTests(unittest.TestCase):
         self.assertIn('File "/oname=migration-stream.exe" "',self.rendered)
         self.assertIn('File "/oname=install-owner.txt" "',self.rendered)
         self.assertNotIn('File /oname="',self.rendered)
+        self.assertIn('  ClearErrors\n  File "/oname=migration-stream.exe" "',self.rendered)
+        self.assertIn('  Push "$INSTDIR\\Runtime\\bin\\migration-stream.exe"\n  Call RequireExtractedFile',self.rendered)
+        self.assertIn('  ClearErrors\n  File "/oname=install-owner.txt" "',self.rendered)
+        self.assertIn('  Push "$INSTDIR\\install-owner.txt"\n  Call RequireExtractedFile',self.rendered)
+        self.assertIn('IfFileExists "$0" 0 extracted_refused',self.rendered)
+        self.assertIn('GetFileAttributesW(w r0)i.r1 ?e',self.rendered)
+        self.assertIn('IntOp $1 $1 & 0x410',self.rendered)
         self.assertTrue(list(self.root.glob('.migration-stream-nsis-inputs-*')))
         self.assertEqual(module.file_record(self.request.output_directory/"Migration Stream Setup.exe",module.MAX_SETUP)[0]["sha256"],result["installer"]["sha256"])
 
