@@ -223,7 +223,7 @@ function Select-PreviewBuildReceipt([object]$Value) {
 }
 function Invoke-PreviewRuntimeVerification([string]$Root, [object]$Build) {
     Assert-Preview ($IsWindows -and $Build.schemaVersion -ceq 'migration-stream/windows-engineering-qualification/v1' -and $Build.status -ceq 'PASSED')
-    $tuple=Get-PreviewTarget $Build.architecture
+    $tuple=Get-PreviewBuildTarget $Build
     Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())
     Assert-Preview ($Build.sourceCommit -cmatch '^[0-9a-f]{40}$' -and $Build.sourceTree -cmatch '^[0-9a-f]{40}$' -and $Build.target -ceq $tuple.target)
     $runtime = Join-Path $Root 'Runtime'
