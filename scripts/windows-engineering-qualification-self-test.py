@@ -90,13 +90,20 @@ def check_architecture_contract(workflow, driver, helper, source_ci):
     require("$env:PREVIEW_EXPECTED_TARGET -cne $targetTuple.target" in workflow
             and "target=$result.target" in workflow and "architecture=$result.architecture" in workflow,
             "explicit target handoff evidence required")
-    require("$receipt.build.architecture -ceq $tuple.architecture -and $receipt.build.target -ceq $tuple.target" in helper
+    require("$buildTuple=Get-PreviewBuildTarget $receipt.build" in helper
+            and "$buildTuple.architecture -ceq $tuple.architecture -and $buildTuple.target -ceq $tuple.target" in helper
             and "Assert-PreviewVerificationTarget $receipt.runtime.target $receipt.build" in helper
             and "Assert-PreviewVerificationTarget $v.target $Build" in helper,
             "receipt/runtime target must match explicit expected lane")
     require("-Architecture $targetTuple.architecture" in driver
             and "-Architecture $targetTuple.architecture" in workflow,
             "no receipt-selected target authority")
+    require(helper.count("$buildTuple.architecture -ceq $tuple.architecture -and $buildTuple.target -ceq $tuple.target") == 2,
+            "both Pack and Extract must bind scalar build tuple to expected lane")
+    for required in ("$Build.architecture -is [string] -and $Build.target -is [string]",
+                     "$Target.os -is [string] -and $Target.architecture -is [string] -and $Target.targetTriple -is [string]",
+                     "$tuple=Get-PreviewBuildTarget $Value", "$buildTuple=Get-PreviewBuildTarget $Build"):
+        require(required in helper, "primitive scalar target admission required")
     production = helper.split("function Invoke-PreviewRuntimeVerification", 1)[1].split("function Read-PreviewBlock", 1)[0]
     host_call = "Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())"
     require(host_call in production and production.index(host_call) < production.index("& $controller verify"),
@@ -436,9 +443,10 @@ class QualificationContractTests(unittest.TestCase):
         self.reject(driver=self.driver.replace("('target/'+$targetTuple.target+'/release')", "'target/x86_64-pc-windows-msvc/release'", 1))
 
     def test_expected_preview_target_and_export_cannot_be_lost(self):
-        self.reject(helper=self.helper.replace("$receipt.build.target -ceq $tuple.target", "$true", 1))
+        self.reject(helper=self.helper.replace("$buildTuple.target -ceq $tuple.target", "$true", 1))
         self.reject(workflow=self.workflow.replace("$env:PREVIEW_EXPECTED_TARGET -cne $targetTuple.target", "$false", 1))
         self.reject(driver=self.driver.replace("preview_target=", "other_target=", 1))
+        self.reject(helper=self.helper.replace("$Build.architecture -is [string] -and $Build.target -is [string]", "$true", 1))
         host_call = "    Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())\n"
         self.reject(helper=self.helper.replace(host_call, "", 1))
         late = self.helper.replace(host_call, "", 1).replace("    $output = @(& $controller verify 2>&1)\n", "    $output = @(& $controller verify 2>&1)\n" + host_call, 1)

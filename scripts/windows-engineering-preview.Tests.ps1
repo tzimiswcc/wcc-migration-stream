@@ -37,6 +37,14 @@ try {
             Expect-Refusal { Assert-PreviewRustHost $tuple @('rustc 1.99.1 (synthetic)',('host: '+$opposite.target)) }
             Expect-Refusal { Assert-PreviewVerificationTarget ([ordered]@{os='windows';architecture=$opposite.architecture;targetTriple=$tuple.target}) ([ordered]@{architecture=$architecture;target=$tuple.target}) }
         }
+        foreach ($field in @('os','architecture','targetTriple')) {
+            $target=[ordered]@{os='windows';architecture='arm64';targetTriple='aarch64-pc-windows-msvc'}
+            $correct=$target[$field]
+            foreach ($bad in @(@($correct,'extra'),[pscustomobject]@{value=$correct})) {
+                $target[$field]=$bad
+                Expect-Refusal { Assert-PreviewVerificationTarget ([pscustomobject]$target) ([pscustomobject]@{architecture='arm64';target='aarch64-pc-windows-msvc'}) }
+            }
+        }
         Expect-Refusal { Get-PreviewTarget 'ARM64' }
         Expect-Refusal { Get-PreviewTarget 'unknown' }
         Expect-Refusal { Assert-PreviewNativeHost (Get-PreviewTarget 'arm64') 'ARM64' 'Arm64' 'X64' }
@@ -48,6 +56,15 @@ try {
             foreach ($field in @('sourceSnapshotSha256','frontendAssetsSha256','documentLauncherSha256','engineeringAssemblerSha256','runtimeManifestSha256','runtimeManifestFileSha256','runtimeLauncherSha256','runtimeControllerSha256','integrityCliSha256','workbenchSha256')) { $value[$field]='a'*64 }
             $selected=Select-PreviewBuildReceipt ([pscustomobject]$value)
             Assert-Preview ($selected.architecture -ceq $tuple.architecture -and $selected.target -ceq $tuple.target)
+            foreach ($field in @('architecture','target')) {
+                $correct=$value[$field]
+                foreach ($bad in @(@($correct,'extra'),[pscustomobject]@{value=$correct})) {
+                    $value[$field]=$bad
+                    Expect-Refusal { Select-PreviewBuildReceipt ([pscustomobject]$value) }
+                    Expect-Refusal { Get-PreviewBuildTarget ([pscustomobject]$value) }
+                }
+                $value[$field]=$correct
+            }
             $value.target=$(if ($architecture -ceq 'x64') { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' })
             Expect-Refusal { Select-PreviewBuildReceipt ([pscustomobject]$value) }
         }
@@ -63,6 +80,10 @@ try {
         Assert-Preview (-not [IO.Directory]::Exists($wrong))
         $replay=Expand-PreviewArchiveCore $armArchive $arm.archiveSha256 (Join-Path $testRoot 'arm-replay') $fakeValidator 'arm64'
         Assert-Preview ($replay.architecture -ceq $arm.architecture -and $replay.target -ceq $arm.target)
+        $armBuild.target=@('aarch64-pc-windows-msvc','extra')
+        $arrayArchive=Join-Path $testRoot 'array-target.zip'
+        Expect-Refusal { New-PreviewArchiveCore $layout $armBuild $arrayArchive $fakeValidator 'arm64' }
+        Assert-Preview (-not [IO.File]::Exists($arrayArchive))
         $armBuild.target='x86_64-pc-windows-msvc'
         $mixed=Join-Path $testRoot 'mixed-target.zip'
         Expect-Refusal { New-PreviewArchiveCore $layout $armBuild $mixed $fakeValidator 'arm64' }
