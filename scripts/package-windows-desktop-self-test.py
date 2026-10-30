@@ -35,8 +35,12 @@ def fake_pe(machine,magic=0x20B):
 
 class WindowsDesktopSourceTests(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory(prefix="migration-stream-installer-synthetic-")
-        self.root=Path(self.temp.name).resolve();self.commit="b"*40;self.tree="c"*40;self.snapshot="d"*64
+        if getattr(self, "retain_native_fixture", False):
+            self.root = Path(tempfile.mkdtemp(prefix="migration-stream-nsis-native-synthetic-")).resolve()
+        else:
+            self.temp=tempfile.TemporaryDirectory(prefix="migration-stream-installer-synthetic-")
+            self.root=Path(self.temp.name).resolve()
+        self.commit="b"*40;self.tree="c"*40;self.snapshot="d"*64
         self.inputs={}
         for architecture,(target,machine) in module.TARGETS.items():
             layout=self.root/(architecture+" layout Ω");runtime=layout/"Runtime";runtime.mkdir(parents=True)
@@ -209,10 +213,18 @@ def native_compile_fixture():
         return 1
     case = None
     initialized = False
+    compiler_workspace = None
+    def compile_once(program, script):
+        nonlocal compiler_workspace
+        if compiler_workspace is not None:
+            raise AssertionError("only one synthetic compiler invocation is admitted")
+        compiler_workspace = script.parent
+        module.compile_nsis(program, script)
     try:
         compiler = Path(os.environ["ProgramFiles(x86)"]) / "NSIS/makensis.exe"
         compiler_record, _ = module.file_record(compiler)
         case = WindowsDesktopSourceTests("test_shared_passive_flow_two_payloads_one_setup_and_no_runtime_execution")
+        case.retain_native_fixture = True
         case.setUp()
         initialized = True
         # Default tests retain their Popen guard. Only this explicit route uses
@@ -220,7 +232,7 @@ def native_compile_fixture():
         case.guard.stop()
         request = replace(case.request, makensis=compiler,
                           makensis_sha256=compiler_record["sha256"])
-        result = module.package(request, compiler=module.compile_nsis)
+        result = module.package(request, compiler=compile_once)
         case.assertFalse(result["installerExecutionQualified"])
         case.assertEqual(result["qualification"], "PASSIVE_RECEIPT_BYTE_BINDING_ONLY")
         print(json.dumps({"schemaVersion": "migration-stream/synthetic-nsis-compile/v1",
@@ -232,16 +244,24 @@ def native_compile_fixture():
     except Exception as error:
         # Only compiler logs from this freshly generated fake-input namespace;
         # never product receipts, user files, environment or arbitrary paths.
-        if case is not None and hasattr(case, "root"):
-            for log in sorted(case.root.glob(".migration-stream-nsis-inputs-*/compiler.*.log")):
-                print(log.read_bytes()[-2048:].decode("utf-8", "replace"), file=sys.stderr)
+        if compiler_workspace is not None and str(error) != "owned compiler cleanup unresolved":
+            for name in ("compiler.stdout.log", "compiler.stderr.log"):
+                try:
+                    _, data = module.file_record(compiler_workspace / name, 65536)
+                    print(data[-2048:].decode("utf-8", "replace"), file=sys.stderr)
+                except (module.PackagingError, OSError):
+                    pass  # Unknown diagnostic files are not inspected.
         print(json.dumps({"schemaVersion": "migration-stream/synthetic-nsis-compile/v1",
                           "ok": False, "code": "SYNTHETIC_COMPILATION_FAILED",
                           "errorType": type(error).__name__, "installerExecuted": False}))
         return 1
     finally:
         if initialized:
-            case.tearDown()
+            case.guard.stop()
+        # The native route never recursively removes a compiler-populated tree,
+        # including when child cleanup is uncertain. The CI job owns disposal.
+        if case is not None and hasattr(case, "root"):
+            print(json.dumps({"retainedSyntheticNamespace": str(case.root)}))
 
 
 if __name__ == '__main__':

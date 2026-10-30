@@ -162,6 +162,10 @@ the resulting Setup is never executed, uploaded or treated as a product build.
 This checks actual template/compiler grammar, while registry, file selection,
 installation, native payload and lifecycle behavior remain unqualified. The
 default fourteen tests continue to block process creation.
+The explicit native fixture retains its generated namespace for the ephemeral
+job to dispose of, including on uncertain child cleanup. It does not recursively
+delete a compiler-populated tree; failure diagnostics use only the two known
+compiler logs through bounded real-file reads.
 
 [nsis-free]: https://nsis.sourceforge.io/Docs/Chapter1.html
 [compiler]: https://nsis.sourceforge.io/Docs/Chapter3.html
