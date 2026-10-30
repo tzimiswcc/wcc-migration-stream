@@ -95,7 +95,18 @@
     "native/linux/packaged_launcher.py",
     "scripts/package-linux-desktop.py",
     "scripts/package-linux-desktop-self-test.py",
-    "native/linux/README.md"
+    "native/linux/README.md",
+    ".github/workflows/windows-desktop-installer-qualification.yml",
+    "scripts/windows-desktop-installer-qualification.ps1",
+    "scripts/windows-desktop-transfer.py",
+    "scripts/windows-desktop-transfer-self-test.py",
+    "docs/WINDOWS-DESKTOP-QUALIFICATION.md",
+    ".github/workflows/linux-desktop-packaging-qualification.yml",
+    "scripts/qualify-linux-desktop-packaging.py",
+    "scripts/qualify-linux-desktop-packaging-self-test.py",
+    ".github/workflows/macos-engineering-qualification.yml",
+    "scripts/macos-engineering-qualification.py",
+    "scripts/macos-engineering-qualification-self-test.py"
   ],
   "excluded": [
     "config/claude/**",

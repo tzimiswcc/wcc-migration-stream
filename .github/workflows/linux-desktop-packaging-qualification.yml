@@ -1,0 +1,60 @@
+name: Manual Linux desktop packaging qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_source_commit:
+        description: Exact reviewed source commit to qualify
+        required: true
+        type: string
+      debian_maintainer:
+        description: Explicit reviewed Debian Maintainer name and email
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-desktop-packaging-qualification-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux-packaging:
+    name: Native Linux packaging files (${{ matrix.architecture }})
+    if: ${{ github.event_name == 'workflow_dispatch' && github.run_attempt == 1 && github.sha == inputs.expected_source_commit }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runner: ubuntu-24.04
+            rustup_toolchain: 1.99.1-x86_64-unknown-linux-gnu
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+            rustup_toolchain: 1.99.1-aarch64-unknown-linux-gnu
+    env:
+      EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+      DEBIAN_MAINTAINER: ${{ inputs.debian_maintainer }}
+      QUALIFICATION_ARCHITECTURE: ${{ matrix.architecture }}
+      RUSTUP_TOOLCHAIN: ${{ matrix.rustup_toolchain }}
+    steps:
+      - name: Check out the exact reviewed source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select the pinned Node version for this architecture
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: web/.node-version
+          architecture: ${{ matrix.architecture }}
+          package-manager-cache: false
+      - name: Build once and inspect Linux package files offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B scripts/qualify-linux-desktop-packaging.py

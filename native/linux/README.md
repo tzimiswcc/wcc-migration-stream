@@ -216,3 +216,38 @@ Packaging references: [Debian binary format](https://manpages.debian.org/trixie/
 [native dependency analysis](https://manpages.debian.org/trixie/dpkg-dev/dpkg-shlibdeps.1.en.html),
 [desktop single-file activation](https://specifications.freedesktop.org/desktop-entry/latest/exec-variables.html),
 and [shared MIME registration](https://specifications.freedesktop.org/shared-mime-info/latest/ar01s02.html).
+
+## Manual native packaging qualification source
+
+[The manual qualification workflow](../../.github/workflows/linux-desktop-packaging-qualification.yml)
+prepares two fixed native jobs: `x64` on `ubuntu-24.04` with
+`1.99.1-x86_64-unknown-linux-gnu`, and `arm64` on `ubuntu-24.04-arm` with
+`1.99.1-aarch64-unknown-linux-gnu`. Each job has its own 45-minute ceiling;
+one lane's failure does not cancel the other. It admits only a manual first
+attempt whose selected source commit exactly matches `expected_source_commit`.
+`debian_maintainer` is a required explicit reviewed name/email input, with no
+invented publisher default. The driver independently admits the native host,
+tool paths and versions before doing work.
+
+This is qualification source only; adding it performs no build or packaging
+run. The new workflow must first be registered on the default branch, and a
+separate grant for the exact reviewed source and execution is required before
+dispatch. It uses only the existing pinned checkout and Node setup Actions;
+there is no automatic retry, package installation, artifact upload, output
+publication, signing or release step. Generated files remain ephemeral on the
+hosted runner.
+
+The future driver prepares the pinned, locked dependency caches, invokes the
+unchanged native shell Runtime builder once, and invokes the reviewed Linux
+packager once. This includes six real read-only product metadata/verification
+probes: four from the builder and two from the packager. The later package
+inspection adds no product probe: it reads `.deb` control metadata with
+`dpkg-deb`, extracts the payload into a private directory without installing it,
+and compares its captured graph and bytes. Native shared-library dependency
+closure and the installed-path payload are inspected offline only.
+
+No package is installed into the operating system. The workflow does not open
+a document, launch an application or browser, start a service, register a
+desktop/MIME association, or test a desktop session. Its result cannot promote
+platform support or qualify application behavior, installation, another Ubuntu
+series or another GNU/Linux distribution.

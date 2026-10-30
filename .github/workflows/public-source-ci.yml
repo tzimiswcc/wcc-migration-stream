@@ -44,6 +44,13 @@ jobs:
           python3 -B scripts/package-macos-engineering-desktop-self-test.py
           python3 -B scripts/package-linux-desktop-self-test.py
           python3 -B scripts/package-windows-desktop-self-test.py
+      - name: Test native qualification parsers with synthetic inputs only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B scripts/qualify-linux-desktop-packaging-self-test.py
+          python3 -I -B scripts/macos-engineering-qualification-self-test.py
+          python3 -I -B scripts/windows-desktop-transfer-self-test.py
       - name: Run candidate-compatible source gates
         shell: bash
         run: |
@@ -89,7 +96,7 @@ jobs:
           $parseOnly = Join-Path $env:RUNNER_TEMP ('migration-stream-parse-only-' + [Guid]::NewGuid() + '.ps1')
           python -B scripts/windows-engineering-qualification-self-test.py --write-workflow-powershell $parseOnly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($entry in @(@('builder','scripts/build-assisted-runtime-bundle.ps1'),@('qualification-driver','scripts/windows-engineering-qualification.ps1'),@('qualification',$parseOnly),@('preview-helper','scripts/windows-engineering-preview.ps1'),@('preview-fixtures','scripts/windows-engineering-preview.Tests.ps1'))) {
+          foreach ($entry in @(@('builder','scripts/build-assisted-runtime-bundle.ps1'),@('qualification-driver','scripts/windows-engineering-qualification.ps1'),@('desktop-qualification-driver','scripts/windows-desktop-installer-qualification.ps1'),@('qualification',$parseOnly),@('preview-helper','scripts/windows-engineering-preview.ps1'),@('preview-fixtures','scripts/windows-engineering-preview.Tests.ps1'))) {
             if ((Get-Item -LiteralPath $entry[1]).Length -gt 128KB) { Write-Output 'PowerShell source size refused'; exit 1 }
             $tokens = $null
             $parseErrors = $null
