@@ -70,14 +70,16 @@ def check_contract(builder, workflow, corpus):
     require(uses == [
         "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
         "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+        "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+        "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333",
     ], "unexpected action/pin or artifact publication")
     require("persist-credentials: false" in workflow and "ref: ${{ github.sha }}" in workflow,
             "exact checkout without persisted credentials required")
-    require("$env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT" in workflow,
+    require(workflow.count("$env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT") == 2,
             "event/expected commit admission missing")
     require("github.sha == inputs.expected_source_commit && github.run_attempt == 1" in workflow,
             "pre-provisioning exact source/attempt guard required")
-    require("$env:GITHUB_RUN_ATTEMPT -cne '1'" in workflow, "fresh manual attempt required")
+    require(workflow.count("$env:GITHUB_RUN_ATTEMPT -cne '1'") == 2, "fresh manual attempt required")
     require("--profile','minimal'" in workflow and "'install','1.99.1'" in workflow,
             "Rust pin missing")
     require("'v24.22.1'" in workflow and "'npm@12.2.1'" in workflow,
@@ -97,11 +99,26 @@ def check_contract(builder, workflow, corpus):
             and "'--engineering-policy','local-unsigned-engineering'" in workflow,
             "fixed engineering policy/hash contract missing")
     for forbidden in (
-        "upload-artifact", "Start-Process", "Invoke-Expression", "Start-Sleep",
+        "Start-Process", "Invoke-Expression", "Start-Sleep",
         "-AllowUncommittedSnapshot", "Get-ChildItem Env:", "$env:GH_TOKEN",
         "$env:GITHUB_TOKEN", "Remove-Item", "workflow_run:", "schedule:",
     ):
         require(forbidden not in workflow, "unexpected execution/disclosure surface")
+    require("      publish_engineering_preview:" in events and "        default: false" in events,
+            "preview publication must default false")
+    require("switch -CaseSensitive ($env:PUBLISH_ENGINEERING_PREVIEW)" in workflow
+            and "'false' { $false }" in workflow and "'true' { $true }" in workflow
+            and "[bool]$env:PUBLISH_ENGINEERING_PREVIEW" not in workflow,
+            "exact preview bool parsing required")
+    require("if ($previewEnabled -eq $true)" in workflow, "helper/export must be guarded")
+    guard = "if: ${{ success() && inputs.publish_engineering_preview == true && github.run_attempt == 1 && github.sha == inputs.expected_source_commit && steps.qualify.outputs.preview_candidate_ready == 'true' }}"
+    require(workflow.count(guard) == 3, "upload/download/handoff guards required")
+    for required in ("archive: false", "overwrite: false", "if-no-files-found: error", "retention-days: 7",
+                     "artifact-ids: ${{ steps.candidate-upload.outputs.artifact-id }}", "skip-decompress: true", "digest-mismatch: error"):
+        require(required in workflow, "opaque exact-ID candidate transport required")
+    require("name: migration-stream" not in workflow, "single-file artifact name comes from candidate filename")
+    require(workflow.index("$result = ($resultText") < workflow.index("status='QUALIFIED_ENGINEERING_PREVIEW'"),
+            "qualified evidence must follow download replay")
     block = workflow.split("$qualificationMetadata = [ordered]@{", 1)[1].split(
         "          }\n          function", 1)[0]
     fields = set(re.findall(r"^            ([A-Za-z][A-Za-z0-9]*) =", block, re.M))
@@ -110,6 +127,8 @@ def check_contract(builder, workflow, corpus):
         require(output.startswith("('QUALIFICATION stage=' + $Stage)")
                 or output.startswith("'QUALIFICATION stage=runtime-build'")
                 or output.startswith("'QUALIFICATION evidence refused'")
+                or output.startswith("'Engineering candidate ")
+                or output.startswith("($previewEvidence | ConvertTo-Json -Compress)")
                 or output == "$qualificationEvidence", "raw evidence output refused")
     require("$qualificationEvidence.Length -gt 8192" in workflow,
             "bounded final evidence required")
@@ -120,6 +139,8 @@ def check_contract(builder, workflow, corpus):
     for path in (
         ".github/workflows/windows-engineering-layout-qualification.yml",
         "scripts/windows-engineering-qualification-self-test.py",
+        "scripts/windows-engineering-preview.ps1",
+        "scripts/windows-engineering-preview.Tests.ps1",
     ):
         require(path in corpus["include"], "exact new source allowlist entry missing")
 
@@ -127,6 +148,7 @@ def check_contract(builder, workflow, corpus):
 MAXIMUM_WORKFLOW_BYTES = 64 * 1024
 RUN_DELIMITER = (
     "      - name: One private build and file-only engineering assembly\n"
+    "        id: qualify\n"
     "        shell: pwsh\n"
     "        run: |\n"
 )
@@ -137,12 +159,27 @@ def extract_workflow_powershell(workflow):
     workflow = workflow.replace("\r\n", "\n")
     require("\r" not in workflow and workflow.count(RUN_DELIMITER) == 1,
             "exact qualification run delimiter required")
-    require(workflow.count("        run: |\n") == 1, "only one qualification body allowed")
-    lines = workflow.split(RUN_DELIMITER, 1)[1].splitlines()
-    require(lines and all(not line or line.startswith("          ") for line in lines),
-            "qualification body indentation or trailing step refused")
-    body = "\n".join(line[10:] if line else "" for line in lines) + "\n"
-    require("$qualificationMetadata = [ordered]@{" in body, "qualification body marker required")
+    require(workflow.count("        run: |\n") == 2, "only two reviewed source bodies allowed")
+    names = re.findall(r"^      - name: (.+)$", workflow, re.M)
+    require(names == ["One private build and file-only engineering assembly",
+                      "Upload one explicitly unqualified engineering candidate",
+                      "Download only this engineering candidate without decompression",
+                      "Verify downloaded engineering candidate before preview handoff"], "unknown step refused")
+    chunks = workflow.split("        run: |\n")[1:]
+    bodies = []
+    for chunk in chunks:
+        lines = []
+        for line in chunk.splitlines():
+            if line and not line.startswith("          "):
+                break
+            lines.append(line[10:] if line else "")
+        require(lines, "empty reviewed source body")
+        bodies.append("\n".join(lines) + "\n")
+    require(bodies[0].startswith("$ErrorActionPreference") and bodies[1].startswith("# PREVIEW_DOWNLOAD_REPLAY"),
+            "exact reviewed run block order required")
+    require("$qualificationMetadata = [ordered]@{" in bodies[0], "qualification body marker required")
+    # The source contract checker separately validates exact actions and guards.
+    body = bodies[0] + "\n# Separate download replay source body; parse only.\n" + bodies[1]
     return body
 
 
@@ -249,6 +286,15 @@ class QualificationContractTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), captured)
             with self.assertRaises(ValueError):
                 write_workflow_powershell(source, Path("relative.ps1"))
+
+
+    def test_preview_cannot_lose_default_false_or_transport_guards(self):
+        self.reject(workflow=self.workflow.replace("        default: false", "        default: true", 1))
+        self.reject(workflow=self.workflow.replace("if ($previewEnabled -eq $true)", "if ($true)", 1))
+        self.reject(workflow=self.workflow.replace("inputs.publish_engineering_preview == true", "true", 1))
+        self.reject(workflow=self.workflow.replace("skip-decompress: true", "skip-decompress: false", 1))
+        self.reject(workflow=self.workflow.replace("digest-mismatch: error", "digest-mismatch: warn", 1))
+        self.reject(workflow=self.workflow.replace("retention-days: 7", "retention-days: 90", 1))
 
 
 if __name__ == "__main__":

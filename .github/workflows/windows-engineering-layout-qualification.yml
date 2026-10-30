@@ -7,6 +7,11 @@ on:
         description: Exact reviewed 40-character source commit for this one qualification
         required: true
         type: string
+      publish_engineering_preview:
+        description: Explicitly publish one 7-day engineering candidate and verify its download (new build approval required)
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -22,6 +27,7 @@ jobs:
     timeout-minutes: 45
     env:
       EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+      PUBLISH_ENGINEERING_PREVIEW: ${{ inputs.publish_engineering_preview }}
       RUSTUP_TOOLCHAIN: 1.99.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,6 +39,7 @@ jobs:
         with:
           node-version-file: web/.node-version
       - name: One private build and file-only engineering assembly
+        id: qualify
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -126,6 +133,11 @@ jobs:
             }
           }
           try {
+            $previewEnabled = switch -CaseSensitive ($env:PUBLISH_ENGINEERING_PREVIEW) {
+              'false' { $false }
+              'true' { $true }
+              default { throw 'invalid explicit preview selection' }
+            }
             if ($env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:GITHUB_RUN_ID -cnotmatch '^[0-9]{1,20}$') { throw 'fresh manual run required' }
             $qualificationMetadata.runId = $env:GITHUB_RUN_ID
             if ($env:EXPECTED_SOURCE_COMMIT -cnotmatch '^[0-9a-f]{40}$' -or $env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT) {
@@ -330,4 +342,68 @@ jobs:
           }
           Write-Output $qualificationEvidence
           if ($qualificationMetadata.status -ne 'PASSED') { exit 1 }
-          # All files remain ephemeral; do not upload binaries, logs, caches or layouts.
+          # Default false remains private/ephemeral. Never cast the string 'false' to [bool].
+          if ($previewEnabled -eq $true) {
+            try {
+              $candidateParent = Join-Path $env:RUNNER_TEMP ('migration-stream-engineering-candidate-' + $env:GITHUB_RUN_ID)
+              New-Item -ItemType Directory -Path $candidateParent | Out-Null
+              [IO.FileSystemAclExtensions]::SetAccessControl([IO.DirectoryInfo]$candidateParent, $security)
+              $candidateName = 'migration-stream-engineering-candidate-x64-' + $head + '-' + $env:GITHUB_RUN_ID + '.zip'
+              $candidateArchive = Join-Path $candidateParent $candidateName
+              $previewHelper = Join-Path $qualificationRepository 'scripts/windows-engineering-preview.ps1'
+              $candidateText = @(& $previewHelper -Operation Pack -Layout $qualificationOutput -BuildReceipt $evidencePath -Archive $candidateArchive)
+              if ($LASTEXITCODE -ne 0 -or ($candidateText -join '').Length -gt 8192) { throw 'candidate pack refused' }
+              $candidate = ($candidateText -join "`n") | ConvertFrom-Json
+              if ($candidate.status -cne 'CANDIDATE_LOCAL' -or $candidate.sourceCommit -cne $head -or $candidate.archiveSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'candidate metadata refused' }
+              $replayText = @(& $previewHelper -Operation Extract -Archive $candidateArchive -ExpectedArchiveSha256 $candidate.archiveSha256 -Destination (Join-Path $qualificationParent 'candidate-local-replay'))
+              if ($LASTEXITCODE -ne 0 -or ($replayText -join '').Length -gt 8192) { throw 'candidate local replay refused' }
+              $replay = ($replayText -join "`n") | ConvertFrom-Json
+              if ($replay.status -cne 'CANDIDATE_REPLAY_PASSED' -or $replay.archiveSha256 -cne $candidate.archiveSha256) { throw 'candidate replay differs' }
+              [IO.File]::AppendAllText($env:GITHUB_OUTPUT, ('preview_sha256=' + $candidate.archiveSha256 + "`npreview_candidate_ready=true`n"))
+              Write-Output 'Engineering candidate prepared; publication qualification pending download replay'
+            } catch { Write-Output 'Engineering candidate preparation refused or failed'; exit 1 }
+          }
+      - name: Upload one explicitly unqualified engineering candidate
+        id: candidate-upload
+        if: ${{ success() && inputs.publish_engineering_preview == true && github.run_attempt == 1 && github.sha == inputs.expected_source_commit && steps.qualify.outputs.preview_candidate_ready == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7, reviewed single-file archive:false
+        with:
+          path: ${{ runner.temp }}/migration-stream-engineering-candidate-${{ github.run_id }}/migration-stream-engineering-candidate-x64-${{ github.sha }}-${{ github.run_id }}.zip
+          archive: false
+          overwrite: false
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: false
+      - name: Download only this engineering candidate without decompression
+        if: ${{ success() && inputs.publish_engineering_preview == true && github.run_attempt == 1 && github.sha == inputs.expected_source_commit && steps.qualify.outputs.preview_candidate_ready == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ steps.candidate-upload.outputs.artifact-id }}
+          path: ${{ runner.temp }}/migration-stream-engineering-candidate-download-${{ github.run_id }}
+          skip-decompress: true
+          digest-mismatch: error
+      - name: Verify downloaded engineering candidate before preview handoff
+        if: ${{ success() && inputs.publish_engineering_preview == true && github.run_attempt == 1 && github.sha == inputs.expected_source_commit && steps.qualify.outputs.preview_candidate_ready == 'true' }}
+        shell: pwsh
+        env:
+          PREVIEW_EXPECTED_SHA256: ${{ steps.qualify.outputs.preview_sha256 }}
+          PREVIEW_ARTIFACT_ID: ${{ steps.candidate-upload.outputs.artifact-id }}
+          PREVIEW_ARTIFACT_DIGEST: ${{ steps.candidate-upload.outputs.artifact-digest }}
+        run: |
+          # PREVIEW_DOWNLOAD_REPLAY
+          $ErrorActionPreference = 'Stop'
+          try {
+            if ($env:PUBLISH_ENGINEERING_PREVIEW -cne 'true' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT) { throw 'preview handoff not admitted' }
+            if ($env:PREVIEW_EXPECTED_SHA256 -cnotmatch '^[0-9a-f]{64}$' -or $env:PREVIEW_ARTIFACT_ID -cnotmatch '^[0-9]{1,20}$' -or $env:PREVIEW_ARTIFACT_DIGEST -cne $env:PREVIEW_EXPECTED_SHA256) { throw 'candidate transport receipt differs' }
+            $downloadRoot = Join-Path $env:RUNNER_TEMP ('migration-stream-engineering-candidate-download-' + $env:GITHUB_RUN_ID)
+            $candidateName = 'migration-stream-engineering-candidate-x64-' + $env:GITHUB_SHA + '-' + $env:GITHUB_RUN_ID + '.zip'
+            $downloaded = Join-Path $downloadRoot $candidateName
+            $previewHelper = Join-Path (Get-Location).Path 'scripts/windows-engineering-preview.ps1'
+            $resultText = @(& $previewHelper -Operation Extract -Archive $downloaded -ExpectedArchiveSha256 $env:PREVIEW_EXPECTED_SHA256 -Destination (Join-Path $downloadRoot 'verified-replay'))
+            if ($LASTEXITCODE -ne 0 -or ($resultText -join '').Length -gt 8192) { throw 'downloaded candidate replay refused' }
+            $result = ($resultText -join "`n") | ConvertFrom-Json
+            if ($result.status -cne 'CANDIDATE_REPLAY_PASSED' -or $result.archiveSha256 -cne $env:PREVIEW_EXPECTED_SHA256 -or $result.sourceCommit -cne $env:GITHUB_SHA) { throw 'downloaded candidate identity differs' }
+            $previewEvidence = [ordered]@{ schemaVersion='migration-stream/windows-engineering-preview-handoff/v1'; status='QUALIFIED_ENGINEERING_PREVIEW'; sourceCommit=$result.sourceCommit; archiveSha256=$result.archiveSha256; documentLauncherSha256=$result.documentLauncherSha256; runtimeManifestSha256=$result.runtimeManifestSha256; artifactId=$env:PREVIEW_ARTIFACT_ID; artifactDigest=$env:PREVIEW_ARTIFACT_DIGEST; retentionDays=7 }
+            Write-Output ($previewEvidence | ConvertTo-Json -Compress)
+          } catch { Write-Output 'Engineering candidate remains unqualified after download replay failure'; exit 1 }
+          # An own candidate may remain unqualified for 7 days. Never broad-delete.

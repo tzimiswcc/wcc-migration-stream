@@ -339,7 +339,7 @@ standard GitHub action/runner setup logs retain their platform behavior. This is
 not a general log-redaction or environment-sandbox claim. Logs and evidence use
 create-only reservations; the first failure stops without an automatic retry.
 Re-run attempts refuse; any later qualification uses a separately admitted fresh
-manual run. No binary, layout, private log or cache is uploaded. Outputs
+manual run. With the preview input left false, no binary, layout, private log or cache is uploaded. Outputs
 are left for ephemeral runner teardown, preserving failed partials for the job's
 remaining lifetime. There is no output launch, browser/COM/Shell, OS registry,
 association, product installer, signing, release or support promotion.
@@ -354,3 +354,67 @@ static mutation regressions, not PowerShell parsing/execution or real-artifact
 qualification.
 
 [manual-workflow]: https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow
+
+
+## Optional unsigned engineering candidate transport
+
+The manual qualification workflow adds an explicit `publish_engineering_preview`
+boolean, defaulting to false. Exact string parsing admits only `true` or `false`;
+helper execution and both artifact actions have separate true/first-attempt/exact
+source guards. Existing qualification gates and the default no-upload path remain.
+A future real build, archive, upload and download replay need separate concrete
+execution approval; source review and synthetic CI do not admit that operation.
+
+The purpose-only `scripts/windows-engineering-preview.ps1` accepts `Pack` with
+explicit `-Layout`, `-BuildReceipt` and create-only `-Archive`, or `Extract` with
+`-Archive`, trusted external `-ExpectedArchiveSha256` and nonexistent
+`-Destination`. Production commands have no verifier-skip option. The caller must
+already trust the same-source engineering build; SHA-256 identifies bytes rather
+than publisher, compiler or signing provenance. Extraction checks the closed ZIP
+hash before opening its member catalog. The ZIP's bounded receipt binds public
+build identities and the inner layout, without a self-referential ZIP hash.
+
+The container holds `engineering-layout/` and `preview-receipt.json`. The layout
+retains exactly the outer launcher and intact `Runtime` subtree. The reference
+route uses a strict stored ZIP subset: no compression, Zip64, descriptors,
+comments or extra fields. It bounds the archive to 1 GiB, expanded contents to
+642 MiB, each member to 128 MiB, receipt to 1 MiB and layout to 4096 entries with
+bounded depth and names. It refuses ambiguous/case-colliding names, traversal,
+Windows device/drive/UNC/ADS paths, links, reparse points, special entries,
+overwrite and overlap. Fresh extraction stages beside the destination and moves
+without replacement; failed partials and visible outputs are preserved rather
+than recursively deleting uncertain ownership.
+
+Every graph entry and file length/hash is replayed. The fixed Runtime launcher
+runs read-only `verify` before packing and after each local/download extraction;
+its actual verification identity must match except the relocated bundle root.
+The outer launcher digest stays distinct from Runtime's platform launcher and
+controller digests. These three additional Verify invocations start product
+processes/threads, selecting no Start/Open/server/project/browser operation.
+Their post-return capture checks share the existing finite job timeout; this is
+not a streaming capture or OS network-isolation claim.
+
+The upload uses pinned `actions/upload-artifact` v7 in single-file
+`archive: false` mode, seven-day retention, missing-file failure and no overwrite.
+Its filename explicitly says **engineering candidate**. Pinned
+`actions/download-artifact` v8 selects only the returned artifact ID, preserves
+the opaque ZIP with `skip-decompress: true` and makes digest mismatch fatal.
+Only a successful trusted-digest check and create-only reference extraction with
+production verification emits `QUALIFIED_ENGINEERING_PREVIEW`. An earlier upload
+is unqualified on any later failure and may remain for its seven-day lifetime;
+the workflow does not delete other artifacts or announce a qualified preview.
+
+Windows readonly/archive/normal attributes are not Runtime verification gates;
+this route does not restore attributes, ACLs, SIDs or original file identities.
+It does not promise Explorer/Unix-mode fidelity. It refuses a ZIP carrying a
+`Zone.Identifier` stream instead of removing or silently discarding that marker.
+Browser downloads, MOTW propagation, SmartScreen, URI completion, application
+launch, installer behavior, signing and public platform support remain unqualified.
+
+Windows source CI parses the helper and test script, then runs only tiny fake
+ZIP fixtures via `scripts/windows-engineering-preview.Tests.ps1`. The private
+fixture seam injects a synthetic verifier; no product executable, real Runtime,
+browser, build or artifact publication is selected. Local Python contract tests
+protect default-off/action/extraction guards. Actual PowerShell parsing and ZIP
+behavior require the Windows source run; static Python/YAML checks alone do not
+prove them.
