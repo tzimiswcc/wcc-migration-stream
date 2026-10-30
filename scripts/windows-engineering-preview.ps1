@@ -36,9 +36,16 @@ function Assert-PreviewRustHost($Tuple,[string[]]$VersionLines) {
     Assert-Preview (@($VersionLines | Where-Object { $_ -ceq ('host: '+$Tuple.target) }).Count -eq 1)
     Assert-Preview (@($VersionLines | Where-Object { $_ -cmatch '^host:' }).Count -eq 1)
 }
-function Assert-PreviewVerificationTarget($Target,$Build) {
+function Get-PreviewBuildTarget($Build) {
+    Assert-Preview ($Build.architecture -is [string] -and $Build.target -is [string])
     $tuple=Get-PreviewTarget $Build.architecture
-    Assert-Preview ($Build.target -ceq $tuple.target -and $Target.os -ceq 'windows' -and $Target.architecture -ceq $tuple.architecture -and $Target.targetTriple -ceq $tuple.target)
+    Assert-Preview ($Build.target -ceq $tuple.target)
+    return $tuple
+}
+function Assert-PreviewVerificationTarget($Target,$Build) {
+    Assert-Preview ($Target.os -is [string] -and $Target.architecture -is [string] -and $Target.targetTriple -is [string])
+    $tuple=Get-PreviewBuildTarget $Build
+    Assert-Preview ($Target.os -ceq 'windows' -and $Target.architecture -ceq $tuple.architecture -and $Target.targetTriple -ceq $tuple.target)
 }
 function Get-PreviewFullPath([string]$Path) {
     Assert-Preview (-not [string]::IsNullOrEmpty($Path) -and $Path.Length -le 32767)
@@ -200,7 +207,7 @@ function Select-PreviewBuildReceipt([object]$Value) {
         Assert-Preview ($Value.$field -is [string] -and $Value.$field -cmatch '^[0-9a-f]{40}$')
         $selected[$field] = $Value.$field
     }
-    $tuple=Get-PreviewTarget $Value.architecture
+    $tuple=Get-PreviewBuildTarget $Value
     Assert-Preview ($Value.target -ceq $tuple.target)
     $selected.architecture=$tuple.architecture
     $selected.target = $Value.target
@@ -314,7 +321,8 @@ function New-PreviewArchiveCore([string]$Root, [object]$Build, [string]$Output, 
     Assert-PreviewNative (Split-Path -Parent $Output) $true
     Assert-Preview (-not (Test-PreviewWithin $Output $Root))
     $tuple=Get-PreviewTarget $ExpectedArchitecture
-    Assert-Preview ($Build.architecture -ceq $tuple.architecture -and $Build.target -ceq $tuple.target)
+    $buildTuple=Get-PreviewBuildTarget $Build
+    Assert-Preview ($buildTuple.architecture -ceq $tuple.architecture -and $buildTuple.target -ceq $tuple.target)
     $rows = Get-PreviewRows $Root
     $runtime = & $Validate $Root $Build
     Assert-PreviewVerificationTarget $runtime.target $Build
@@ -381,7 +389,8 @@ function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[
             $input = $receiptEntry.Open()
             try { $receipt = ConvertFrom-PreviewJson (Read-PreviewBytes $input $script:PreviewMaximumReceipt) } finally { $input.Dispose() }
             Assert-Preview ($receipt.schemaVersion -ceq 'migration-stream/windows-engineering-preview/v1' -and $receipt.entries.Count -ge 3 -and $receipt.entries.Count -le $script:PreviewMaximumEntries)
-            Assert-Preview ($receipt.build.architecture -ceq $tuple.architecture -and $receipt.build.target -ceq $tuple.target)
+            $buildTuple=Get-PreviewBuildTarget $receipt.build
+            Assert-Preview ($buildTuple.architecture -ceq $tuple.architecture -and $buildTuple.target -ceq $tuple.target)
             Assert-PreviewVerificationTarget $receipt.runtime.target $receipt.build
             $expected = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
             foreach ($row in $receipt.entries) {
