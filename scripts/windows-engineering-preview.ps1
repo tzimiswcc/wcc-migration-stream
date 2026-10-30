@@ -5,7 +5,8 @@ param(
     [string]$BuildReceipt,
     [string]$Archive,
     [string]$ExpectedArchiveSha256,
-    [string]$Destination
+    [string]$Destination,
+    [ValidateSet('x64','arm64')][string]$Architecture
 )
 
 # Purpose-only Windows byte-container. No attribute/ACL/SID restoration.
@@ -19,6 +20,25 @@ $script:PreviewReceiptName = 'preview-receipt.json'
 
 function Assert-Preview([bool]$Condition) {
     if (-not $Condition) { throw 'engineering candidate refused' }
+}
+function Get-PreviewTarget([string]$Architecture) {
+    switch -CaseSensitive ($Architecture) {
+        'x64' { return [pscustomobject]@{ architecture='x64'; target='x86_64-pc-windows-msvc'; processor='AMD64'; runtime='X64'; node='x64'; runner='windows-2025'; artifact='migration-stream-local-windows-x64'; toolchain='1.99.1-x86_64-pc-windows-msvc'; peMachine=0x8664 } }
+        'arm64' { return [pscustomobject]@{ architecture='arm64'; target='aarch64-pc-windows-msvc'; processor='ARM64'; runtime='Arm64'; node='arm64'; runner='windows-11-arm'; artifact='migration-stream-local-windows-arm64'; toolchain='1.99.1-aarch64-pc-windows-msvc'; peMachine=0xAA64 } }
+        default { throw 'closed Windows engineering architecture required' }
+    }
+}
+function Assert-PreviewNativeHost($Tuple,[string]$Processor,[string]$OSArchitecture,[string]$ProcessArchitecture) {
+    Assert-Preview ($Processor -ceq $Tuple.processor -and $OSArchitecture -ceq $Tuple.runtime -and $ProcessArchitecture -ceq $Tuple.runtime)
+}
+function Assert-PreviewRustHost($Tuple,[string[]]$VersionLines) {
+    Assert-Preview ($VersionLines.Count -ge 1 -and $VersionLines[0] -cmatch '^rustc 1\.99\.1 ')
+    Assert-Preview (@($VersionLines | Where-Object { $_ -ceq ('host: '+$Tuple.target) }).Count -eq 1)
+    Assert-Preview (@($VersionLines | Where-Object { $_ -cmatch '^host:' }).Count -eq 1)
+}
+function Assert-PreviewVerificationTarget($Target,$Build) {
+    $tuple=Get-PreviewTarget $Build.architecture
+    Assert-Preview ($Build.target -ceq $tuple.target -and $Target.os -ceq 'windows' -and $Target.architecture -ceq $tuple.architecture -and $Target.targetTriple -ceq $tuple.target)
 }
 function Get-PreviewFullPath([string]$Path) {
     Assert-Preview (-not [string]::IsNullOrEmpty($Path) -and $Path.Length -le 32767)
@@ -180,7 +200,9 @@ function Select-PreviewBuildReceipt([object]$Value) {
         Assert-Preview ($Value.$field -is [string] -and $Value.$field -cmatch '^[0-9a-f]{40}$')
         $selected[$field] = $Value.$field
     }
-    Assert-Preview ($Value.target -ceq 'x86_64-pc-windows-msvc')
+    $tuple=Get-PreviewTarget $Value.architecture
+    Assert-Preview ($Value.target -ceq $tuple.target)
+    $selected.architecture=$tuple.architecture
     $selected.target = $Value.target
     foreach ($field in @('sourceSnapshotSha256','frontendAssetsSha256','documentLauncherSha256','engineeringAssemblerSha256','runtimeManifestSha256','runtimeManifestFileSha256','runtimeLauncherSha256','runtimeControllerSha256','integrityCliSha256','workbenchSha256')) {
         Assert-Preview ($Value.$field -is [string] -and $Value.$field -cmatch '^[0-9a-f]{64}$')
@@ -194,7 +216,8 @@ function Select-PreviewBuildReceipt([object]$Value) {
 }
 function Invoke-PreviewRuntimeVerification([string]$Root, [object]$Build) {
     Assert-Preview ($IsWindows -and $Build.schemaVersion -ceq 'migration-stream/windows-engineering-qualification/v1' -and $Build.status -ceq 'PASSED')
-    Assert-Preview ($Build.sourceCommit -cmatch '^[0-9a-f]{40}$' -and $Build.sourceTree -cmatch '^[0-9a-f]{40}$' -and $Build.target -ceq 'x86_64-pc-windows-msvc')
+    $tuple=Get-PreviewTarget $Build.architecture
+    Assert-Preview ($Build.sourceCommit -cmatch '^[0-9a-f]{40}$' -and $Build.sourceTree -cmatch '^[0-9a-f]{40}$' -and $Build.target -ceq $tuple.target)
     $runtime = Join-Path $Root 'Runtime'
     $controller = Join-Path $runtime 'migration-stream-local.exe'
     foreach ($entry in @(@($controller,'runtimeLauncherSha256'),@((Join-Path $runtime 'libexec/migration-stream-local-runtime.exe'),'runtimeControllerSha256'),@((Join-Path $Root 'migration-stream-document-open.exe'),'documentLauncherSha256'))) {
@@ -212,7 +235,7 @@ function Invoke-PreviewRuntimeVerification([string]$Root, [object]$Build) {
     Assert-Preview ($document.schemaVersion -ceq 'migration-stream/assisted-local-runtime/cli/v1' -and $document.ok -is [bool] -and $document.ok)
     $v = $document.result
     Assert-Preview ($v.sourceState -ceq 'CLEAN' -and $v.productCommit -ceq $Build.sourceCommit -and $v.sourceSnapshotSha256 -ceq $Build.sourceSnapshotSha256)
-    Assert-Preview ($v.target.os -ceq 'windows' -and $v.target.architecture -ceq 'x64' -and $v.target.targetTriple -ceq $Build.target)
+    Assert-PreviewVerificationTarget $v.target $Build
     foreach ($entry in @(@('manifestSha256','runtimeManifestSha256'),@('launcherSha256','runtimeLauncherSha256'),@('runtimeControllerSha256','runtimeControllerSha256'),@('integrityCliSha256','integrityCliSha256'),@('workbenchSha256','workbenchSha256'))) {
         Assert-Preview ($v.($entry[0]) -ceq $Build.($entry[1]))
     }
@@ -284,13 +307,16 @@ function Assert-PreviewZipStructure([IO.Stream]$Stream) {
     $Stream.Position = 0
     return $count
 }
-function New-PreviewArchiveCore([string]$Root, [object]$Build, [string]$Output, [scriptblock]$Validate) {
+function New-PreviewArchiveCore([string]$Root, [object]$Build, [string]$Output, [scriptblock]$Validate, [string]$ExpectedArchitecture) {
     $Root = Get-PreviewFullPath $Root
     $Output = Get-PreviewFullPath $Output
     Assert-PreviewNative (Split-Path -Parent $Output) $true
     Assert-Preview (-not (Test-PreviewWithin $Output $Root))
+    $tuple=Get-PreviewTarget $ExpectedArchitecture
+    Assert-Preview ($Build.architecture -ceq $tuple.architecture -and $Build.target -ceq $tuple.target)
     $rows = Get-PreviewRows $Root
     $runtime = & $Validate $Root $Build
+    Assert-PreviewVerificationTarget $runtime.target $Build
     $receipt = [ordered]@{ schemaVersion='migration-stream/windows-engineering-preview/v1'; build=$Build; runtime=$runtime; entries=$rows }
     $receiptBytes = [Text.UTF8Encoding]::new($false).GetBytes((ConvertTo-PreviewStableJson $receipt))
     Assert-Preview ($receiptBytes.Length -le $script:PreviewMaximumReceipt)
@@ -327,10 +353,11 @@ function New-PreviewArchiveCore([string]$Root, [object]$Build, [string]$Output, 
         $null = Assert-PreviewZipStructure $stream
         $stream.Position = 0
         $hash = Get-PreviewStreamHash $stream $script:PreviewMaximumArchive
-        return [ordered]@{ schemaVersion='migration-stream/windows-engineering-candidate/v1'; status='CANDIDATE_LOCAL'; archiveSha256=$hash; archiveBytes=$stream.Length; documentLauncherSha256=$Build.documentLauncherSha256; sourceCommit=$Build.sourceCommit }
+        return [ordered]@{ schemaVersion='migration-stream/windows-engineering-candidate/v1'; status='CANDIDATE_LOCAL'; archiveSha256=$hash; archiveBytes=$stream.Length; documentLauncherSha256=$Build.documentLauncherSha256; sourceCommit=$Build.sourceCommit; architecture=$tuple.architecture; target=$tuple.target }
     } finally { $stream.Dispose() }
 }
-function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[string]$Output,[scriptblock]$Validate) {
+function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[string]$Output,[scriptblock]$Validate,[string]$ExpectedArchitecture) {
+    $tuple=Get-PreviewTarget $ExpectedArchitecture
     $InputArchive = Get-PreviewFullPath $InputArchive
     $Output = Get-PreviewFullPath $Output
     Assert-Preview ($ExpectedHash -cmatch '^[0-9a-f]{64}$')
@@ -353,6 +380,8 @@ function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[
             $input = $receiptEntry.Open()
             try { $receipt = ConvertFrom-PreviewJson (Read-PreviewBytes $input $script:PreviewMaximumReceipt) } finally { $input.Dispose() }
             Assert-Preview ($receipt.schemaVersion -ceq 'migration-stream/windows-engineering-preview/v1' -and $receipt.entries.Count -ge 3 -and $receipt.entries.Count -le $script:PreviewMaximumEntries)
+            Assert-Preview ($receipt.build.architecture -ceq $tuple.architecture -and $receipt.build.target -ceq $tuple.target)
+            Assert-PreviewVerificationTarget $receipt.runtime.target $receipt.build
             $expected = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::Ordinal)
             foreach ($row in $receipt.entries) {
                 Assert-Preview ($row.path -is [string])
@@ -396,7 +425,7 @@ function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[
             [IO.Directory]::Move($stage,$Output)
             $layout = Join-Path $Output 'engineering-layout'
             Assert-Preview ((ConvertTo-PreviewStableJson (& $Validate $layout $receipt.build)) -ceq (ConvertTo-PreviewStableJson $receipt.runtime))
-            return [ordered]@{ schemaVersion='migration-stream/windows-engineering-candidate-replay/v1'; status='CANDIDATE_REPLAY_PASSED'; archiveSha256=$ExpectedHash; sourceCommit=$receipt.build.sourceCommit; documentLauncherSha256=$receipt.build.documentLauncherSha256; runtimeManifestSha256=$receipt.build.runtimeManifestSha256 }
+            return [ordered]@{ schemaVersion='migration-stream/windows-engineering-candidate-replay/v1'; status='CANDIDATE_REPLAY_PASSED'; archiveSha256=$ExpectedHash; sourceCommit=$receipt.build.sourceCommit; documentLauncherSha256=$receipt.build.documentLauncherSha256; runtimeManifestSha256=$receipt.build.runtimeManifestSha256; architecture=$tuple.architecture; target=$tuple.target }
         } finally { $zip.Dispose() }
     } finally { $stream.Dispose() }
 }
@@ -404,13 +433,14 @@ function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[
 if ($MyInvocation.InvocationName -ne '.') {
     try {
         Assert-Preview $IsWindows
+        $null=Get-PreviewTarget $Architecture
         $archivePath = Get-PreviewFullPath $Archive
         if ($Operation -eq 'Pack') {
             $layoutPath = Get-PreviewFullPath $Layout
             $build = Select-PreviewBuildReceipt (Read-PreviewJsonFile (Get-PreviewFullPath $BuildReceipt))
-            $result = New-PreviewArchiveCore $layoutPath $build $archivePath ${function:Invoke-PreviewRuntimeVerification}
+            $result = New-PreviewArchiveCore $layoutPath $build $archivePath ${function:Invoke-PreviewRuntimeVerification} $Architecture
         } elseif ($Operation -eq 'Extract') {
-            $result = Expand-PreviewArchiveCore $archivePath $ExpectedArchiveSha256 (Get-PreviewFullPath $Destination) ${function:Invoke-PreviewRuntimeVerification}
+            $result = Expand-PreviewArchiveCore $archivePath $ExpectedArchiveSha256 (Get-PreviewFullPath $Destination) ${function:Invoke-PreviewRuntimeVerification} $Architecture
         } else { throw 'preview operation required' }
         ConvertTo-PreviewStableJson $result
     } catch { Write-Output 'Engineering candidate operation refused or failed'; exit 1 }

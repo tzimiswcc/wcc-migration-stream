@@ -16,6 +16,8 @@ BUILDER = ROOT / "scripts/build-assisted-runtime-bundle.ps1"
 WORKFLOW = ROOT / ".github/workflows/windows-engineering-layout-qualification.yml"
 CORPUS = ROOT / "config/release-corpus.json"
 DRIVER = ROOT / "scripts/windows-engineering-qualification.ps1"
+HELPER = ROOT / "scripts/windows-engineering-preview.ps1"
+SOURCE_CI = ROOT / ".github/workflows/public-source-ci.yml"
 DEFAULT_BINARIES = [
     "migration-stream-local-runtime.exe", "migration-stream.exe",
     "migration-stream-workbench.exe", "migration-stream-bundle.exe",
@@ -25,7 +27,7 @@ ENGINEERING_BINARIES = [
 ]
 EVIDENCE_FIELDS = {
     "schemaVersion", "status", "runId", "runAttempt", "stage", "commandExitCode", "sourceCommit", "sourceTree",
-    "target", "runnerImageVersion", "nodeVersion", "npmVersion", "rustVersion",
+    "architecture", "target", "runnerImageVersion", "nodeVersion", "npmVersion", "rustVersion",
     "pythonVersion", "toolSha256", "sourceSnapshotSha256", "frontendAssetsSha256",
     "documentLauncherSha256", "engineeringAssemblerSha256", "runtimeManifestSha256",
     "runtimeManifestFileSha256", "runtimeLauncherSha256", "runtimeControllerSha256", "integrityCliSha256",
@@ -38,7 +40,70 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def check_contract(builder, workflow, corpus, driver):
+def check_architecture_contract(workflow, driver, helper, source_ci):
+    choice = """      architecture:
+        description: Native engineering validation lane (not an end-user delivery choice)
+        required: true
+        default: x64
+        type: choice
+        options:
+          - x64
+          - arm64
+"""
+    require(choice in workflow, "closed native architecture choice required")
+    require("(inputs.architecture == 'x64' || inputs.architecture == 'arm64')" in workflow,
+            "unknown architecture must skip before provisioning")
+    require("runs-on: ${{ inputs.architecture == 'arm64' && 'windows-11-arm' || 'windows-2025' }}" in workflow,
+            "closed native runner map required")
+    require("architecture: ${{ inputs.architecture }}" in workflow
+            and "QUALIFICATION_ARCHITECTURE: ${{ inputs.architecture }}" in workflow,
+            "native Node and operator architecture selection required")
+    require("'1.99.1-aarch64-pc-windows-msvc' || '1.99.1-x86_64-pc-windows-msvc'" in workflow,
+            "explicit Rust host toolchain map required")
+    for row in (
+        "architecture='x64'; target='x86_64-pc-windows-msvc'; processor='AMD64'; runtime='X64'; node='x64'; runner='windows-2025'; artifact='migration-stream-local-windows-x64'; toolchain='1.99.1-x86_64-pc-windows-msvc'; peMachine=0x8664",
+        "architecture='arm64'; target='aarch64-pc-windows-msvc'; processor='ARM64'; runtime='Arm64'; node='arm64'; runner='windows-11-arm'; artifact='migration-stream-local-windows-arm64'; toolchain='1.99.1-aarch64-pc-windows-msvc'; peMachine=0xAA64",
+    ):
+        require(row in helper, "mixed native target tuple refused")
+    require("Assert-PreviewNativeHost $targetTuple $env:PROCESSOR_ARCHITECTURE" in driver
+            and "::OSArchitecture.ToString()" in driver and "::ProcessArchitecture.ToString()" in driver,
+            "actual native host/process admission required")
+    require("$env:RUSTUP_TOOLCHAIN -cne $targetTuple.toolchain" in driver
+            and "Assert-PreviewRustHost $targetTuple $rustVersion" in driver
+            and "'host: '+$Tuple.target" in helper,
+            "actual pinned Rust host admission required")
+    require("process.versions.node+' '+process.arch" in driver
+            and "'v24.22.1 '+$targetTuple.node" in driver,
+            "actual native Node architecture required")
+    for required in ("--target',$targetTuple.target", "-Target $targetTuple.target", "$targetTuple.artifact",
+                     "$verified.target.architecture -cne $targetTuple.architecture", "$verified.target.targetTriple -cne $targetTuple.target",
+                     "preview_target=", "preview_architecture="):
+        require(required in driver, "build/manifest/export target binding required")
+    require("migration-stream-engineering-candidate-${{ inputs.architecture }}-${{ github.sha }}" in workflow
+            and "'migration-stream-engineering-candidate-'+$targetTuple.architecture+'-'" in driver
+            and "'migration-stream-engineering-candidate-'+$targetTuple.architecture+'-'" in workflow,
+            "archive name and selected architecture must agree")
+    require("$env:PREVIEW_EXPECTED_TARGET -cne $targetTuple.target" in workflow
+            and "target=$result.target" in workflow and "architecture=$result.architecture" in workflow,
+            "explicit target handoff evidence required")
+    require("$receipt.build.architecture -ceq $tuple.architecture -and $receipt.build.target -ceq $tuple.target" in helper
+            and "Assert-PreviewVerificationTarget $receipt.runtime.target $receipt.build" in helper
+            and "Assert-PreviewVerificationTarget $v.target $Build" in helper,
+            "receipt/runtime target must match explicit expected lane")
+    require("-Architecture $targetTuple.architecture" in driver
+            and "-Architecture $targetTuple.architecture" in workflow,
+            "no receipt-selected target authority")
+    for required in ("architecture: x64", "runner: windows-2025", "toolchain: 1.99.1-x86_64-pc-windows-msvc",
+                     "architecture: arm64", "runner: windows-11-arm", "toolchain: 1.99.1-aarch64-pc-windows-msvc",
+                     "runs-on: ${{ matrix.runner }}", "Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE",
+                     "::OSArchitecture.ToString()", "::ProcessArchitecture.ToString()",
+                     "rustc +${{ matrix.toolchain }} -vV", "Assert-PreviewRustHost $tuple $versionLines",
+                     "cargo +${{ matrix.toolchain }} test", "cargo +${{ matrix.toolchain }} clippy"):
+        require(required in source_ci, "paired native source validation required")
+
+
+def check_contract(builder, workflow, corpus, driver, helper, source_ci):
+    check_architecture_contract(workflow, driver, helper, source_ci)
     # Validate the actual server-evaluated bodies before reconstructing the
     # external driver at its original indentation for unchanged semantic guards.
     bodies = workflow_powershell_bodies(workflow)
@@ -74,7 +139,7 @@ def check_contract(builder, workflow, corpus, driver):
     require("      expected_source_commit:" in events and "        required: true" in events,
             "exact commit input required")
     require("permissions:\n  contents: read\n" in workflow, "read-only permission required")
-    require("runs-on: windows-2025" in workflow and "timeout-minutes: 45" in workflow,
+    require("timeout-minutes: 45" in workflow,
             "finite native runner lane required")
     require("cancel-in-progress: false" in workflow, "do not auto-cancel owned build")
     uses = re.findall(r"uses: ([^\s]+)", workflow)
@@ -91,9 +156,9 @@ def check_contract(builder, workflow, corpus, driver):
     require("github.sha == inputs.expected_source_commit && github.run_attempt == 1" in workflow,
             "pre-provisioning exact source/attempt guard required")
     require(workflow.count("$env:GITHUB_RUN_ATTEMPT -cne '1'") == 2, "fresh manual attempt required")
-    require("--profile','minimal'" in workflow and "'install','1.99.1'" in workflow,
+    require("--profile','minimal'" in workflow and "'install',$targetTuple.toolchain" in workflow,
             "Rust pin missing")
-    require("'v24.22.1'" in workflow and "'npm@12.2.1'" in workflow,
+    require("'v24.22.1 '" in workflow and "'npm@12.2.1'" in workflow,
             "Node/npm pins missing")
     require("$pythonNumber.Major -ne 3 -or $pythonNumber.Minor -lt 10" in workflow,
             "explicit existing Python prerequisite missing")
@@ -241,13 +306,15 @@ class QualificationContractTests(unittest.TestCase):
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
         cls.corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
         cls.driver = DRIVER.read_text(encoding="utf-8")
+        cls.helper = HELPER.read_text(encoding="utf-8")
+        cls.source_ci = SOURCE_CI.read_text(encoding="utf-8")
 
-    def reject(self, *, builder=None, workflow=None, corpus=None, driver=None):
+    def reject(self, *, builder=None, workflow=None, corpus=None, driver=None, helper=None, source_ci=None):
         with self.assertRaises(ValueError):
-            check_contract(builder or self.builder, workflow or self.workflow, corpus or self.corpus, driver or self.driver)
+            check_contract(builder or self.builder, workflow or self.workflow, corpus or self.corpus, driver or self.driver, helper or self.helper, source_ci or self.source_ci)
 
     def test_current_source_contract(self):
-        check_contract(self.builder, self.workflow, self.corpus, self.driver)
+        check_contract(self.builder, self.workflow, self.corpus, self.driver, self.helper, self.source_ci)
 
     def test_default_and_optional_names_are_distinct_closed_lists(self):
         self.reject(builder=self.builder.replace("'migration-stream-workbench.exe'", "'unexpected.exe'", 1))
@@ -272,7 +339,7 @@ class QualificationContractTests(unittest.TestCase):
     def test_commit_and_tool_prerequisites_are_not_silent_fallbacks(self):
         self.reject(driver=self.driver.replace("$env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT", "$false", 1))
         self.reject(driver=self.driver.replace("$env:GITHUB_RUN_ATTEMPT -cne '1'", "$false", 1))
-        self.reject(driver=self.driver.replace("'v24.22.1'", "'unknown'", 1))
+        self.reject(driver=self.driver.replace("'v24.22.1 '", "'unknown'", 1))
         self.reject(driver=self.driver.replace("$pythonNumber.Minor -lt 10", "$pythonNumber.Minor -lt 0", 1))
 
     def test_offline_phase_and_no_retry_are_explicit(self):
@@ -346,6 +413,20 @@ class QualificationContractTests(unittest.TestCase):
         self.assertEqual(len(workflow_powershell_bodies(self.workflow.replace(old, replacement))[1]), 21000)
         with self.assertRaises(ValueError):
             workflow_powershell_bodies(self.workflow.replace(old, replacement + "          #\n"))
+
+    def test_closed_native_architecture_mapping_cannot_drift(self):
+        self.reject(workflow=self.workflow.replace("        default: x64", "        default: arm64", 1))
+        self.reject(workflow=self.workflow.replace("'windows-11-arm'", "'windows-2025'", 1))
+        self.reject(helper=self.helper.replace("target='aarch64-pc-windows-msvc'", "target='x86_64-pc-windows-msvc'", 1))
+        self.reject(driver=self.driver.replace("Assert-PreviewNativeHost $targetTuple", "Write-Output $targetTuple", 1))
+        self.reject(driver=self.driver.replace("Assert-PreviewRustHost $targetTuple", "Write-Output $targetTuple", 1))
+        self.reject(source_ci=self.source_ci.replace("rustc +${{ matrix.toolchain }} -vV", "rustc --version", 1))
+
+    def test_expected_preview_target_and_export_cannot_be_lost(self):
+        self.reject(helper=self.helper.replace("$receipt.build.target -ceq $tuple.target", "$true", 1))
+        self.reject(workflow=self.workflow.replace("$env:PREVIEW_EXPECTED_TARGET -cne $targetTuple.target", "$false", 1))
+        self.reject(driver=self.driver.replace("preview_target=", "other_target=", 1))
+        self.reject(workflow=self.workflow.replace("migration-stream-engineering-candidate-${{ inputs.architecture }}", "migration-stream-engineering-candidate-x64", 1))
 
     def test_unadmitted_run_keys_cannot_bypass_server_limit(self):
         for step in (

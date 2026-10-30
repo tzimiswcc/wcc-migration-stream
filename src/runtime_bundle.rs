@@ -5477,12 +5477,21 @@ mod tests {
         pe
     }
 
+    fn engineering_fixture_target() -> (&'static str, u16) {
+        if cfg!(all(windows, target_arch = "aarch64")) {
+            ("arm64", 0xaa64)
+        } else {
+            ("x64", 0x8664)
+        }
+    }
+
     fn engineering_fixture() -> (TestBundle, WindowsEngineeringLayoutRequest) {
         let parent = tempfile::tempdir().expect("synthetic parent");
         let directory = parent.path().join("runtime");
         create_owned_directory(&directory).expect("runtime directory");
         let mut manifest = minimal_manifest();
-        manifest.target = target_for("windows", "x64").expect("Windows target");
+        manifest.target =
+            target_for("windows", engineering_fixture_target().0).expect("Windows target");
         manifest.entrypoints = BundleEntrypoints {
             launcher: WINDOWS_LAUNCHER_PATH.into(),
             runtime_controller: WINDOWS_RUNTIME_CONTROLLER_PATH.into(),
@@ -5504,7 +5513,7 @@ mod tests {
                     | BundleMemberRole::IntegrityCli
                     | BundleMemberRole::Workbench
             ) {
-                engineering_pe(0x8664)
+                engineering_pe(engineering_fixture_target().1)
             } else {
                 b"synthetic member\n".to_vec()
             };
@@ -5526,7 +5535,7 @@ mod tests {
         .expect("manifest");
         seal_bundle_directories(&directory).expect("seal");
         let launcher = parent.path().join("trusted.exe");
-        let pe = engineering_pe(0x8664);
+        let pe = engineering_pe(engineering_fixture_target().1);
         write_new_file(&launcher, &pe, 0o555).expect("launcher");
         let request = WindowsEngineeringLayoutRequest {
             launcher,
@@ -5539,7 +5548,10 @@ mod tests {
     }
 
     fn engineering_verify(path: &Path) -> Result<BundleVerification> {
-        verify_bundle_root_for_target(path, &target_for("windows", "x64")?)
+        verify_bundle_root_for_target(
+            path,
+            &target_for("windows", engineering_fixture_target().0)?,
+        )
     }
 
     #[test]
@@ -5643,9 +5655,14 @@ mod tests {
 
     #[test]
     fn windows_engineering_layout_refuses_digest_architecture_and_truncated_pe() {
-        let mut bad_offset = engineering_pe(0x8664);
+        let mut bad_offset = engineering_pe(engineering_fixture_target().1);
+        let opposite_machine = if engineering_fixture_target().1 == 0xaa64 {
+            0x8664
+        } else {
+            0xaa64
+        };
         bad_offset[60..64].copy_from_slice(&1_048_577_u32.to_le_bytes());
-        for bytes in [engineering_pe(0xaa64), vec![0_u8; 10], bad_offset] {
+        for bytes in [engineering_pe(opposite_machine), vec![0_u8; 10], bad_offset] {
             let (_fixture, mut request) = engineering_fixture();
             set_mode(&request.launcher, 0o644).expect("writable fixture");
             fs::write(&request.launcher, &bytes).expect("invalid fixture");
@@ -5725,7 +5742,11 @@ mod tests {
                     let moved = request.launcher.with_extension("old");
                     fs::rename(&request.launcher, &moved)
                         .map_err(|e| KernelError::io(&moved, e))?;
-                    write_new_file(&request.launcher, &engineering_pe(0x8664), 0o555)?;
+                    write_new_file(
+                        &request.launcher,
+                        &engineering_pe(engineering_fixture_target().1),
+                        0o555,
+                    )?;
                 }
                 Ok(source.clone())
             })

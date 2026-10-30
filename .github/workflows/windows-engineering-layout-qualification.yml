@@ -7,6 +7,14 @@ on:
         description: Exact reviewed 40-character source commit for this one qualification
         required: true
         type: string
+      architecture:
+        description: Native engineering validation lane (not an end-user delivery choice)
+        required: true
+        default: x64
+        type: choice
+        options:
+          - x64
+          - arm64
       publish_engineering_preview:
         description: Explicitly publish one 7-day engineering candidate and verify its download (new build approval required)
         required: false
@@ -22,13 +30,14 @@ concurrency:
 
 jobs:
   engineering-files:
-    if: ${{ github.event_name == 'workflow_dispatch' && github.sha == inputs.expected_source_commit && github.run_attempt == 1 }}
-    runs-on: windows-2025
+    if: ${{ github.event_name == 'workflow_dispatch' && github.sha == inputs.expected_source_commit && github.run_attempt == 1 && (inputs.architecture == 'x64' || inputs.architecture == 'arm64') }}
+    runs-on: ${{ inputs.architecture == 'arm64' && 'windows-11-arm' || 'windows-2025' }}
     timeout-minutes: 45
     env:
       EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
       PUBLISH_ENGINEERING_PREVIEW: ${{ inputs.publish_engineering_preview }}
-      RUSTUP_TOOLCHAIN: 1.99.1
+      QUALIFICATION_ARCHITECTURE: ${{ inputs.architecture }}
+      RUSTUP_TOOLCHAIN: ${{ inputs.architecture == 'arm64' && '1.99.1-aarch64-pc-windows-msvc' || '1.99.1-x86_64-pc-windows-msvc' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -38,6 +47,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: web/.node-version
+          architecture: ${{ inputs.architecture }}
       - name: One private build and file-only engineering assembly
         id: qualify
         shell: pwsh
@@ -50,7 +60,7 @@ jobs:
         if: ${{ success() && inputs.publish_engineering_preview == true && github.run_attempt == 1 && github.sha == inputs.expected_source_commit && steps.qualify.outputs.preview_candidate_ready == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7, reviewed single-file archive:false
         with:
-          path: ${{ runner.temp }}/migration-stream-engineering-candidate-${{ github.run_id }}/migration-stream-engineering-candidate-x64-${{ github.sha }}-${{ github.run_id }}.zip
+          path: ${{ runner.temp }}/migration-stream-engineering-candidate-${{ github.run_id }}/migration-stream-engineering-candidate-${{ inputs.architecture }}-${{ github.sha }}-${{ github.run_id }}.zip
           archive: false
           overwrite: false
           if-no-files-found: error
@@ -69,6 +79,7 @@ jobs:
         shell: pwsh
         env:
           PREVIEW_EXPECTED_SHA256: ${{ steps.qualify.outputs.preview_sha256 }}
+          PREVIEW_EXPECTED_TARGET: ${{ steps.qualify.outputs.preview_target }}
           PREVIEW_ARTIFACT_ID: ${{ steps.candidate-upload.outputs.artifact-id }}
           PREVIEW_ARTIFACT_DIGEST: ${{ steps.candidate-upload.outputs.artifact-digest }}
         run: |
@@ -77,15 +88,18 @@ jobs:
           try {
             if ($env:PUBLISH_ENGINEERING_PREVIEW -cne 'true' -or $env:GITHUB_RUN_ATTEMPT -cne '1' -or $env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT) { throw 'preview handoff not admitted' }
             if ($env:PREVIEW_EXPECTED_SHA256 -cnotmatch '^[0-9a-f]{64}$' -or $env:PREVIEW_ARTIFACT_ID -cnotmatch '^[0-9]{1,20}$' -or $env:PREVIEW_ARTIFACT_DIGEST -cne $env:PREVIEW_EXPECTED_SHA256) { throw 'candidate transport receipt differs' }
+            . (Join-Path (Get-Location).Path 'scripts/windows-engineering-preview.ps1')
+            $targetTuple=Get-PreviewTarget $env:QUALIFICATION_ARCHITECTURE
+            if ($env:PREVIEW_EXPECTED_TARGET -cne $targetTuple.target) { throw 'candidate target export differs' }
             $downloadRoot = Join-Path $env:RUNNER_TEMP ('migration-stream-engineering-candidate-download-' + $env:GITHUB_RUN_ID)
-            $candidateName = 'migration-stream-engineering-candidate-x64-' + $env:GITHUB_SHA + '-' + $env:GITHUB_RUN_ID + '.zip'
+            $candidateName = ('migration-stream-engineering-candidate-'+$targetTuple.architecture+'-') + $env:GITHUB_SHA + '-' + $env:GITHUB_RUN_ID + '.zip'
             $downloaded = Join-Path $downloadRoot $candidateName
             $previewHelper = Join-Path (Get-Location).Path 'scripts/windows-engineering-preview.ps1'
-            $resultText = @(& $previewHelper -Operation Extract -Archive $downloaded -ExpectedArchiveSha256 $env:PREVIEW_EXPECTED_SHA256 -Destination (Join-Path $downloadRoot 'verified-replay'))
+            $resultText = @(& $previewHelper -Operation Extract -Architecture $targetTuple.architecture -Archive $downloaded -ExpectedArchiveSha256 $env:PREVIEW_EXPECTED_SHA256 -Destination (Join-Path $downloadRoot 'verified-replay'))
             if ($LASTEXITCODE -ne 0 -or ($resultText -join '').Length -gt 8192) { throw 'downloaded candidate replay refused' }
             $result = ($resultText -join "`n") | ConvertFrom-Json
-            if ($result.status -cne 'CANDIDATE_REPLAY_PASSED' -or $result.archiveSha256 -cne $env:PREVIEW_EXPECTED_SHA256 -or $result.sourceCommit -cne $env:GITHUB_SHA) { throw 'downloaded candidate identity differs' }
-            $previewEvidence = [ordered]@{ schemaVersion='migration-stream/windows-engineering-preview-handoff/v1'; status='QUALIFIED_ENGINEERING_PREVIEW'; sourceCommit=$result.sourceCommit; archiveSha256=$result.archiveSha256; documentLauncherSha256=$result.documentLauncherSha256; runtimeManifestSha256=$result.runtimeManifestSha256; artifactId=$env:PREVIEW_ARTIFACT_ID; artifactDigest=$env:PREVIEW_ARTIFACT_DIGEST; retentionDays=7 }
+            if ($result.status -cne 'CANDIDATE_REPLAY_PASSED' -or $result.architecture -cne $targetTuple.architecture -or $result.target -cne $targetTuple.target -or $result.archiveSha256 -cne $env:PREVIEW_EXPECTED_SHA256 -or $result.sourceCommit -cne $env:GITHUB_SHA) { throw 'downloaded candidate identity differs' }
+            $previewEvidence = [ordered]@{ schemaVersion='migration-stream/windows-engineering-preview-handoff/v1'; status='QUALIFIED_ENGINEERING_PREVIEW'; sourceCommit=$result.sourceCommit; architecture=$result.architecture; target=$result.target; archiveSha256=$result.archiveSha256; documentLauncherSha256=$result.documentLauncherSha256; runtimeManifestSha256=$result.runtimeManifestSha256; artifactId=$env:PREVIEW_ARTIFACT_ID; artifactDigest=$env:PREVIEW_ARTIFACT_DIGEST; retentionDays=7 }
             Write-Output ($previewEvidence | ConvertTo-Json -Compress)
           } catch { Write-Output 'Engineering candidate remains unqualified after download replay failure'; exit 1 }
           # An own candidate may remain unqualified for 7 days. Never broad-delete.

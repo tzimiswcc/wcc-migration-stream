@@ -47,8 +47,22 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
 
   windows-source:
-    name: Synthetic Windows document-open source checks
-    runs-on: windows-2025
+    name: Synthetic Windows document-open source checks (${{ matrix.architecture }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runner: windows-2025
+            processor: AMD64
+            runtime: X64
+            toolchain: 1.99.1-x86_64-pc-windows-msvc
+          - architecture: arm64
+            runner: windows-11-arm
+            processor: ARM64
+            runtime: Arm64
+            toolchain: 1.99.1-aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,6 +74,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          . ./scripts/windows-engineering-preview.ps1
+          $tuple=Get-PreviewTarget '${{ matrix.architecture }}'
+          Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())
           python -B scripts/windows-engineering-qualification-self-test.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $parseOnly = Join-Path $env:RUNNER_TEMP ('migration-stream-parse-only-' + [Guid]::NewGuid() + '.ps1')
@@ -84,27 +101,35 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install pinned Rust source-test toolchain
         shell: pwsh
-        run: rustup toolchain install 1.99.1 --profile minimal --component clippy
+        run: |
+          $ErrorActionPreference = 'Stop'
+          rustup toolchain install ${{ matrix.toolchain }} --profile minimal --component clippy
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          . ./scripts/windows-engineering-preview.ps1
+          $tuple=Get-PreviewTarget '${{ matrix.architecture }}'
+          $versionLines=@(& rustc +${{ matrix.toolchain }} -vV)
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Assert-PreviewRustHost $tuple $versionLines
       - name: Test synthetic document-open coordination and native argument projection
         shell: pwsh
-        run: cargo +1.99.1 test --locked --test windows_document_open
+        run: cargo +${{ matrix.toolchain }} test --locked --test windows_document_open
       - name: Test fixed browser request and COM policy with injected calls only
         shell: pwsh
-        run: cargo +1.99.1 test --locked -p migration-stream-windows-native browser_submission_tests
+        run: cargo +${{ matrix.toolchain }} test --locked -p migration-stream-windows-native browser_submission_tests
       - name: Test only synthetic native Windows controller processes
         timeout-minutes: 3
         shell: pwsh
-        run: cargo +1.99.1 test --locked --test windows_process_owner_native
+        run: cargo +${{ matrix.toolchain }} test --locked --test windows_process_owner_native
       - name: Test create-only engineering layout with synthetic files only
         timeout-minutes: 3
         shell: pwsh
         run: |
-          cargo +1.99.1 test --locked --lib windows_engineering_layout_
+          cargo +${{ matrix.toolchain }} test --locked --lib windows_engineering_layout_
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo +1.99.1 test --locked --bin migration-stream-windows-engineering-layout
+          cargo +${{ matrix.toolchain }} test --locked --bin migration-stream-windows-engineering-layout
       - name: Check Windows document-open integration and engineering launcher with strict Clippy
         shell: pwsh
-        run: cargo +1.99.1 clippy --locked --lib --test windows_document_open --bin migration-stream-document-open --bin migration-stream-windows-engineering-layout -- -D warnings
+        run: cargo +${{ matrix.toolchain }} clippy --locked --lib --test windows_document_open --bin migration-stream-document-open --bin migration-stream-windows-engineering-layout -- -D warnings
       - name: Check native browser test projection with strict Clippy
         shell: pwsh
-        run: cargo +1.99.1 clippy --locked -p migration-stream-windows-native --tests -- -D warnings
+        run: cargo +${{ matrix.toolchain }} clippy --locked -p migration-stream-windows-native --tests -- -D warnings
