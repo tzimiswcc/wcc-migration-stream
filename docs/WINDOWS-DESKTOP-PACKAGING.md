@@ -43,6 +43,18 @@ Synthetic fixtures are not genuine native receipts or acceptance records.
 Real file/directory, single-link and no-reparse checks apply. On Windows,
 [FindFirstStreamW/FindNextStreamW][streams] reject every nondefault data stream
 without reading or stripping it; unsupported/unknown enumeration refuses.
+Byte reads explicitly use Windows `O_BINARY` so CRLF and control-Z are payload
+bytes. Path and descriptor fingerprints each retain their own complete freshness
+checks. Their common identity binds the full device/file ID, type, size, mtime,
+link count, readonly/write bits, Windows attributes and available birthtime.
+Only Windows' filename-synthesized executable bits are normalized between those
+interfaces; their differently defined `ctime` fields are checked within each
+interface. Unknown asymmetric metadata refuses. This follows [CPython's path
+mode/ctime implementation][cpython-path] and [descriptor implementation][cpython-fd],
+plus the documented [binary-open requirement][python-open]. The first hosted
+source failure did not log the actual differing tuple fields; these are verified
+API differences, not an observed field-by-field diagnosis of that failure.
+
 An ordinary local drive namespace is required. Traversal, ADS/device names,
 trailing-dot/space aliases, links, unknown files and overlapping physical input
 or output ancestors refuse. Unicode/interior spaces are allowed in compiler
@@ -172,3 +184,7 @@ compiler logs through bounded real-file reads.
 [native-cpu]: https://github.com/kichik/nsis/blob/master/Include/x64.nsh
 [picker]: https://nsis.sourceforge.io/Docs/nsDialogs/Readme.html#selectfiledialog
 [streams]: https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirststreamw
+
+[cpython-path]: https://github.com/python/cpython/blob/v3.12.10/Modules/posixmodule.c#L1777-L1798
+[cpython-fd]: https://github.com/python/cpython/blob/v3.12.10/Python/fileutils.c#L1026-L1047
+[python-open]: https://docs.python.org/3.12/library/os.html#os.open

@@ -9,6 +9,8 @@ import json
 import os
 from pathlib import Path
 import struct
+import stat
+from types import SimpleNamespace
 import sys
 import tempfile
 import unittest
@@ -205,6 +207,102 @@ class WindowsDesktopSourceTests(unittest.TestCase):
         self.assertIn('DeleteRegKey /ifempty',text)
         self.assertNotIn('Delete "$DOCUMENTS',text)
         self.assertNotIn('Delete "$LOCALAPPDATA\\migration-stream-runtime',text)
+
+class FileIdentityTests(unittest.TestCase):
+    def setUp(self):
+        self.guard=mock.patch.object(module.subprocess,"Popen",side_effect=AssertionError("no process in metadata/binary tests"))
+        self.guard.start()
+
+    def tearDown(self):
+        self.guard.stop()
+
+    @staticmethod
+    def record(**changes):
+        fields=dict(st_dev=7,st_ino=123456789012345678901234567890,st_size=8,
+                    st_mode=stat.S_IFREG|0o666,st_mtime_ns=400,st_ctime_ns=500,
+                    st_birthtime_ns=300,st_nlink=1,st_file_attributes=0x20,st_reparse_tag=0)
+        fields.update(changes)
+        return SimpleNamespace(**fields)
+
+    def test_documented_windows_mode_and_ctime_difference_passes(self):
+        named=self.record(st_mode=stat.S_IFREG|0o777,st_ctime_ns=300)
+        opened=self.record()
+        module.bind_file_interfaces(named,opened,windows=True)
+        self.assertNotEqual(module.signature(named),module.signature(opened))
+        # Each interface keeps its own full ctime and mode fingerprint.
+        self.assertNotEqual(module.signature(named),module.signature(self.record(st_mode=stat.S_IFREG|0o777,st_ctime_ns=301)))
+        self.assertNotEqual(module.signature(opened),module.signature(self.record(st_ctime_ns=501)))
+
+    def test_changed_identity_metadata_alias_or_reparse_refuses(self):
+        named=self.record(st_mode=stat.S_IFREG|0o777,st_ctime_ns=300)
+        for field,value in [("st_dev",8),("st_ino",123456789012345678901234567891),
+                            ("st_ino",0),("st_size",9),("st_mtime_ns",401),("st_birthtime_ns",301),
+                            ("st_mode",stat.S_IFREG|0o444),("st_mode",stat.S_IFDIR|0o666),
+                            ("st_nlink",2),("st_file_attributes",0x21),("st_file_attributes",0x420),
+                            ("st_reparse_tag",0xA000000C)]:
+            with self.subTest(field=field,value=value),self.assertRaises(module.PackagingError):
+                module.bind_file_interfaces(named,self.record(**{field:value}),windows=True)
+        for field in ("st_birthtime_ns","st_file_attributes","st_reparse_tag"):
+            opened=self.record();delattr(opened,field)
+            with self.subTest(missing=field),self.assertRaises(module.PackagingError):
+                module.bind_file_interfaces(named,opened,windows=True)
+
+    def test_same_interface_freshness_catches_ctime_mode_and_link_changes(self):
+        before=self.record()
+        for changes in ({"st_ctime_ns":501},{"st_mode":stat.S_IFREG|0o777},{"st_nlink":2},
+                        {"st_birthtime_ns":301},{"st_file_attributes":0x21},{"st_reparse_tag":1}):
+            self.assertNotEqual(module.signature(before),module.signature(self.record(**changes)))
+        with self.assertRaises(module.PackagingError):
+            module.bind_file_interfaces(self.record(),self.record(st_ctime_ns=501),windows=False)
+
+    def test_reader_refuses_path_or_descriptor_ctime_change_within_interface(self):
+        with tempfile.TemporaryDirectory(prefix="migration-stream-freshness-synthetic-") as directory:
+            path=Path(directory).resolve()/"synthetic.bin";path.write_bytes(b"unchanged bytes")
+            original_fstat=module.os.fstat
+            calls=0
+            def changed_descriptor(fd):
+                nonlocal calls
+                calls+=1;info=original_fstat(fd)
+                if calls==1:return info
+                fields={name:getattr(info,name) for name in dir(info) if name.startswith("st_")}
+                fields["st_ctime_ns"]+=1
+                return SimpleNamespace(**fields)
+            with mock.patch.object(module.os,"fstat",changed_descriptor),self.assertRaises(module.PackagingError):
+                module.file_record(path)
+            original_lstat=Path.lstat
+            calls=0
+            def changed_path(candidate,*args,**kwargs):
+                nonlocal calls
+                info=original_lstat(candidate,*args,**kwargs)
+                if candidate!=path:return info
+                calls+=1
+                if calls<3:return info
+                fields={name:getattr(info,name) for name in dir(info) if name.startswith("st_")}
+                fields["st_ctime_ns"]+=1
+                return SimpleNamespace(**fields)
+            with mock.patch.object(Path,"lstat",changed_path),self.assertRaises(module.PackagingError):
+                module.file_record(path)
+
+    def test_crlf_control_z_and_binary_open_flag_preserve_exact_bytes(self):
+        with tempfile.TemporaryDirectory(prefix="migration-stream-binary-synthetic-") as directory:
+            path=Path(directory).resolve()/"synthetic.exe"
+            data=b"A\r\nB\x1aC\x00\xff\r\n"
+            path.write_bytes(data)
+            original_open=module.os.open
+            seen=[]
+            # On Windows use the real CRT flag. Portable source tests inject an
+            # otherwise-unused sentinel and remove it only at the OS boundary.
+            flag=getattr(os,"O_BINARY",0x40000000)
+            def capture(name,flags,*args,**kwargs):
+                seen.append(flags)
+                return original_open(name,flags if os.name=="nt" else flags & ~flag,*args,**kwargs)
+            with mock.patch.object(module.os,"O_BINARY",flag,create=True),mock.patch.object(module.os,"open",capture):
+                record,actual=module.file_record(path)
+            self.assertTrue(seen and all(flags & flag for flags in seen))
+            self.assertEqual(actual,data)
+            self.assertEqual(record["bytes"],len(data))
+            self.assertEqual(record["sha256"],hashlib.sha256(data).hexdigest())
+
 
 def native_compile_fixture():
     """Compile tiny fake payloads once; never execute the generated installer."""
