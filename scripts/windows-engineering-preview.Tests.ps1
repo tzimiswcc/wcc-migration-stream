@@ -47,6 +47,18 @@ try {
         Expect-Refusal { Expand-PreviewArchiveCore $archive $candidate.archiveSha256 $existing $fakeValidator }
         Assert-Preview ([IO.File]::ReadAllText((Join-Path $existing 'sentinel')) -ceq 'preserve')
     }
+    Test-Case 'refusing-staged-validator-never-publishes' {
+        $destination=Join-Path $testRoot 'refused-before-publication'
+        $script:refusingValidatorCalls=0
+        $refusingValidator={
+            param($root,$build)
+            $script:refusingValidatorCalls++
+            throw 'synthetic validation refusal'
+        }
+        Expect-Refusal { Expand-PreviewArchiveCore $archive $candidate.archiveSha256 $destination $refusingValidator }
+        Assert-Preview ($script:refusingValidatorCalls -eq 1)
+        Assert-Preview (-not [IO.Directory]::Exists($destination) -and -not [IO.File]::Exists($destination))
+    }
     Test-Case 'namespace-and-depth-refusals' {
         foreach ($name in @('../x','/x','C:/x','//server/x','x\y','x:stream','CON','x/NUL.txt','x.','x//y',('x/'*67+'y'))) {
             Expect-Refusal { Assert-PreviewName $name }
