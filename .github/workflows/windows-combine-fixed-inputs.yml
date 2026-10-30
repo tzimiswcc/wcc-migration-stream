@@ -7,7 +7,12 @@ on:
         required: true
         type: string
       authorize_fixed_input_compile:
-        description: New approval for one15min download/passive replay/NSIS compile; no rebuild or upload
+        description: New approval for one15min fixed-input replay/NSIS compile; publication is separately opt-in
+        type: boolean
+        required: true
+        default: false
+      publish_engineering_candidate:
+        description: Separate approval for one seven-day unsigned candidate upload and exact-ID passive replay
         type: boolean
         required: true
         default: false
@@ -24,6 +29,7 @@ jobs:
     timeout-minutes: 15
     env:
       EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_tooling_commit }}
+      PUBLISH_ENGINEERING_CANDIDATE: ${{ inputs.publish_engineering_candidate && 'true' || 'false' }}
       REUSE_FIXED_NATIVE_PAIR: 'true'
       PUBLISH_NATIVE_TRANSFERS: 'true'
       X64_ARTIFACT_ID: '12978336770'
@@ -69,10 +75,67 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/migration-stream-desktop-download-arm64-${{ github.run_id }}
           digest-mismatch: error
-      - name: Re-admit expiry and compile one ephemeral installer without execution or upload
+      - name: Re-admit expiry and compile one installer without execution
+        id: compile
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           & ./scripts/windows-desktop-installer-qualification.ps1 -Operation Combine -ReuseFixedNativePair
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stage only the verified Setup and two bounded receipts
+        id: candidate
+        if: ${{ inputs.publish_engineering_candidate == true && steps.compile.outputs.compile_passed == 'true' }}
+        shell: pwsh
+        env:
+          COMPILE_RECEIPT_SHA: ${{ steps.compile.outputs.compile_receipt_sha }}
+        run: |
+          python -I -B scripts/windows-engineering-candidate.py --stage
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload one unsigned engineering candidate for seven days
+        id: upload_candidate
+        if: ${{ inputs.publish_engineering_candidate == true && steps.compile.outputs.compile_passed == 'true' && steps.candidate.outputs.candidate_ready == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # pinned
+        with:
+          name: migration-stream-engineering-candidate-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/migration-stream-desktop-combine-${{ github.run_id }}/engineering-candidate/Migration Stream Setup.exe
+            ${{ runner.temp }}/migration-stream-desktop-combine-${{ github.run_id }}/engineering-candidate/engineering-installer.json
+            ${{ runner.temp }}/migration-stream-desktop-combine-${{ github.run_id }}/engineering-candidate/qualification-compile.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+          include-hidden-files: false
+          archive: true
+      - name: Admit only the returned candidate in this exact run
+        id: artifact
+        if: ${{ inputs.publish_engineering_candidate == true && steps.compile.outputs.compile_passed == 'true' && steps.candidate.outputs.candidate_ready == 'true' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_ARTIFACT_ID: ${{ steps.upload_candidate.outputs.artifact-id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.upload_candidate.outputs.artifact-digest }}
+        run: |
+          python -I -B scripts/windows-engineering-candidate.py --admit-artifact
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Download only the just-uploaded candidate by returned immutable ID
+        if: ${{ inputs.publish_engineering_candidate == true && steps.compile.outputs.compile_passed == 'true' && steps.candidate.outputs.candidate_ready == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # pinned
+        with:
+          artifact-ids: ${{ steps.upload_candidate.outputs.artifact-id }}
+          repository: tzimiswcc/wcc-migration-stream
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/migration-stream-desktop-combine-${{ github.run_id }}/candidate-download
+          digest-mismatch: error
+      - name: Replay bytes and receipts without executing the Setup
+        if: ${{ inputs.publish_engineering_candidate == true && steps.compile.outputs.compile_passed == 'true' && steps.candidate.outputs.candidate_ready == 'true' }}
+        shell: pwsh
+        env:
+          CANDIDATE_AUTHORITY_SHA: ${{ steps.candidate.outputs.authority_sha }}
+          CANDIDATE_METADATA_SHA: ${{ steps.artifact.outputs.artifact_metadata_sha }}
+          CANDIDATE_ARTIFACT_ID: ${{ steps.upload_candidate.outputs.artifact-id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.upload_candidate.outputs.artifact-digest }}
+        run: |
+          python -I -B scripts/windows-engineering-candidate.py --replay
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

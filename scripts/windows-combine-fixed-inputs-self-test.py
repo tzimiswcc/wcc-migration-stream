@@ -204,17 +204,21 @@ class AdmissionTests(unittest.TestCase):
   self.assertIn("Write-Output ('FIXED_PAIR_ADMISSION_FAILURE '+($safeRefusal | ConvertTo-Json -Compress))",safe)
   self.assertNotIn('Write-Output $admissionText',safe);self.assertNotIn('$_.',safe)
   self.assertIn('catch { }',safe)
- def test_workflow_pins_closed_sources_downloads_and_no_output_publication(self):
+ def test_workflow_pins_closed_sources_downloads_and_default_off_candidate(self):
   source=(ROOT/'.github/workflows/windows-combine-fixed-inputs.yml').read_text()
   self.assertIn('default: false',source);self.assertIn('timeout-minutes: 15',source)
   self.assertIn("github.ref == 'refs/heads/main'",source);self.assertIn('github.run_attempt == 1',source)
-  self.assertEqual(source.count('uses:'),3);self.assertEqual(source.count('digest-mismatch: error'),2)
+  self.assertEqual(source.count('uses:'),5);self.assertEqual(source.count('digest-mismatch: error'),3)
   for pin in m.INPUTS.values():self.assertIn('artifact-ids: '+str(pin['id']),source)
   self.assertLess(source.index('-Operation AdmitTransfers'),source.index('uses: actions/download-artifact@'))
   self.assertEqual(source.count('run-id: 41057681963'),2)
-  for forbidden in ('upload-artifact','workflow_call:','schedule:','push:','build-assisted','Native -','setup-node','continue-on-error','actions: write'):
+  for forbidden in ('workflow_call:','schedule:','push:','build-assisted','Native -','setup-node','continue-on-error','actions: write'):
    self.assertNotIn(forbidden,source)
-  self.assertEqual(source.count('run: |'),2)
+  self.assertEqual(source.count('upload-artifact@'),1)
+  self.assertIn('      publish_engineering_candidate:',source)
+  self.assertEqual(source.count('default: false'),2)
+  self.assertIn("inputs.publish_engineering_candidate == true && steps.compile.outputs.compile_passed == 'true'",source)
+  self.assertEqual(source.count('run: |'),5)
   for block in source.split('run: |')[1:]:self.assertLess(len(block),21000)
  def test_real_qualifier_preserves_default_and_original_product_binding(self):
   s=(ROOT/'scripts/windows-desktop-installer-qualification.ps1').read_text()
