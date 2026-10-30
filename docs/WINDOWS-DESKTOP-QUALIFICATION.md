@@ -1,10 +1,10 @@
 # Native-pair Windows installer compilation qualification
 
 This is a proposed manual engineering qualification, not an installation or
-release workflow. It requires the separately reviewed Windows NSIS packager to
-be integrated at the same exact source commit. The qualification-only branch
-based on integration `8a813b3` deliberately does not copy that other candidate.
-No job may proceed without the actual `scripts/package-windows-desktop.py`.
+release workflow. It requires the reviewed Windows NSIS packager at the same
+exact source commit as both native builds. No job may proceed without the
+actual `scripts/package-windows-desktop.py`; transfer metadata does not
+substitute for that shared production validator.
 
 The new `windows-desktop-installer-qualification.yml` workflow must first exist
 on the default branch before manual dispatch is available. A later, concrete
@@ -80,18 +80,32 @@ source commit/tree/snapshot/product version and frontend identity. It replays
 source/copied/compiler/template/script identities around the real NSIS compile.
 Those packager gates are not replaced by the transfer check.
 
-## Existing compiler only; no install or execution of Setup
+## Explicit portable compiler; no install or execution of Setup
 
-The compiler is fixed to the runner's existing
-`ProgramFiles(x86)\NSIS\makensis.exe`. The x64 native job checks presence before
-its build; combine fails if absent or if its concrete native file, NSIS 3 file
-version or required six header/plugin resources cannot be observed. There is
-no Chocolatey, winget, installer, dynamic download or alternate compiler path.
-Runner availability and a sufficiently recent NSIS native-ARM detection header
-remain real-run prerequisites, not locally established facts. The final bounded
-metadata reports compiler hash, file version and six resource hashes plus Python
-version/hash. These identify observed bytes; they do not prove supply-chain
-provenance or a complete compiler-resource closure.
+Source CI and this qualification use the same reviewed
+[`prepare-nsis-tool.py`](../scripts/prepare-nsis-tool.py) contract: a fixed
+official portable NSIS 3.13 ZIP URL/hash, one bounded fetch, hash before safe
+create-only extraction, complete graph/member-byte and receipt validation, and
+the direct `nsis-3.13/Bin/makensis.exe` compiler. The installed Program Files
+assumption is removed; the failed image inventory documented no NSIS path.
+Native build jobs need no unused compiler precheck. Preparation occurs only on
+the x64 combine job; source CI independently prepares the same distribution
+before its tiny synthetic template compilation. This is explicit tool
+preparation, not a fallback after another compiler fails.
+
+The [Windows packaging guide](WINDOWS-DESKTOP-PACKAGING.md) records exact archive
+and direct-compiler identities, limits and official resource-root source. No
+installer, admin action, package-manager mutation, PATH search, global config or
+arbitrary tool/version URL is admitted. The existing bounded packager runner
+executes the direct compiler and retains its cleared environment and
+`/NOCONFIG` policy. It does not invoke the child-spawning release-root stub.
+The preparation helper itself invokes no executable. Archive integrity and all
+copied resource bytes are revalidated after compilation; their hashes bind
+observed bytes, not publisher authentication or a supply-chain attestation.
+The final metadata includes the archive/preparation-receipt hashes, compiler
+file version/hash, nine pinned member hashes and Python version/hash. Any
+preparation/compile failure stops once and preserves explicitly unqualified
+transfer artifacts until their one-day expiry; no retry or broad deletion.
 
 The packager performs one real `/NOCONFIG /V2 /INPUTCHARSET UTF8` compilation
 with its bounded direct-child runner. There is no separate unbounded compiler
@@ -114,9 +128,9 @@ approval.
 python3 -B scripts/windows-desktop-transfer-self-test.py
 ```
 
-Eleven groups exercise actual passive code over tiny synthetic ZIPs and hostile
+Twelve groups exercise actual passive code over tiny synthetic ZIPs and hostile
 mutations, with subprocess creation blocked, plus fixed workflow/driver source
 contracts. Windows source CI also parses the new PowerShell driver without
 executing it. Local Mac tests do not qualify Windows publication semantics,
-PowerShell parsing, NSIS availability/compilation, real artifact transport or
+PowerShell parsing, portable NSIS preparation/compilation, real artifact transport or
 same-source native builds. Preserve first failures; no automatic retry.

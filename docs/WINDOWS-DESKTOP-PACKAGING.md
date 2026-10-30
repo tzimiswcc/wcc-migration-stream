@@ -85,13 +85,44 @@ Required CLI flags are:
 --output-directory ABSOLUTE_NEW_DIRECTORY
 ```
 
-No dependency installation or download occurs. The selected existing standard
-Unicode NSIS distribution, its headers and bundled System/nsDialogs plug-ins
-are operator trust prerequisites. The executable hash alone does not
-independently qualify all compiler resources or their licence/provenance closure.
-A standard 32-bit Unicode bootstrap with modern `x64.nsh` native-CPU macros is
-required. Its carrier can use Windows emulation while the selected application
-payload remains native; actual bootstrap compatibility is untested here.
+The packager itself performs no dependency installation or download. Its
+compiler path/hash must identify the prepared direct compiler, not the release
+root's child-spawning `makensis.exe` stub. The shared
+[`prepare-nsis-tool.py`](../scripts/prepare-nsis-tool.py) explicitly fetches the
+official portable NSIS 3.13 ZIP into one new runner-temp namespace only when
+separately invoked in an admitted build job. It neither executes an installer
+nor changes PATH, registry, services or global configuration. There is no
+installed-path search or alternate download fallback.
+
+The source pins the 2,363,925-byte archive SHA-256
+`ba63dffc4410ee89193e1cb5a41989991bd77c61068da17e3156d136b7b0b3d8`,
+441 entries and 7,141,489 expanded bytes, plus nine compiler/header/plugin/stub
+hashes. Preparation performs one bounded HTTPS fetch (10-second I/O timeout,
+60-second observed whole-fetch budget, at most three constrained HTTPS
+SourceForge mirror redirects), checks that hash before creating extraction
+staging, then refuses unsafe names, aliases, links, special files, excessive
+counts/depth/bytes and overwrite. Unknown failures retain only owned partials;
+there is no retry. Publisher archive identity is not a signature or
+supply-chain attestation. The archive pin was checked against the official release ZIP before this
+source change; local source tests use only fake ZIPs, never that distribution.
+
+The returned compiler is exactly `nsis-3.13/Bin/makensis.exe` (468,992 bytes,
+PE32/x86, SHA-256
+`65343c225ec88393cc4453b0963caf63f763f42f48cb55736d51893ff2e29d4a`).
+[Official 3.13 source][compiler-root] derives its Include/Stubs/Plugins root from
+the parent of the executable directory; Windows defaults do not use a compiled
+constant resource path. Preserving the complete release graph therefore needs
+no inherited NSISDIR override or root launcher. The existing cleared compiler
+environment stays unchanged. The helper and callers validate the full prepared
+file graph/bytes and receipt again after compilation. They reuse the packager's
+reviewed Windows binary-read/file-identity/ADS policy rather than treating Unix
+lstat/fstat identifiers as interchangeable on Windows.
+
+Existing `Unicode true`, `NSIS_CHAR_SIZE == 2` and `NSIS_PTR_SIZE == 4` template
+guards remain. The standard x86 Unicode bootstrap chooses the application's
+native payload; actual NSIS/template compatibility still requires the future
+synthetic compiler proof. The preparation metadata records no executable call
+by the helper; it is not installer or native-lifecycle qualification.
 
 The production compiler runs on Windows only with exact arguments
 `/NOCONFIG /V2 /INPUTCHARSET UTF8 SCRIPT`, only trusted OS-derived
@@ -188,3 +219,5 @@ compiler logs through bounded real-file reads.
 [cpython-path]: https://github.com/python/cpython/blob/v3.12.10/Modules/posixmodule.c#L1777-L1798
 [cpython-fd]: https://github.com/python/cpython/blob/v3.12.10/Python/fileutils.c#L1026-L1047
 [python-open]: https://docs.python.org/3.12/library/os.html#os.open
+
+[compiler-root]: https://github.com/nsis-dev/nsis/blob/v313/Source/build.cpp#L407-L426

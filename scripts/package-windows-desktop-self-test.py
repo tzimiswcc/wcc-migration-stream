@@ -116,6 +116,10 @@ class WindowsDesktopSourceTests(unittest.TestCase):
         for index in range(0,len(argv),2):
             with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):module.arguments(argv[:index]+argv[index+2:])
         with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):module.arguments(argv+['--skip-verify'])
+        prepared=self.root/'prepared'
+        self.assertEqual(native_compile_directory(['--native-compile-only','--prepared-nsis',str(prepared)]),prepared)
+        for invalid in ([],['--native-compile-only'],['--native-compile-only','--prepared-nsis','relative'],['--native-compile-only','--makensis',str(prepared)],['--native-compile-only','--prepared-nsis',str(prepared),'extra']):
+            with self.assertRaises(ValueError):native_compile_directory(invalid)
 
     def test_pair_source_tree_version_snapshot_and_tuple_refusals(self):
         for field,value in [("source_commit","a"*40),("source_tree","a"*40),("source_snapshot_sha256","a"*64),("product_version","9.9.9")]:
@@ -304,7 +308,15 @@ class FileIdentityTests(unittest.TestCase):
             self.assertEqual(record["sha256"],hashlib.sha256(data).hexdigest())
 
 
-def native_compile_fixture():
+def native_compile_directory(arguments):
+    if len(arguments)!=3 or arguments[:2]!=["--native-compile-only","--prepared-nsis"]:
+        raise ValueError("explicit prepared NSIS directory required")
+    path=Path(arguments[2])
+    if not path.is_absolute():raise ValueError("absolute prepared NSIS directory required")
+    return path
+
+
+def native_compile_fixture(prepared_directory):
     """Compile tiny fake payloads once; never execute the generated installer."""
     if os.name != "nt":
         print(json.dumps({"ok": False, "code": "NATIVE_WINDOWS_REQUIRED"}))
@@ -319,8 +331,12 @@ def native_compile_fixture():
         compiler_workspace = script.parent
         module.compile_nsis(program, script)
     try:
-        compiler = Path(os.environ["ProgramFiles(x86)"]) / "NSIS/makensis.exe"
+        tool_spec=importlib.util.spec_from_file_location("synthetic_compile_prepared_nsis",Path(__file__).with_name("prepare-nsis-tool.py"))
+        tool=importlib.util.module_from_spec(tool_spec);sys.modules[tool_spec.name]=tool;tool_spec.loader.exec_module(tool)
+        prepared=tool.validate_prepared(prepared_directory)
+        compiler=Path(prepared["compiler"])
         compiler_record, _ = module.file_record(compiler)
+        if compiler_record["sha256"]!=prepared["compilerSha256"]:raise ValueError("prepared compiler changed")
         case = WindowsDesktopSourceTests("test_shared_passive_flow_two_payloads_one_setup_and_no_runtime_execution")
         case.retain_native_fixture = True
         case.setUp()
@@ -331,6 +347,7 @@ def native_compile_fixture():
         request = replace(case.request, makensis=compiler,
                           makensis_sha256=compiler_record["sha256"])
         result = module.package(request, compiler=compile_once)
+        if tool.validate_prepared(prepared_directory)!=prepared:raise ValueError("prepared resources changed")
         case.assertFalse(result["installerExecutionQualified"])
         case.assertEqual(result["qualification"], "PASSIVE_RECEIPT_BYTE_BINDING_ONLY")
         print(json.dumps({"schemaVersion": "migration-stream/synthetic-nsis-compile/v1",
@@ -363,6 +380,10 @@ def native_compile_fixture():
 
 
 if __name__ == '__main__':
-    if sys.argv[1:] == ["--native-compile-only"]:
-        raise SystemExit(native_compile_fixture())
+    if "--native-compile-only" in sys.argv[1:]:
+        try:prepared_directory=native_compile_directory(sys.argv[1:])
+        except ValueError:
+            print('{"ok":false,"code":"EXPLICIT_PREPARED_NSIS_REQUIRED"}')
+            raise SystemExit(1)
+        raise SystemExit(native_compile_fixture(prepared_directory))
     unittest.main()
