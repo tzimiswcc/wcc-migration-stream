@@ -106,6 +106,10 @@ def check_architecture_contract(workflow, driver, helper, source_ci):
         require(required in helper, "primitive scalar target admission required")
     production = helper.split("function Invoke-PreviewRuntimeVerification", 1)[1].split("function Read-PreviewBlock", 1)[0]
     host_call = "Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())"
+    tuple_call = "$tuple=Get-PreviewBuildTarget $Build"
+    require(tuple_call in production and production.index(tuple_call) < production.index(host_call)
+            and production.index(tuple_call) < production.index("& $controller verify"),
+            "production scalar build tuple must be admitted before host check and execution")
     require(host_call in production and production.index(host_call) < production.index("& $controller verify"),
             "production verifier must refuse nonnative host before execution")
     entry = helper.split("if ($MyInvocation.InvocationName -ne '.')", 1)[1]
@@ -447,6 +451,7 @@ class QualificationContractTests(unittest.TestCase):
         self.reject(workflow=self.workflow.replace("$env:PREVIEW_EXPECTED_TARGET -cne $targetTuple.target", "$false", 1))
         self.reject(driver=self.driver.replace("preview_target=", "other_target=", 1))
         self.reject(helper=self.helper.replace("$Build.architecture -is [string] -and $Build.target -is [string]", "$true", 1))
+        self.reject(helper=self.helper.replace("$tuple=Get-PreviewBuildTarget $Build\n    Assert-PreviewNativeHost", "$tuple=Get-PreviewTarget $Build.architecture\n    Assert-PreviewNativeHost", 1))
         host_call = "    Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())\n"
         self.reject(helper=self.helper.replace(host_call, "", 1))
         late = self.helper.replace(host_call, "", 1).replace("    $output = @(& $controller verify 2>&1)\n", "    $output = @(& $controller verify 2>&1)\n" + host_call, 1)
