@@ -96,7 +96,7 @@ class PackagingTests(unittest.TestCase):
                   "productCommit": "1" * 40, "productVersion": "0.1.0", "sourceState": "CLEAN",
                   "sourceSnapshotSha256": "2" * 64,
                   "target": {"os": "linux", "architecture": self.request.architecture,
-                             "targetTriple": p.TARGETS[self.request.architecture][1], "minimumOsVersion": None},
+                             "targetTriple": p.TARGETS[self.request.architecture][1]},
                   "memberCount": 4, "totalMemberBytes": sum(len(v) for v in self.files.values()) - 3}
         for key, name in (("launcherSha256", "migration-stream-local"),
                           ("runtimeControllerSha256", p.ELF_PATHS[0]),
@@ -172,6 +172,36 @@ class PackagingTests(unittest.TestCase):
         with self.assertRaises(p.PackagingError):
             self.package()
         self.assertFalse(self.request.destination.exists())
+        self.assertEqual(self.calls, [])
+
+    def test_copied_wrong_machine_refuses_before_second_verifier(self):
+        original_copy = p._copy
+        def wrong_copy(source, destination, rows):
+            original_copy(source, destination, rows)
+            if source == self.runtime:
+                controller = destination / p.ELF_PATHS[0]
+                controller.chmod(0o644)
+                controller.write_bytes(elf(183))
+                controller.chmod(0o555)
+        with patch.object(p, "_copy", side_effect=wrong_copy), self.assertRaises(p.PackagingError):
+            self.package()
+        self.assertEqual(self.calls, [self.runtime])
+        self.assertFalse(self.request.destination.exists())
+
+    def test_production_linux_target_omits_optional_os_floor_and_refuses_extras(self):
+        rows = p._snapshot(self.runtime)
+        value = self.verify(self.runtime)
+        self.assertEqual(value["result"]["target"], {
+            "os": "linux", "architecture": "x64", "targetTriple": "x86_64-unknown-linux-gnu"})
+        result = p._report(value, self.runtime, self.request, "0.1.0", rows)
+        self.assertEqual(set(result["target"]), {"os", "architecture", "targetTriple"})
+        for field, replacement in (("minimumOsVersion", None), ("unexpected", "extra"),
+                                   ("architecture", "arm64"), ("targetTriple", "aarch64-unknown-linux-gnu")):
+            with self.subTest(field=field):
+                invalid = self.verify(self.runtime)
+                invalid["result"]["target"][field] = replacement
+                with self.assertRaises(p.PackagingError):
+                    p._report(invalid, self.runtime, self.request, "0.1.0", rows)
 
     def test_existing_output_and_sentinel_are_preserved_before_verifier(self):
         self.request.destination.mkdir()
