@@ -228,6 +228,38 @@ They execute no product/helper/launcher, COM, browser, picker or project process
 Non-Windows runs do not compile the real retained-handle/Shell projection; Windows
 source compilation and eventual exact-artifact evaluation remain separate.
 
+### Fixed launcher failure diagnostics
+
+The console launcher remains silent on stdout. A handled failure keeps exit
+status one and writes the same private message plus one fixed code on stderr:
+`DOCUMENT_OPEN_ARGUMENTS`, `DOCUMENT_OPEN_LAYOUT`, `DOCUMENT_OPEN_CONTROLLER`,
+`DOCUMENT_OPEN_INVALID_RESPONSE` or `DOCUMENT_OPEN_BROWSER`. Failure to obtain
+`current_exe` is a layout failure. The callable coordinator's three additional
+input refusals have explicit defensive codes `DOCUMENT_OPEN_INVALID_PATH`,
+`DOCUMENT_OPEN_INVALID_DOCUMENT` and `DOCUMENT_OPEN_DIFFERENT_DOCUMENT`; the
+current one-document, fresh-coordinator console composition does not reach them.
+No raw error, operand, path, project value, URL or captured controller output is
+printed. An unavailable stderr sink causes no fallback or retry; exit remains
+one. These codes locate a phase and do not diagnose or repair its root cause.
+
+When a separately admitted manual test is performed, capture stdout and stderr
+separately and retain numeric exit status plus elapsed time. Report only the
+fixed code and stream byte counts. Keep actual paths/project values private;
+context needs only operand count, final-bound-descriptor versus directory/pending
+selection, ordinary-drive/UNC/verbatim path category, exact launcher basename
+and adjacent Runtime layout, and whether the successful direct controller call
+used the same `open -- DOCUMENT` form and fixed port. Never paste raw controller
+stderr or environment/configuration dumps. If both captured streams are empty,
+confirm capture and executed-image provenance before assigning a failure phase.
+A controller code still combines spawn/capture/deadline/nonzero-exit failures;
+it does not expose a specific OS cause. In-app browser success does not establish
+external configured-handler submission. Packaging/source checks do not establish
+manual document-launcher acceptance.
+
+The existing `windows_document_open` source test and strict Clippy routes cover
+the new mapping, exact one-line output, actual injected failure paths, privacy
+sentinels and sink refusal. No workflow or native-process fixture is added.
+
 ## Create-only engineering layout assembler source
 
 `migration-stream-windows-engineering-layout` is a build-time console tool for

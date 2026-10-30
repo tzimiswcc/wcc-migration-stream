@@ -516,6 +516,39 @@ pub enum LauncherFailure {
     Open(Failure),
 }
 
+impl LauncherFailure {
+    /// Fixed category only; no operands, paths, output or OS error is carried.
+    #[must_use]
+    pub const fn diagnostic_code(&self) -> &'static str {
+        match self {
+            Self::Arguments => "DOCUMENT_OPEN_ARGUMENTS",
+            Self::Layout => "DOCUMENT_OPEN_LAYOUT",
+            Self::Open(Failure::Controller) => "DOCUMENT_OPEN_CONTROLLER",
+            Self::Open(Failure::InvalidResponse) => "DOCUMENT_OPEN_INVALID_RESPONSE",
+            Self::Open(Failure::Browser) => "DOCUMENT_OPEN_BROWSER",
+            // These callable-coordinator input refusals are not reachable from
+            // the current one-document, fresh-coordinator console composition.
+            // Keep their public enum projections explicit rather than Debug.
+            Self::Open(Failure::InvalidPath) => "DOCUMENT_OPEN_INVALID_PATH",
+            Self::Open(Failure::InvalidDocument) => "DOCUMENT_OPEN_INVALID_DOCUMENT",
+            Self::Open(Failure::DifferentDocument) => "DOCUMENT_OPEN_DIFFERENT_DOCUMENT",
+        }
+    }
+
+    /// Write one fixed diagnostic line to the supplied sink, without fallback.
+    ///
+    /// # Errors
+    /// Returns only the sink's write failure; the console entrypoint ignores
+    /// that error and retains exit status one, without printing raw diagnostics.
+    pub fn write_diagnostic(&self, sink: &mut impl std::io::Write) -> std::io::Result<()> {
+        writeln!(
+            sink,
+            "{ENGINEERING_LAUNCH_ERROR} [{}]",
+            self.diagnostic_code()
+        )
+    }
+}
+
 /// Metadata retention boundary, not publisher authentication or atomic spawn
 /// image pinning. The operator must already trust the launcher and runtime.
 pub trait EngineeringLayoutChecks {
