@@ -97,6 +97,14 @@ def check_architecture_contract(workflow, driver, helper, source_ci):
     require("-Architecture $targetTuple.architecture" in driver
             and "-Architecture $targetTuple.architecture" in workflow,
             "no receipt-selected target authority")
+    production = helper.split("function Invoke-PreviewRuntimeVerification", 1)[1].split("function Read-PreviewBlock", 1)[0]
+    host_call = "Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())"
+    require(host_call in production and production.index(host_call) < production.index("& $controller verify"),
+            "production verifier must refuse nonnative host before execution")
+    entry = helper.split("if ($MyInvocation.InvocationName -ne '.')", 1)[1]
+    entry_call = host_call.replace("$tuple", "$entryTuple")
+    require(entry_call in entry and entry.index(entry_call) < entry.index("$archivePath = Get-PreviewFullPath"),
+            "public helper must refuse nonnative host before path operations")
     for required in ("architecture: x64", "runner: windows-2025", "toolchain: 1.99.1-x86_64-pc-windows-msvc",
                      "architecture: arm64", "runner: windows-11-arm", "toolchain: 1.99.1-aarch64-pc-windows-msvc",
                      "runs-on: ${{ matrix.runner }}", "Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE",
@@ -431,6 +439,11 @@ class QualificationContractTests(unittest.TestCase):
         self.reject(helper=self.helper.replace("$receipt.build.target -ceq $tuple.target", "$true", 1))
         self.reject(workflow=self.workflow.replace("$env:PREVIEW_EXPECTED_TARGET -cne $targetTuple.target", "$false", 1))
         self.reject(driver=self.driver.replace("preview_target=", "other_target=", 1))
+        host_call = "    Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())\n"
+        self.reject(helper=self.helper.replace(host_call, "", 1))
+        late = self.helper.replace(host_call, "", 1).replace("    $output = @(& $controller verify 2>&1)\n", "    $output = @(& $controller verify 2>&1)\n" + host_call, 1)
+        self.reject(helper=late)
+        self.reject(helper=self.helper.replace("Assert-PreviewNativeHost $entryTuple", "Write-Output $entryTuple", 1))
         self.reject(workflow=self.workflow.replace("migration-stream-engineering-candidate-${{ inputs.architecture }}", "migration-stream-engineering-candidate-x64", 1))
 
     def test_unadmitted_run_keys_cannot_bypass_server_limit(self):
