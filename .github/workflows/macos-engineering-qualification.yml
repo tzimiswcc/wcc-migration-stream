@@ -1,0 +1,58 @@
+name: Manual Apple-silicon engineering image qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_source_commit:
+        description: Exact reviewed 40-character source commit for this one native build and image qualification
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-engineering-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  engineering-image:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.sha == inputs.expected_source_commit && github.run_attempt == 1 }}
+    # Standard public ARM64 runner, not a paid larger-runner suffix.
+    runs-on: macos-26
+    timeout-minutes: 75
+    env:
+      EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+      RUSTUP_TOOLCHAIN: 1.99.1-aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: web/.node-version
+          architecture: arm64
+      - name: Check qualification state machine with synthetic files only
+        timeout-minutes: 3
+        run: python3 -I -B scripts/macos-engineering-qualification-self-test.py
+      - name: Install project-pinned npm in runner-private tooling
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          test "$(node --version)" = v24.22.1
+          npm install --prefix "$RUNNER_TEMP/migration-stream-macos-npm" --no-audit --no-fund --ignore-scripts npm@12.2.1
+          echo "$RUNNER_TEMP/migration-stream-macos-npm/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: Install pinned native Rust toolchain
+        timeout-minutes: 10
+        run: rustup toolchain install 1.99.1-aarch64-apple-darwin --profile minimal
+      - name: One build, unsigned package and owned read-only image qualification
+        timeout-minutes: 62
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -I -B scripts/macos-engineering-qualification.py --expected-source-commit "$EXPECTED_SOURCE_COMMIT"

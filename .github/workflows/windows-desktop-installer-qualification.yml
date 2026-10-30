@@ -1,0 +1,165 @@
+name: Manual Windows native-pair installer compilation
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_source_commit:
+        description: Exact reviewed source commit including the reviewed Windows packager
+        required: true
+        type: string
+      publish_native_transfers:
+        description: Explicitly authorize two reader-accessible 1-day native transfer artifacts (new run approval required)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-desktop-installer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  native-x64:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_native_transfers == true && github.sha == inputs.expected_source_commit && github.run_attempt == 1 }}
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+      PUBLISH_NATIVE_TRANSFERS: ${{ inputs.publish_native_transfers }}
+      PUBLISH_ENGINEERING_PREVIEW: 'true'
+      QUALIFICATION_ARCHITECTURE: x64
+      RUSTUP_TOOLCHAIN: 1.99.1-x86_64-pc-windows-msvc
+    outputs:
+      artifact_id: ${{ steps.transfer.outputs.artifact-id }}
+      artifact_digest: ${{ steps.transfer.outputs.artifact-digest }}
+      archive_sha: ${{ steps.native.outputs.archive_sha }}
+      receipt_sha: ${{ steps.native.outputs.receipt_sha }}
+      source_tree: ${{ steps.native.outputs.source_tree }}
+      snapshot_sha: ${{ steps.native.outputs.snapshot_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: web/.node-version
+          architecture: x64
+      - name: Native build and existing engineering ZIP verification
+        id: native
+        shell: pwsh
+        run: |
+          & ./scripts/windows-desktop-installer-qualification.ps1 -Operation Native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish explicitly unqualified reader-accessible native transfer
+        id: transfer
+        if: ${{ success() && inputs.publish_native_transfers == true && github.run_attempt == 1 && github.sha == inputs.expected_source_commit }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: migration-stream-installer-native-x64-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/migration-stream-desktop-transfer-x64-${{ github.run_id }}/native-layout.zip
+            ${{ runner.temp }}/migration-stream-desktop-transfer-x64-${{ github.run_id }}/qualification.json
+          archive: true
+          overwrite: false
+          if-no-files-found: error
+          retention-days: 1
+          include-hidden-files: false
+  native-arm64:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_native_transfers == true && github.sha == inputs.expected_source_commit && github.run_attempt == 1 }}
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    env:
+      EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+      PUBLISH_NATIVE_TRANSFERS: ${{ inputs.publish_native_transfers }}
+      PUBLISH_ENGINEERING_PREVIEW: 'true'
+      QUALIFICATION_ARCHITECTURE: arm64
+      RUSTUP_TOOLCHAIN: 1.99.1-aarch64-pc-windows-msvc
+    outputs:
+      artifact_id: ${{ steps.transfer.outputs.artifact-id }}
+      artifact_digest: ${{ steps.transfer.outputs.artifact-digest }}
+      archive_sha: ${{ steps.native.outputs.archive_sha }}
+      receipt_sha: ${{ steps.native.outputs.receipt_sha }}
+      source_tree: ${{ steps.native.outputs.source_tree }}
+      snapshot_sha: ${{ steps.native.outputs.snapshot_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: web/.node-version
+          architecture: arm64
+      - name: Native build and existing engineering ZIP verification
+        id: native
+        shell: pwsh
+        run: |
+          & ./scripts/windows-desktop-installer-qualification.ps1 -Operation Native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Publish explicitly unqualified reader-accessible native transfer
+        id: transfer
+        if: ${{ success() && inputs.publish_native_transfers == true && github.run_attempt == 1 && github.sha == inputs.expected_source_commit }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: migration-stream-installer-native-arm64-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/migration-stream-desktop-transfer-arm64-${{ github.run_id }}/native-layout.zip
+            ${{ runner.temp }}/migration-stream-desktop-transfer-arm64-${{ github.run_id }}/qualification.json
+          archive: true
+          overwrite: false
+          if-no-files-found: error
+          retention-days: 1
+          include-hidden-files: false
+  combine:
+    needs: [native-x64, native-arm64]
+    if: ${{ success() && github.event_name == 'workflow_dispatch' && inputs.publish_native_transfers == true && github.sha == inputs.expected_source_commit && github.run_attempt == 1 }}
+    runs-on: windows-2025
+    timeout-minutes: 15
+    env:
+      EXPECTED_SOURCE_COMMIT: ${{ inputs.expected_source_commit }}
+      PUBLISH_NATIVE_TRANSFERS: ${{ inputs.publish_native_transfers }}
+      X64_ARTIFACT_ID: ${{ needs.native-x64.outputs.artifact_id }}
+      X64_ARTIFACT_DIGEST: ${{ needs.native-x64.outputs.artifact_digest }}
+      X64_ARCHIVE_SHA: ${{ needs.native-x64.outputs.archive_sha }}
+      X64_RECEIPT_SHA: ${{ needs.native-x64.outputs.receipt_sha }}
+      X64_TREE: ${{ needs.native-x64.outputs.source_tree }}
+      X64_SNAPSHOT: ${{ needs.native-x64.outputs.snapshot_sha }}
+      ARM64_ARTIFACT_ID: ${{ needs.native-arm64.outputs.artifact_id }}
+      ARM64_ARTIFACT_DIGEST: ${{ needs.native-arm64.outputs.artifact_digest }}
+      ARM64_ARCHIVE_SHA: ${{ needs.native-arm64.outputs.archive_sha }}
+      ARM64_RECEIPT_SHA: ${{ needs.native-arm64.outputs.receipt_sha }}
+      ARM64_TREE: ${{ needs.native-arm64.outputs.source_tree }}
+      ARM64_SNAPSHOT: ${{ needs.native-arm64.outputs.snapshot_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Admit exact nonempty transfer IDs before any download
+        shell: pwsh
+        run: |
+          & ./scripts/windows-desktop-installer-qualification.ps1 -Operation AdmitTransfers
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Download only exact x64 transfer ID
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ needs.native-x64.outputs.artifact_id }}
+          path: ${{ runner.temp }}/migration-stream-desktop-download-x64-${{ github.run_id }}
+          digest-mismatch: error
+      - name: Download only exact arm64 transfer ID
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          artifact-ids: ${{ needs.native-arm64.outputs.artifact_id }}
+          path: ${{ runner.temp }}/migration-stream-desktop-download-arm64-${{ github.run_id }}
+          digest-mismatch: error
+      - name: Passive paired replay and one NSIS compile (never run installer)
+        shell: pwsh
+        run: |
+          & ./scripts/windows-desktop-installer-qualification.ps1 -Operation Combine
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

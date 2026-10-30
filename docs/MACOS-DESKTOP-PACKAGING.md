@@ -143,3 +143,94 @@ directory and plist are ordinary private temporary test data; no application,
 image mount, native event, signing operation or OS registration is invoked.
 The injected publisher proves control flow, not native atomic publication.
 Existing assembler/native atomic and UI/process proofs are not replayed.
+
+
+## Manual native image qualification source
+
+The manual [Apple-silicon qualification workflow](../.github/workflows/macos-engineering-qualification.yml)
+uses GitHub's standard public `macos-26` ARM64 runner. [GitHub's runner table][arm-runner]
+and [macOS 26 announcement][arm-announcement] distinguish that label from Intel
+and paid larger runners. It admits one exact reviewed source commit and first
+workflow attempt, with read-only repository permission and no artifact upload.
+Preparing this workflow does not run it or qualify the image.
+
+The [driver](../scripts/macos-engineering-qualification.py) refuses an Intel or
+non-macOS-26 host. It witnesses Node 24.22.1 ARM64, npm 12.2.1, Rust 1.99.1's
+native `aarch64-apple-darwin` host and the runner's installed Swift 6 compiler.
+Node/npm/Rust installation and lockfile-controlled dependency acquisition happen
+only in the selected hosted job. Missing or mismatched tools fail; there is no
+Swift download or host-security repair fallback. The Swift version is observed,
+not claimed to be a separately pinned compiler distribution.
+
+A fresh retained runner-private workspace receives one unchanged native Runtime
+builder invocation, one Swift wrapper compilation targeting
+`arm64-apple-macos11`, and the unchanged unsigned Mac packager. The product
+version comes from Cargo metadata. Both products use the same clean exact
+source commit; the Runtime's source snapshot and minimum OS remain sealed by
+its existing builder/verifier. The `11.0` deployment floor is metadata, not a
+claim of tested macOS 11 support. Packaging invokes four existing Runtime
+verification calls. No application, project, server or browser is opened.
+
+After checksum packaging, the driver binds the exact image bytes and external
+receipt. It refuses an already attached exact image, creates a new empty private
+mountpoint and fsyncs an `ATTACH_PENDING` record **before** the single command:
+
+```text
+/usr/bin/hdiutil attach -readonly -nobrowse -noautoopen -owners on -mountpoint OWNED_EMPTY_MOUNT -plist EXACT_IMAGE
+```
+
+Only a complete plist naming one returned whole device and one exact owned
+mountpoint can establish a cleanup witness. A fresh bounded `hdiutil info -plist`
+projection must agree before reads and immediately before detach; unrelated
+image metadata is never printed. The mounted root must be real, on a different
+device from the empty directory's parent, and report a read-only filesystem.
+Its fresh identity is retained during use. The hidden original mount-directory
+identity is checked only after detach, when it must reappear empty.
+
+All application nodes, bytes and Unix modes are compared to the existing
+package receipt. The exact mounted Runtime and a new private byte/mode-preserving
+application copy each run the mandatory production `verify`; their full report
+identities must equal the receipt except relocated `bundleRoot`. Both graphs,
+the original package, image and receipt are replayed. Incidental HFS volume-root
+metadata outside the application is not part of the application comparison.
+
+The only detach is `/usr/bin/hdiutil detach RETURNED_WHOLE_DEVICE`, after fresh
+exact ownership checks. There is no force, retry, global detach or guessed-device
+cleanup. A failed/ambiguous attach, changed ownership, timeout or unresolved
+post-detach state refuses qualification and retains the workspace. A verification
+failure still attempts this one detach when ownership remains provable. OS image
+device identifiers can be reused: these are conservative fresh witnesses, not
+an atomic lock against hostile concurrent device replacement.
+
+The driver has a 3600-second whole deadline, 1800-second Runtime build,
+180-second wrapper compile, 1200-second packaging and 60-second image metadata/
+attach/detach limits. The whole remaining budget also constrains each child.
+Build logs have separate 8 MiB caps; metadata 1 MiB; Runtime verification and
+other probes 64 KiB. Direct-child terminate/kill waits add at most two seconds
+each. Existing packager child limits and 4096-node/513-MiB application graph,
+128-MiB file and 1-GiB image bounds remain. These are observed bounds, not quotas
+or descendant containment; deadline exhaustion can leave an owned mount retained.
+The job's 75-minute outer timeout also bounds setup. No recursive disposal is
+performed by this driver, including after success; the disposable runner owns
+final workspace disposal. Bounded raw logs stay runner-private and are not
+uploaded; public output contains only fixed status and qualification metadata.
+
+A success qualifies this unsigned engineering image's mounted and private-copy
+bytes/modes and Runtime reports on this hosted ARM64 OS. It does not establish
+Finder/UI, document events, installation, older-OS compatibility, signing,
+Gatekeeper, notarization or end-user acceptance. No paid Apple service, keychain,
+system installation, upload or security bypass is selected. The current local
+host's mount refusal is not retried or reinterpreted.
+
+```sh
+python3 -I -B scripts/macos-engineering-qualification-self-test.py
+```
+
+These pure source tests inject image metadata, device state, Runtime reports and
+child handles around small ordinary temporary files. All real process creation
+is blocked. They exercise ownership ambiguity, retained partials, exact-device
+detach, graph/mode/hash changes, read-only and identity gates, byte/deadline
+limits and manual workflow admission. They do not create or mount a DMG.
+
+[arm-runner]: https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+[arm-announcement]: https://github.blog/changelog/2026-02-26-macos-26-is-now-generally-available-for-github-hosted-runners/
