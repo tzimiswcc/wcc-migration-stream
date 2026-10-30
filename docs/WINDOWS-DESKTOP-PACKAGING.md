@@ -112,7 +112,11 @@ PE32/x86, SHA-256
 [Official 3.13 source][compiler-root] derives its Include/Stubs/Plugins root from
 the parent of the executable directory; Windows defaults do not use a compiled
 constant resource path. Preserving the complete release graph therefore needs
-no inherited NSISDIR override or root launcher. The existing cleared compiler
+no inherited NSISDIR override or root launcher. The direct compiler has no
+`RT_VERSION` resource. Its release version is bound by the pinned preparation
+receipt/archive, not a mandatory PE file-version field or an executable version
+probe. Optional absent PE metadata stays null; root-stub metadata is never
+substituted. The existing cleared compiler
 environment stays unchanged. The helper and callers validate the full prepared
 file graph/bytes and receipt again after compilation. They reuse the packager's
 reviewed Windows binary-read/file-identity/ADS policy rather than treating Unix

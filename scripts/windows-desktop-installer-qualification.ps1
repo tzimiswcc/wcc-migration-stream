@@ -88,8 +88,13 @@ try {
     $nsisHash=Hash-Desktop $makensis
     Require-Desktop ($nsisHash -ceq $prepared.compilerSha256)
     $resourceHashes=$prepared.resourceSha256
+    # The pinned direct compiler has no RT_VERSION. Release version authority
+    # is the validated archive receipt; PE metadata is optional evidence only.
     $versionInfo=[Diagnostics.FileVersionInfo]::GetVersionInfo($makensis)
-    Require-Desktop ($versionInfo.FileMajorPart -eq 3 -and $versionInfo.FileMinorPart -eq 13 -and $versionInfo.FileVersion -cmatch '^[0-9., ]{1,40}$')
+    $nsisFileVersion=$null
+    if ($versionInfo.FileVersion -is [string] -and $versionInfo.FileVersion -cmatch '^[0-9., ]{1,40}$') {
+      $nsisFileVersion=$versionInfo.FileVersion
+    }
     $product=(Get-Content -Raw -LiteralPath Cargo.toml | Select-String -Pattern '(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"$').Matches
     Require-Desktop ($product.Count -eq 1)
     $version=$product[0].Groups[1].Value
@@ -103,7 +108,7 @@ try {
     $replayedTool=@(& $python -B scripts/prepare-nsis-tool.py --validate-prepared $preparedDirectory)
     Require-Desktop ($LASTEXITCODE -eq 0 -and ($replayedTool -join '').Length -le 16384 -and ($replayedTool -join '') -ceq ($preparedText -join ''))
     Require-Desktop (@(& git status --porcelain=v1 --untracked-files=all).Count -eq 0 -and $LASTEXITCODE -eq 0)
-    $evidence=[ordered]@{schemaVersion='migration-stream/windows-desktop-installer-qualification/v1';status='COMPILED_PASSIVE_BYTES_ONLY';sourceCommit=$env:GITHUB_SHA;sourceTree=$desktopTree;sourceSnapshotSha256=$env:X64_SNAPSHOT;runId=$env:GITHUB_RUN_ID;runAttempt=1;pythonVersion=$pythonVersion[0];pythonSha256=(Hash-Desktop $python);nsisArchiveSha256=$prepared.archiveSha256;nsisPreparationReceiptSha256=$prepared.preparedReceiptSha256;nsisExeSha256=$nsisHash;nsisFileVersion=$versionInfo.FileVersion;nsisResourceSha256=$resourceHashes;x64ArtifactId=$env:X64_ARTIFACT_ID;x64ArtifactDigest=$env:X64_ARTIFACT_DIGEST;arm64ArtifactId=$env:ARM64_ARTIFACT_ID;arm64ArtifactDigest=$env:ARM64_ARTIFACT_DIGEST;installerSha256=$proof.installer.sha256;installerBytes=$proof.installer.bytes;installerExecuted=$false;setupUploaded=$false;transferRetentionDays=1}
+    $evidence=[ordered]@{schemaVersion='migration-stream/windows-desktop-installer-qualification/v1';status='COMPILED_PASSIVE_BYTES_ONLY';sourceCommit=$env:GITHUB_SHA;sourceTree=$desktopTree;sourceSnapshotSha256=$env:X64_SNAPSHOT;runId=$env:GITHUB_RUN_ID;runAttempt=1;pythonVersion=$pythonVersion[0];pythonSha256=(Hash-Desktop $python);nsisArchiveSha256=$prepared.archiveSha256;nsisPreparationReceiptSha256=$prepared.preparedReceiptSha256;nsisExeSha256=$nsisHash;nsisVersion=$prepared.version;nsisVersionEvidence='PINNED_ARCHIVE_RECEIPT';nsisFileVersion=$nsisFileVersion;nsisResourceSha256=$resourceHashes;x64ArtifactId=$env:X64_ARTIFACT_ID;x64ArtifactDigest=$env:X64_ARTIFACT_DIGEST;arm64ArtifactId=$env:ARM64_ARTIFACT_ID;arm64ArtifactDigest=$env:ARM64_ARTIFACT_DIGEST;installerSha256=$proof.installer.sha256;installerBytes=$proof.installer.bytes;installerExecuted=$false;setupUploaded=$false;transferRetentionDays=1}
     $json=$evidence | ConvertTo-Json -Compress
     Require-Desktop ($json.Length -le 8192)
     Write-Output $json
