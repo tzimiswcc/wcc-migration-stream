@@ -185,6 +185,14 @@ def workflow_powershell_bodies(workflow):
     workflow = workflow.replace("\r\n", "\n")
     require("\r" not in workflow and workflow.count(RUN_DELIMITER) == 1,
             "exact qualification run delimiter required")
+    # Closed workflow subset: also reject unnamed, inline, folded, quoted or
+    # flow-style run keys, rather than scanning only our literal delimiters.
+    # Exactly the six reviewed steps also refuse escaped/alternate key spellings
+    # in an extra unnamed entry, without trying to implement general YAML.
+    require(len(re.findall(r"^      -[ \t]", workflow, re.M)) == 6,
+            "only six reviewed workflow steps allowed")
+    run_keys = re.findall(r"(?<![A-Za-z0-9_-])(?:run|'run'|\"run\")[ \t]*:", workflow)
+    require(run_keys == ["run:", "run:"], "only two exact run keys allowed")
     require(workflow.count("        run: |\n") == 2, "only two reviewed source bodies allowed")
     names = re.findall(r"^      - name: (.+)$", workflow, re.M)
     require(names == ["One private build and file-only engineering assembly",
@@ -338,6 +346,21 @@ class QualificationContractTests(unittest.TestCase):
         self.assertEqual(len(workflow_powershell_bodies(self.workflow.replace(old, replacement))[1]), 21000)
         with self.assertRaises(ValueError):
             workflow_powershell_bodies(self.workflow.replace(old, replacement + "          #\n"))
+
+    def test_unadmitted_run_keys_cannot_bypass_server_limit(self):
+        for step in (
+            "      - run: " + "x" * 21001 + "\n",
+            "      - run: echo synthetic\n",
+            "      - run: >\n          echo synthetic\n",
+            "      - 'run': echo synthetic\n",
+            '      - {run: "echo synthetic"}\n',
+            '      - {"r\\u0075n": "echo synthetic"}\n',
+        ):
+            source = self.workflow + step
+            self.assertLess(len(source.encode("utf-8")), MAXIMUM_WORKFLOW_BYTES)
+            with self.assertRaises(ValueError):
+                extract_workflow_powershell(source)
+            self.reject(workflow=source)
 
     def test_external_driver_invocation_is_fixed(self):
         self.reject(workflow=self.workflow.replace("& ./scripts/windows-engineering-qualification.ps1", "& ./scripts/other.ps1", 1))
