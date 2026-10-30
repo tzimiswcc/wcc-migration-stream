@@ -24,8 +24,9 @@ INPUTS = {
  'arm64': {'id':12978508130,'job':124069243939,'bytes':28103762,'digest':'9f6d2f9de222677116bd3863fcda9ca664b6c2240f1de6e7ac01a1e4f1700be2','archive':'1c1a38c7e2d682fe9e7cd9c1531aaa25695d174ad8a7e1e55fbd3c277438845b','receipt':'8ac32182415859da3cf73bf9120bb2865554aaffd8cedf0c6572c3aa5d0f0bc3','expires':'2026-10-31T13:01:27Z'},
 }
 # Exact four diagnostics paths plus the reviewed lane's six other paths.
-ALLOWED = frozenset(('scripts/qualify-linux-desktop-packaging.py','scripts/qualify-linux-desktop-packaging-self-test.py','scripts/windows-desktop-installer-qualification.ps1','scripts/windows-desktop-transfer-self-test.py','scripts/windows-combine-fixed-inputs.py','scripts/windows-combine-fixed-inputs-self-test.py','.github/workflows/windows-combine-fixed-inputs.yml','.github/workflows/public-source-ci.yml','config/release-corpus.json','docs/WINDOWS-DESKTOP-QUALIFICATION.md'))
-FIXED_DIAGNOSTICS = {'scripts/qualify-linux-desktop-packaging.py': '100644 blob 4ad162f705141b5f5f56556191b516ac7e176cb5', 'scripts/qualify-linux-desktop-packaging-self-test.py': '100644 blob 6d2dc046b171f374ee05012378246a7b0ecd2926', 'scripts/windows-desktop-transfer-self-test.py': '100644 blob e0da34f5a5649076f6e744977667adae1e96acb0'}
+ALLOWED = frozenset(('scripts/windows-desktop-transfer.py','scripts/qualify-linux-desktop-packaging.py','scripts/qualify-linux-desktop-packaging-self-test.py','scripts/windows-desktop-installer-qualification.ps1','scripts/windows-desktop-transfer-self-test.py','scripts/windows-combine-fixed-inputs.py','scripts/windows-combine-fixed-inputs-self-test.py','.github/workflows/windows-combine-fixed-inputs.yml','.github/workflows/public-source-ci.yml','config/release-corpus.json','docs/WINDOWS-DESKTOP-QUALIFICATION.md'))
+FIXED_DIAGNOSTICS = {'scripts/qualify-linux-desktop-packaging.py': '100644 blob 4ad162f705141b5f5f56556191b516ac7e176cb5', 'scripts/qualify-linux-desktop-packaging-self-test.py': '100644 blob 6d2dc046b171f374ee05012378246a7b0ecd2926'}
+CORRECTED_TRANSFER_TOOLING = {'scripts/windows-desktop-transfer.py': {'original': '100644 blob 24f941c2413e3ed36f34cc67cc424877ed6b0565', 'corrected': '100644 blob d915e86e654341f6aec630f3a24a6bbc68687b9b'}, 'scripts/windows-desktop-transfer-self-test.py': {'original': '100644 blob c39271ad15fc8b37a6541416d2cbe82c9e3406ef', 'corrected': '100644 blob e2c260996c2a395fdecc84554bac195beeeac45c'}}
 PHASES = frozenset(('source-inventory','source-ref','source-dirty','source-delta','run-projection','job-projection','artifact-projection','expiry','api-transport','api-status','api-size','api-json','unknown'))
 CATEGORIES = frozenset(('projection','git','deadline','transport','timeout','redirect','http-status','size','json','unknown','token'))
 class Refused(ValueError):
@@ -50,8 +51,9 @@ def source_admission(env, head, tree, main, clean, baseline, current):
  changed={name for name in baseline.keys()|current.keys() if baseline.get(name)!=current.get(name)}
  require(changed<=ALLOWED,'source-delta')
  for name,record in FIXED_DIAGNOSTICS.items():require(current.get(name)==record,'source-delta')
+ for name,pins in CORRECTED_TRANSFER_TOOLING.items():require(baseline.get(name)==pins['original'] and current.get(name)==pins['corrected'],'source-delta')
  # All product files and packager/transfer/template MUST remain byte+mode equal.
- for name in ('scripts/package-windows-desktop.py','scripts/windows-desktop-transfer.py','native/windows/desktop-installer.nsi.in','Cargo.toml'):
+ for name in ('scripts/package-windows-desktop.py','native/windows/desktop-installer.nsi.in','Cargo.toml'):
   require(name in baseline and baseline[name]==current.get(name),'source-delta')
  return {'commit':head,'tree':tree}
 

@@ -162,6 +162,19 @@ try {
       Set-DesktopStage ($arch+'-passive-replay')
       $result=@(& $python @toolArguments)
       $script:desktopExitCode=$LASTEXITCODE
+      if ($script:desktopExitCode -ne 0) {
+        $transferPhase='unknown';$transferCategory='unknown'
+        if (($result -join '').Length -le 8192) {
+          try {
+            $transferFailure=($result -join "`n") | ConvertFrom-Json
+            if ($transferFailure.status -is [string] -and $transferFailure.status -ceq 'REFUSED' -and $transferFailure.phase -is [string] -and $transferFailure.phase -cin @('paths','receipt-read','receipt-json','build-receipt','archive-read','zip-structure','preview-receipt','extraction','publication','passive-replay','unknown') -and $transferFailure.category -is [string] -and $transferFailure.category -cin @('guard','identity','freshness','io','format','marked','unknown')) {
+              $transferPhase=$transferFailure.phase;$transferCategory=$transferFailure.category
+            }
+          } catch { }
+        }
+        $safeTransferFailure=[ordered]@{status='REFUSED';phase=$transferPhase;category=$transferCategory}
+        Write-Output ('PASSIVE_TRANSFER_FAILURE '+($safeTransferFailure | ConvertTo-Json -Compress))
+      }
       Require-Desktop ($script:desktopExitCode -eq 0 -and ($result -join '').Length -le 8192) 'G23'
       $proof=($result -join "`n") | ConvertFrom-Json
       Require-Desktop ($proof.status -ceq 'PASSIVE_TRANSFER_ONLY' -and $proof.architecture -ceq $arch -and $proof.sourceSnapshotSha256 -ceq $env:X64_SNAPSHOT) 'G24'

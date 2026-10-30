@@ -120,6 +120,10 @@ jobs:
         run: |
           python -B scripts/package-windows-desktop-self-test.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -I -B scripts/windows-desktop-transfer-self-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -I -B scripts/windows-desktop-transfer-self-test.py --native-cli-only
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prepare pinned portable NSIS and compile tiny synthetic template
         if: ${{ matrix.architecture == 'x64' }}
         timeout-minutes: 8

@@ -7,6 +7,9 @@ packager. This is not an archive format for arbitrary inputs or user exports.
 """
 from __future__ import annotations
 import argparse
+import functools
+import importlib.util
+import sys
 import hashlib
 import json
 import os
@@ -23,15 +26,39 @@ MAX_MEMBER=128*1024**2
 MAX_RECEIPT=1024**2
 MAX_ENTRIES=4097
 TARGETS={'x64':'x86_64-pc-windows-msvc','arm64':'aarch64-pc-windows-msvc'}
-class Refusal(ValueError): pass
+PHASES=frozenset(('paths','receipt-read','receipt-json','build-receipt','archive-read','zip-structure','preview-receipt','extraction','publication','passive-replay','unknown'))
+CATEGORIES=frozenset(('guard','identity','freshness','io','format','marked','unknown'))
+class Refusal(ValueError):
+    def __init__(self,phase='unknown',category='guard'):
+        assert phase in PHASES and category in CATEGORIES
+        self.evidence={'status':'REFUSED','phase':phase,'category':category}
+        super().__init__('engineering transfer refused')
+
+def stage(phase):
+    def decorate(function):
+        @functools.wraps(function)
+        def wrapped(*args,**kwargs):
+            try:return function(*args,**kwargs)
+            except Refusal as error:
+                if error.evidence['phase']=='unknown':raise Refusal(phase,error.evidence['category']) from None
+                raise
+            except OSError:raise Refusal(phase,'io') from None
+            except (ValueError,KeyError,TypeError,RecursionError,zipfile.BadZipFile):raise Refusal(phase,'format') from None
+        return wrapped
+    return decorate
+
+# Reuse the reviewed interface binder without changing packager/product bytes.
+_identity_spec=importlib.util.spec_from_file_location('desktop_transfer_identity',Path(__file__).with_name('package-windows-desktop.py'))
+_identity=importlib.util.module_from_spec(_identity_spec);sys.modules[_identity_spec.name]=_identity;_identity_spec.loader.exec_module(_identity)
 
 def require(value):
-    if not value: raise Refusal('engineering transfer refused')
+    if not value: raise Refusal()
 
 def digest(value):
     require(type(value) is str and re.fullmatch('[0-9a-f]{64}',value) is not None)
     return value
 
+@stage('paths')
 def plain(path, directory=False, absent=False):
     require(path.is_absolute() and '..' not in path.parts)
     if os.name=='nt':
@@ -48,16 +75,26 @@ def plain(path, directory=False, absent=False):
         else:require(stat.S_ISREG(info.st_mode) and info.st_nlink==1)
     require(not absent)
 
-def signature(info):return (info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+signature=_identity.signature
 
+def bind_file_interfaces(named,opened,phase):
+    try:_identity.bind_file_interfaces(named,opened)
+    except _identity.PackagingError:raise Refusal(phase,'identity') from None
+
+@stage('receipt-read')
 def read_small(path, maximum):
-    plain(path);info=path.stat();require(0<=info.st_size<=maximum)
+    plain(path);info=path.lstat();require(0<=info.st_size<=maximum)
     with path.open('rb') as source:
-        require(signature(os.fstat(source.fileno()))==signature(info))
+        before=os.fstat(source.fileno());bind_file_interfaces(info,before,'receipt-read')
         data=source.read(maximum+1)
-        require(len(data)==info.st_size and signature(os.fstat(source.fileno()))==signature(info) and signature(path.stat())==signature(info))
+        require(len(data)==info.st_size)
+        if signature(os.fstat(source.fileno()))!=signature(before):raise Refusal('receipt-read','freshness')
+        plain(path);current=path.lstat()
+        if signature(current)!=signature(info):raise Refusal('receipt-read','freshness')
+        bind_file_interfaces(current,before,'receipt-read')
     return data
 
+@stage('receipt-json')
 def json_value(data):
     require(len(data)<=MAX_RECEIPT)
     def pairs(rows):
@@ -65,7 +102,7 @@ def json_value(data):
         for key,value in rows:
             require(key.casefold() not in seen);seen.add(key.casefold());result[key]=value
         return result
-    def reject(_):raise Refusal('nonintegral JSON refused')
+    def reject(_):raise Refusal('receipt-json','format')
     value=json.loads(data.decode('utf-8'),object_pairs_hook=pairs,parse_float=reject,parse_constant=reject)
     count=0
     def visit(node,depth):
@@ -87,6 +124,7 @@ def name_ok(name):
     require(name=='preview-receipt.json' or name.startswith('engineering-layout/'))
 
 
+@stage('zip-structure')
 def structure(source):
     # Mirror the documented existing stored ZIP subset, rejecting ZIP64,
     # descriptors, encryption, extras, preambles, comments and local/central drift.
@@ -119,6 +157,7 @@ def structure(source):
     require(position==len(central) and next_local==central_offset);source.seek(0);return names
 
 
+@stage('passive-replay')
 def unpack(archive,archive_sha,receipt,receipt_sha,destination,architecture,source_commit,source_tree):
     digest(archive_sha);digest(receipt_sha);require(architecture in TARGETS)
     require(re.fullmatch('[0-9a-f]{40}',source_commit) is not None and re.fullmatch('[0-9a-f]{40}',source_tree) is not None)
@@ -128,7 +167,7 @@ def unpack(archive,archive_sha,receipt,receipt_sha,destination,architecture,sour
         for marked in (archive,receipt):
             try: zone=open(str(marked)+':Zone.Identifier','rb')
             except FileNotFoundError: pass
-            else: zone.close();raise Refusal('marked transfer refused')
+            else: zone.close();raise Refusal('paths','marked')
     require(not destination.exists() and not destination.is_symlink())
     # Dest is new; reject any lexical/physical containing input relationship.
     require(destination not in archive.parents and destination not in receipt.parents)
@@ -136,9 +175,9 @@ def unpack(archive,archive_sha,receipt,receipt_sha,destination,architecture,sour
     build=json_value(raw)
     require(build.get('schemaVersion')=='migration-stream/windows-engineering-qualification/v1' and build.get('status')=='PASSED' and build.get('stage')=='complete' and type(build.get('commandExitCode')) is int and build['commandExitCode']==0 and type(build.get('runAttempt')) is int and build['runAttempt']==1)
     require(build.get('sourceCommit')==source_commit and build.get('sourceTree')==source_tree and build.get('architecture')==architecture and build.get('target')==TARGETS[architecture]);digest(build.get('sourceSnapshotSha256'))
-    info=archive.stat()
+    info=archive.lstat()
     with archive.open('rb') as source:
-        require(signature(info)==signature(os.fstat(source.fileno())))
+        before=os.fstat(source.fileno());bind_file_interfaces(info,before,'archive-read')
         total=0;h=hashlib.sha256()
         while data:=source.read(65536):total+=len(data);require(total<=MAX_ARCHIVE);h.update(data)
         require(h.hexdigest()==archive_sha);names=structure(source)
@@ -172,7 +211,11 @@ def unpack(archive,archive_sha,receipt,receipt_sha,destination,architecture,sour
                     with z.open(name) as data, target_path.open('xb') as output:
                         while chunk:=data.read(65536):count+=len(chunk);require(count<=row['bytes']);h.update(chunk);output.write(chunk)
                     require(count==row['bytes'] and h.hexdigest()==row['sha256'])
-            require(signature(info)==signature(os.fstat(source.fileno())) and signature(info)==signature(archive.stat()) and read_small(receipt,MAX_RECEIPT)==raw)
+            if signature(os.fstat(source.fileno()))!=signature(before):raise Refusal('archive-read','freshness')
+            plain(archive);current=archive.lstat()
+            if signature(current)!=signature(info):raise Refusal('archive-read','freshness')
+            bind_file_interfaces(current,before,'archive-read')
+            require(read_small(receipt,MAX_RECEIPT)==raw)
             # Windows rename is create-only. POSIX is used only by tiny synthetic
             # tests and is not a Windows publication/atomicity qualification.
             require(not destination.exists() and not destination.is_symlink());os.rename(stage,destination)
@@ -183,5 +226,7 @@ if __name__=='__main__':
     for key in ('archive','receipt','destination'):p.add_argument('--'+key,type=Path,required=True)
     for key in ('archive-sha','receipt-sha','architecture','source-commit','source-tree'):p.add_argument('--'+key,required=True)
     try:print(json.dumps(unpack(**vars(p.parse_args())),separators=(',',':')))
-    except (Refusal,OSError,ValueError,KeyError,TypeError,RecursionError,zipfile.BadZipFile):
-        print('{"status":"REFUSED"}');raise SystemExit(1)
+    except Refusal as error:
+        print(json.dumps(error.evidence,separators=(',',':')));raise SystemExit(1)
+    except Exception:
+        print('{"status":"REFUSED","phase":"unknown","category":"unknown"}');raise SystemExit(1)

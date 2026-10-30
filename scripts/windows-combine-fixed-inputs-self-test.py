@@ -26,6 +26,7 @@ class AdmissionTests(unittest.TestCase):
   self.env={'GITHUB_EVENT_NAME':'workflow_dispatch','GITHUB_RUN_ATTEMPT':'1','GITHUB_REPOSITORY':m.REPO,'GITHUB_REF':'refs/heads/main','GITHUB_WORKFLOW_REF':m.REPO+'/.github/workflows/windows-combine-fixed-inputs.yml@refs/heads/main','REUSE_FIXED_NATIVE_PAIR':'true','GITHUB_SHA':'a'*40,'EXPECTED_SOURCE_COMMIT':'a'*40}
   self.baseline={name:'100644 blob '+'0'*40 for name in ('Cargo.toml','src/core.rs','scripts/package-windows-desktop.py','scripts/windows-desktop-transfer.py','native/windows/desktop-installer.nsi.in',*m.FIXED_DIAGNOSTICS)}
   self.current=dict(self.baseline);self.current.update(m.FIXED_DIAGNOSTICS);self.current['scripts/windows-combine-fixed-inputs.py']='100644 blob '+'1'*40
+  for name,pins in m.CORRECTED_TRANSFER_TOOLING.items():self.baseline[name]=pins['original'];self.current[name]=pins['corrected']
  def tearDown(self):self.http.stop();self.process.stop()
  def producer(self):return m.producer_admission(self.run,self.jobs,self.artifacts,self.now)
  def source(self):return m.source_admission(self.env,'a'*40,'b'*40,'a'*40,True,self.baseline,self.current)
@@ -73,6 +74,15 @@ class AdmissionTests(unittest.TestCase):
    self.current=old
   del self.current['src/core.rs']
   with self.assertRaises(m.Refused):self.source()
+ def test_corrected_transfer_tooling_requires_exact_original_and_new_blobs_modes(self):
+  for name,pins in m.CORRECTED_TRANSFER_TOOLING.items():
+   old_current=self.current[name];old_base=self.baseline[name]
+   for record in (pins['original'],'100755 blob '+pins['corrected'].split()[-1],'100644 blob '+'f'*40):
+    self.current[name]=record
+    with self.assertRaises(m.Refused):self.source()
+   self.current[name]=old_current;self.baseline[name]='100644 blob '+'f'*40
+   with self.assertRaises(m.Refused):self.source()
+   self.baseline[name]=old_base
  def test_exact_unchanged_diagnostic_pins_cannot_drift(self):
   for name in m.FIXED_DIAGNOSTICS:
    old=dict(self.current);self.current[name]='100755 blob '+'f'*40

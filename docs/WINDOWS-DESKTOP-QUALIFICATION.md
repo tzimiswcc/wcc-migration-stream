@@ -163,3 +163,28 @@ Source/synthetic tests do not approve a run. The workflow must first be reviewed
 and present on the default branch; a fresh concrete execution decision remains
 required. Prior native qualification grants are consumed. Command failures may
 still refuse; reuse does not establish or repair the old Combine failure cause.
+
+
+### Corrected passive-reader tooling identity
+
+The old passive reader incorrectly compared Windows path creation-time `ctime`
+with descriptor change-time `ctime` on Python3.12. Corrected tooling reuses the
+reviewed packager's cross-interface identity binder and independently preserves
+both full freshness fingerprints, including each interface's own `ctime`, before
+and after reads. Archive and receipt path/descriptor drift still refuse before
+publication. This deterministic verifier defect is consistent with the failed
+Combine attempt; remaining real-input guards are unqualified.
+
+Reuse admission now explicitly binds the exact original a61 transfer/test blobs
+and modes to the exact reviewed corrected tooling blobs and modes. It does not
+allow arbitrary verifier updates or change old product provenance. Runtime,
+packager, NSIS template and Cargo/product sources remain byte-identical. The
+revised grant, after review, would select this corrected tooling commit while
+retaining original product a61/run41057681963 and every input hash. Existing
+attempt41079139105 is consumed; source tests do not authorize a new run.
+
+Both Windows source lanes run tiny synthetic passive transfer tests and one
+fixed Python transfer CLI over newly generated temporary fake ZIP/JSON only.
+They never invoke a Runtime, controller, app, installer or product binary. Local
+portable tests model named/descriptor views independently; actual Windows native
+file semantics require the hosted changed-head source check.
