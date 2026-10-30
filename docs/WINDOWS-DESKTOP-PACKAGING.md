@@ -148,9 +148,20 @@ python3 -B scripts/package-windows-desktop-self-test.py
 Tests generate only tiny synthetic PE headers, manifests and receipts, exercise
 the actual passive validator and NSIS source rendering, and inject a fake
 compiler writing a nonrunnable PE header. Real process creation is blocked.
-No Runtime, NSIS compiler, installer, registry, dialog, browser or host operation
-runs. The actual NSIS compiler/parser, Windows stream/pipe APIs and installer
-behavior remain unqualified. Existing Windows/ARM/Runtime suites are not replayed.
+No Runtime, NSIS compiler, installer, registry, dialog or browser process runs.
+These default tests do not qualify actual NSIS compiler/parser, Windows
+stream/pipe API or installer behavior. Existing Windows/ARM/Runtime suites are
+not replayed by this test script.
+
+The source workflow also compiles one tiny synthetic installer on its x64
+Windows runner using the fixed, already-installed NSIS distribution. The
+explicit test-only `--native-compile-only` route logs the compiler identity and
+uses the production bounded compiler helper. Missing tools fail without a
+download or installation fallback. Generated payloads are fake PE headers;
+the resulting Setup is never executed, uploaded or treated as a product build.
+This checks actual template/compiler grammar, while registry, file selection,
+installation, native payload and lifecycle behavior remain unqualified. The
+default fourteen tests continue to block process creation.
 
 [nsis-free]: https://nsis.sourceforge.io/Docs/Chapter1.html
 [compiler]: https://nsis.sourceforge.io/Docs/Chapter3.html
