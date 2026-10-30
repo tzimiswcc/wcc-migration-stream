@@ -6,6 +6,10 @@ import importlib.util
 import json
 import re
 import struct
+import stat
+import os
+import sys
+from types import SimpleNamespace
 import subprocess
 import tempfile
 import unittest
@@ -134,6 +138,78 @@ class TransferTests(unittest.TestCase):
             with self.assertRaises(m.Refusal):m.name_ok(name)
         with patch.object(m,'MAX_TOTAL',3),self.assertRaises(m.Refusal):self.run_unpack()
         with patch.object(m,'MAX_ENTRIES',4),self.assertRaises(m.Refusal):self.run_unpack()
+    def windows_interfaces(self,path_drift=None,fd_drift=None,identity_drift=None,archive_drift=False):
+        # Real tiny files/bytes, independently modeled CPython3.12 named/fd views.
+        original_lstat=Path.lstat;original_fstat=os.fstat
+        identities={original_lstat(p).st_ino:p for p in (self.archive,self.receipt)}
+        calls={self.archive:0,self.receipt:0};state={'extracted':False}
+        def row(path,info,opened):
+            values={name:getattr(info,name) for name in ('st_dev','st_ino','st_size','st_nlink','st_mtime_ns')}
+            values.update(st_mode=stat.S_IFREG|0o666,st_ctime_ns=500 if opened else 300,
+                          st_birthtime_ns=300,st_file_attributes=0x20,st_reparse_tag=0)
+            if path==self.receipt and not archive_drift:
+                if not opened and path_drift and calls[path]>=2:values.update(path_drift)
+                if opened and fd_drift and calls[path]>=2:values.update(fd_drift)
+                if opened and identity_drift:values.update(identity_drift)
+            if path==self.archive and archive_drift and state['extracted']:
+                if not opened and path_drift:values.update(path_drift)
+                if opened and fd_drift:values.update(fd_drift)
+            return SimpleNamespace(**values)
+        def named(path):
+            info=original_lstat(path)
+            return row(path,info,False) if path in calls else info
+        def opened(fd):
+            info=original_fstat(fd);path=identities.get(info.st_ino)
+            if path is None:return info
+            calls[path]+=1;return row(path,info,True)
+        original_bind=m._identity.bind_file_interfaces
+        original_stage=m.tempfile.mkdtemp
+        def stage(*args,**kwargs):
+            value=original_stage(*args,**kwargs);state['extracted']=True;return value
+        return (patch.object(Path,'lstat',named),patch.object(m.os,'fstat',opened),
+                patch.object(m._identity,'bind_file_interfaces',side_effect=lambda n,o:original_bind(n,o,windows=True)),
+                patch.object(m.tempfile,'mkdtemp',side_effect=stage))
+
+    def test_closed_transfer_failure_fields_reach_qualifier_without_raw_output(self):
+        with self.assertRaises(m.Refusal) as caught:m.json_value(b'PRIVATE_SENTINEL')
+        self.assertEqual(caught.exception.evidence,{'status':'REFUSED','phase':'receipt-json','category':'format'})
+        self.assertNotIn('PRIVATE',json.dumps(caught.exception.evidence))
+        source=(ROOT/'scripts/windows-desktop-installer-qualification.ps1').read_text()
+        start=source.index("$transferPhase='unknown';$transferCategory='unknown'")
+        end=source.index(" 'G23'",start);block=source[start:end]
+        self.assertIn('$transferFailure.phase -is [string]',block)
+        self.assertIn('$transferFailure.category -is [string]',block)
+        self.assertIn("$safeTransferFailure=[ordered]@{status='REFUSED';phase=$transferPhase;category=$transferCategory}",block)
+        self.assertIn("Write-Output ('PASSIVE_TRANSFER_FAILURE '+($safeTransferFailure | ConvertTo-Json -Compress))",block)
+        self.assertNotIn('Write-Output $result',block);self.assertNotIn('$_.',block)
+
+    def test_windows312_receipt_ctime_difference_preserves_stable_bytes(self):
+        raw=self.receipt.read_bytes()
+        a,b,c,d=self.windows_interfaces()
+        with a,b,c,d:self.assertEqual(m.read_small(self.receipt,m.MAX_RECEIPT),raw)
+    def test_receipt_named_interface_ctime_drift_refuses(self):
+        a,b,c,d=self.windows_interfaces(path_drift={'st_ctime_ns':301})
+        with a,b,c,d,self.assertRaises(m.Refusal) as caught:m.read_small(self.receipt,m.MAX_RECEIPT)
+        self.assertEqual(caught.exception.evidence,{'status':'REFUSED','phase':'receipt-read','category':'freshness'})
+    def test_receipt_descriptor_interface_ctime_drift_refuses(self):
+        a,b,c,d=self.windows_interfaces(fd_drift={'st_ctime_ns':501})
+        with a,b,c,d,self.assertRaises(m.Refusal):m.read_small(self.receipt,m.MAX_RECEIPT)
+    def test_receipt_cross_interface_identity_and_link_mutations_refuse(self):
+        for change in ({'st_ino':1},{'st_dev':0},{'st_mtime_ns':1},{'st_nlink':2},{'st_file_attributes':0x400},{'st_birthtime_ns':301}):
+            a,b,c,d=self.windows_interfaces(identity_drift=change)
+            with a,b,c,d,self.assertRaises(m.Refusal):m.read_small(self.receipt,m.MAX_RECEIPT)
+    def test_windows312_full_tiny_archive_replay_accepts_independent_interfaces(self):
+        a,b,c,d=self.windows_interfaces()
+        with a,b,c,d:self.assertEqual(self.run_unpack()['status'],'PASSIVE_TRANSFER_ONLY')
+        self.assertEqual((self.dest/'engineering-layout/Runtime/tiny').read_bytes(),b'tiny')
+    def test_archive_named_and_descriptor_freshness_drift_refuse_before_publication(self):
+        for changed in ('path','fd'):
+            a,b,c,d=self.windows_interfaces(path_drift={'st_ctime_ns':301} if changed=='path' else None,
+                                             fd_drift={'st_ctime_ns':501} if changed=='fd' else None,archive_drift=True)
+            with a,b,c,d,self.assertRaises(m.Refusal) as caught:self.run_unpack()
+            self.assertEqual(caught.exception.evidence,{'status':'REFUSED','phase':'archive-read','category':'freshness'})
+            self.assertFalse(self.dest.exists())
+
     def test_fixed_manual_workflow_and_driver_contracts(self):
         workflow=(ROOT/'.github/workflows/windows-desktop-installer-qualification.yml').read_text();driver=(ROOT/'scripts/windows-desktop-installer-qualification.ps1').read_text()
         for name in ('native-x64:','native-arm64:','needs: [native-x64, native-arm64]','runs-on: windows-11-arm','runs-on: windows-2025','default: false','retention-days: 1','overwrite: false','digest-mismatch: error','persist-credentials: false','archive: true'):
@@ -193,4 +269,26 @@ class TransferTests(unittest.TestCase):
         for mutation in (workflow+'\n      - run: '+('x'*21001)+'\n',workflow+'\n      - run: echo short\n',workflow+'\n      - run: >\n          echo folded\n',workflow+'\n      - {run: echo flow}\n',workflow.replace('        run: |','        run: >',1),workflow.replace('        run: |','        run: |\n          '+('x'*21001),1)):
             with self.assertRaises(ValueError):check_run_blocks(mutation)
 
-if __name__=='__main__':unittest.main()
+def native_cli_fixture():
+    # Hosted Windows source proof only. Fixed Python helper, synthetic private
+    # ZIP/JSON; never a Runtime/controller/compiler/app/installer executable.
+    if os.name!='nt':raise SystemExit('native synthetic transfer CLI requires Windows')
+    case=TransferTests('test_both_native_receipt_tuples_passively_extract_without_process')
+    case.setUp()
+    try:
+        case.guard.stop()
+        args=[sys.executable,'-I','-B',str(ROOT/'scripts/windows-desktop-transfer.py'),
+              '--archive',str(case.archive),'--archive-sha',hashlib.sha256(case.archive.read_bytes()).hexdigest(),
+              '--receipt',str(case.receipt),'--receipt-sha',hashlib.sha256(case.receipt.read_bytes()).hexdigest(),
+              '--destination',str(case.dest),'--architecture',case.arch,'--source-commit',case.commit,'--source-tree',case.tree]
+        result=subprocess.run(args,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,
+                              timeout=20,check=False,env={'SystemRoot':os.environ['SystemRoot']})
+        if result.returncode!=0 or len(result.stdout)>8192 or len(result.stderr)>8192:raise ValueError('synthetic CLI refused')
+        value=json.loads(result.stdout)
+        if value.get('status')!='PASSIVE_TRANSFER_ONLY' or (case.dest/'engineering-layout/Runtime/tiny').read_bytes()!=b'tiny':raise ValueError('synthetic CLI refused')
+        print('PASS native Windows synthetic passive transfer CLI')
+    finally:case.tearDown()
+
+if __name__=='__main__':
+    if sys.argv[1:]==['--native-cli-only']:native_cli_fixture()
+    else:unittest.main()
