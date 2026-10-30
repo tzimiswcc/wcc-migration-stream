@@ -90,10 +90,13 @@ def main() -> int:
     template_paths = [
         "native/linux/launcher_bootstrap.py.in",
         "native/linux/MigrationStream.desktop.in",
+        "native/windows/desktop-installer.nsi.in",
     ]
     for name in template_paths:
         assert gate.text_name_allowed(name), name
     for name in (
+        "native/windows/extra.nsi.in", "native/windows/desktop-installer.nsi",
+        "private/desktop-installer.nsi.in", "native/windows/desktop-installer.NSI.IN",
         "native/linux/Extra.py.in", "native/linux/Extra.desktop.in",
         "private/launcher_bootstrap.py.in", "private/MigrationStream.desktop.in",
         "native/linux/launcher_bootstrap.py.IN", "native/linux/migrationstream.desktop.in",
