@@ -2,6 +2,8 @@
 """Synthetic fixed-input admission tests; no process, HTTP or artifact operation."""
 from pathlib import Path
 import copy
+import contextlib
+import io
 import datetime as dt
 import importlib.util
 import re
@@ -78,12 +80,120 @@ class AdmissionTests(unittest.TestCase):
    self.current=old
  def test_no_arbitrary_inputs_redirect_fallback_or_raw_error_output(self):
   source=Path(m.__file__).read_text()
-  self.assertIn("require(sys.argv[1:]==['--admit'])",source)
+  self.assertIn("require(sys.argv[1:]==['--admit'],'source-ref')",source)
   self.assertIn('urllib.request.ProxyHandler({})',source)
   with self.assertRaises(m.Refused):m.NoRedirect().redirect_request(None,None,None,None,None,None)
   catch=source.rsplit(' except Exception:',1)[1]
-  self.assertEqual(catch.strip(),'''print('{"status":"FIXED_NATIVE_PAIR_REFUSED"}');raise SystemExit(1)''')
+  self.assertIn('FIXED_NATIVE_PAIR_REFUSED',catch);self.assertIn('unknown',catch)
   self.assertNotIn('PRIVATE_SENTINEL',catch)
+ def test_fake_transport_four_exact_endpoints_and_bounded_request_contract(self):
+  seen=[]
+  class Response:
+   status=200
+   def __enter__(self):return self
+   def __exit__(self,*_):pass
+   def read(self,limit):seen.append(('limit',limit));return b'{"ok":true}'
+  class Opener:
+   def open(self,request,timeout):
+    seen.append((request.full_url,timeout));return Response()
+  for path in m.ENDPOINTS:self.assertEqual(m.metadata_get(Opener(),'PRIVATE_TOKEN',path,60,lambda:0),{'ok':True})
+  self.assertEqual([x[0] for x in seen if x[0]!='limit'],['https://api.github.com/repos/'+m.REPO+p for p in m.ENDPOINTS])
+  self.assertTrue(all(x[1]==10 for x in seen if x[0]!='limit'))
+  self.assertTrue(all(x[1]==1024*1024+1 for x in seen if x[0]=='limit'))
+  with self.assertRaises(m.Refused):m.metadata_get(Opener(),'PRIVATE_TOKEN','/foreign',60,lambda:0)
+ def test_actual_admission_composes_fixed_transport_with_no_proxy_or_redirect_handler(self):
+  payloads=[self.run,self.jobs,self.artifacts['x64'],self.artifacts['arm64']];seen=[]
+  class Response:
+   status=200
+   def __init__(self,value):self.value=value
+   def __enter__(self):return self
+   def __exit__(self,*_):pass
+   def read(self,limit):return m.json.dumps(self.value).encode()
+  class Opener:
+   def open(self,request,timeout):
+    index=len(seen);seen.append(request.full_url);return Response(payloads[index])
+  def git(*args):
+   if args==('rev-parse','HEAD'):return 'a'*40
+   if args==('rev-parse','HEAD^{tree}'):return 'b'*40
+   if args==('rev-parse','refs/remotes/origin/main'):return 'a'*40
+   if args==('rev-parse',m.BASE+'^{tree}'):return m.TREE
+   if args==('status','--porcelain=v1','--untracked-files=all'):return ''
+   raise AssertionError('unexpected command')
+  env={**self.env,'GH_TOKEN':'PRIVATE_TOKEN'}
+  with patch.dict(m.os.environ,env,clear=True),patch.object(m,'git',side_effect=git),patch.object(m,'entries',side_effect=[self.baseline,self.current]),patch.object(m.urllib.request,'build_opener',return_value=Opener()) as build:
+   # Freeze only wall-clock for expiry; no native operation occurs.
+   with patch.object(m.dt,'datetime',wraps=dt.datetime) as date:
+    date.now.return_value=self.now
+    result=m.admit()
+  self.assertEqual(result['status'],'FIXED_NATIVE_PAIR_ADMITTED')
+  self.assertEqual(seen,['https://api.github.com/repos/'+m.REPO+p for p in m.ENDPOINTS])
+  handlers=build.call_args.args
+  self.assertEqual(handlers[0].proxies,{})
+  self.assertIsInstance(handlers[1],m.NoRedirect)
+ def test_fake_transport_status_size_json_timeout_and_sentinel_refusal(self):
+  class Response:
+   status=200;data=b'{}'
+   def __enter__(self):return self
+   def __exit__(self,*_):pass
+   def read(self,limit):return self.data
+  class Opener:
+   def open(self,*args,**kwargs):return response
+  response=Response()
+  cases=[(403,b'PRIVATE_SENTINEL','api-status','http-status',403),
+         (200,b'x'*(1024*1024+1),'api-size','size',None),
+         (200,b'{"a":1,"a":"PRIVATE_SENTINEL"}','api-json','json',None),
+         (200,b'PRIVATE_SENTINEL','api-json','json',None),
+         (200,b'[]','api-json','json',None)]
+  for status,data,phase,category,code in cases:
+   response.status=status;response.data=data
+   with self.assertRaises(m.Refused) as caught:m.metadata_get(Opener(),'PRIVATE_TOKEN',m.ENDPOINTS[0],60,lambda:0)
+   self.assertEqual(caught.exception.evidence['phase'],phase);self.assertEqual(caught.exception.evidence['category'],category)
+   self.assertEqual(caught.exception.evidence.get('httpStatus'),code)
+   self.assertNotIn('PRIVATE',str(caught.exception.evidence))
+  for error,phase,category,code in [(TimeoutError('PRIVATE_SENTINEL'),'api-transport','timeout',None),
+                                   (m.urllib.error.URLError('PRIVATE_SENTINEL'),'api-transport','transport',None),
+                                   (m.urllib.error.HTTPError('PRIVATE_URL',429,'PRIVATE_SENTINEL',None,None),'api-status','http-status',429)]:
+   class Failed:
+    def open(self,*_,**__):raise error
+   with self.assertRaises(m.Refused) as caught:m.metadata_get(Failed(),'PRIVATE_TOKEN',m.ENDPOINTS[0],60,lambda:0)
+   self.assertEqual(caught.exception.evidence,dict(status='FIXED_NATIVE_PAIR_REFUSED',phase=phase,category=category,**({'httpStatus':code} if code else {})))
+  with self.assertRaises(m.Refused) as caught:m.metadata_get(Opener(),'PRIVATE_TOKEN',m.ENDPOINTS[0],0,lambda:1)
+  self.assertEqual(caught.exception.evidence['category'],'deadline')
+  response.status=200;response.data=b'{}'
+  clock=iter((0,0,61))
+  with self.assertRaises(m.Refused) as caught:m.metadata_get(Opener(),'PRIVATE_TOKEN',m.ENDPOINTS[0],60,lambda:next(clock))
+  self.assertEqual(caught.exception.evidence['category'],'deadline')
+ def test_source_and_producer_refusals_have_distinct_closed_phases(self):
+  probes=[('source-ref',lambda:m.source_admission(self.env,'f'*40,'b'*40,'a'*40,True,self.baseline,self.current)),
+          ('source-dirty',lambda:m.source_admission(self.env,'a'*40,'b'*40,'a'*40,False,self.baseline,self.current))]
+  changed=dict(self.current);changed['src/core.rs']='different'
+  probes.append(('source-delta',lambda:m.source_admission(self.env,'a'*40,'b'*40,'a'*40,True,self.baseline,changed)))
+  run=copy.deepcopy(self.run);run['head_sha']='f'*40
+  jobs=copy.deepcopy(self.jobs);jobs['jobs'][0]['conclusion']='failure'
+  artifacts=copy.deepcopy(self.artifacts);artifacts['x64']['digest']='sha256:'+'0'*64
+  probes += [('run-projection',lambda:m.producer_admission(run,self.jobs,self.artifacts,self.now)),
+             ('job-projection',lambda:m.producer_admission(self.run,jobs,self.artifacts,self.now)),
+             ('artifact-projection',lambda:m.producer_admission(self.run,self.jobs,artifacts,self.now)),
+             ('expiry',lambda:m.producer_admission(self.run,self.jobs,self.artifacts,dt.datetime(2026,11,1,tzinfo=dt.timezone.utc)))]
+  for phase,probe in probes:
+   with self.assertRaises(m.Refused) as caught:probe()
+   self.assertEqual(caught.exception.evidence['phase'],phase)
+  with patch.object(m.subprocess,'run',side_effect=OSError('PRIVATE_SENTINEL')),self.assertRaises(m.Refused) as caught:m.git('rev-parse','HEAD')
+  self.assertEqual(caught.exception.evidence['phase'],'source-inventory');self.assertNotIn('PRIVATE',str(caught.exception.evidence))
+ def test_main_serializes_only_closed_diagnostics_and_qualifier_exposes_sanitized_fields(self):
+  for error in (m.Refused('expiry'),m.Refused('api-status','http-status',403),ValueError('PRIVATE_SENTINEL')):
+   out=io.StringIO()
+   with patch.object(m.sys,'argv',['subject','--admit']),patch.object(m,'admit',side_effect=error),contextlib.redirect_stdout(out):self.assertEqual(m.main(),1)
+   value=m.json.loads(out.getvalue());self.assertEqual(value['status'],'FIXED_NATIVE_PAIR_REFUSED');self.assertNotIn('PRIVATE',out.getvalue())
+  s=(ROOT/'scripts/windows-desktop-installer-qualification.ps1').read_text()
+  start=s.index('    if ($script:desktopExitCode -ne 0) {');end=s.index(" 'G38'",start)
+  safe=s[start:end]
+  self.assertIn("$safePhase='unknown';$safeCategory='unknown';$safeHttp=$null",safe)
+  self.assertIn('$refusal.phase -is [string]',safe);self.assertIn('$refusal.category -is [string]',safe)
+  self.assertIn("$safeRefusal=[ordered]@{phase=$safePhase;category=$safeCategory;httpStatus=$safeHttp}",safe)
+  self.assertIn("Write-Output ('FIXED_PAIR_ADMISSION_FAILURE '+($safeRefusal | ConvertTo-Json -Compress))",safe)
+  self.assertNotIn('Write-Output $admissionText',safe);self.assertNotIn('$_.',safe)
+  self.assertIn('catch { }',safe)
  def test_workflow_pins_closed_sources_downloads_and_no_output_publication(self):
   source=(ROOT/'.github/workflows/windows-combine-fixed-inputs.yml').read_text()
   self.assertIn('default: false',source);self.assertIn('timeout-minutes: 15',source)

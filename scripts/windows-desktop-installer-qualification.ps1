@@ -59,6 +59,22 @@ try {
     $admissionText = @(& $admissionPython -I -B scripts/windows-combine-fixed-inputs.py --admit)
     $script:desktopExitCode=$LASTEXITCODE
     $env:GH_TOKEN=$null
+    if ($script:desktopExitCode -ne 0) {
+      # Captured stdout is never forwarded. Only closed scalar failure fields
+      # can cross the public diagnostic boundary; malformed output stays unknown.
+      $safePhase='unknown';$safeCategory='unknown';$safeHttp=$null
+      if (($admissionText -join '').Length -le 16384) {
+        try {
+          $refusal=($admissionText -join "`n") | ConvertFrom-Json
+          if ($refusal.status -is [string] -and $refusal.status -ceq 'FIXED_NATIVE_PAIR_REFUSED' -and $refusal.phase -is [string] -and $refusal.phase -cin @('source-inventory','source-ref','source-dirty','source-delta','run-projection','job-projection','artifact-projection','expiry','api-transport','api-status','api-size','api-json','unknown') -and $refusal.category -is [string] -and $refusal.category -cin @('projection','git','deadline','transport','timeout','redirect','http-status','size','json','unknown','token')) {
+            $safePhase=$refusal.phase;$safeCategory=$refusal.category
+            if (($refusal.httpStatus -is [int] -or $refusal.httpStatus -is [long]) -and $refusal.httpStatus -ge 100 -and $refusal.httpStatus -le 599) { $safeHttp=$refusal.httpStatus }
+          }
+        } catch { }
+      }
+      $safeRefusal=[ordered]@{phase=$safePhase;category=$safeCategory;httpStatus=$safeHttp}
+      Write-Output ('FIXED_PAIR_ADMISSION_FAILURE '+($safeRefusal | ConvertTo-Json -Compress))
+    }
     Require-Desktop ($script:desktopExitCode -eq 0 -and ($admissionText -join '').Length -le 16384) 'G38'
     $fixedPairAdmission=($admissionText -join "`n") | ConvertFrom-Json
     Require-Desktop ($fixedPairAdmission.status -ceq 'FIXED_NATIVE_PAIR_ADMITTED' -and $fixedPairAdmission.tooling.commit -ceq $env:GITHUB_SHA -and $fixedPairAdmission.tooling.tree -ceq $desktopTree) 'G39'
