@@ -37,6 +37,12 @@ jobs:
         run: rustup default 1.99.1
       - name: Test source-only Linux document-open launcher with synthetic fixtures
         run: python3 -B -m unittest discover -s native/linux -p test_document_open_launcher.py
+      - name: Test Mac and Linux packaging with synthetic payloads only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B scripts/package-macos-engineering-desktop-self-test.py
+          python3 -B scripts/package-linux-desktop-self-test.py
       - name: Run candidate-compatible source gates
         shell: bash
         run: |
