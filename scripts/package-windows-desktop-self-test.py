@@ -179,6 +179,10 @@ class WindowsDesktopSourceTests(unittest.TestCase):
             self.assertNotIn(forbidden,text)
         self.assertIn('WriteRegNone HKCU "Software\\Classes\\.mstream\\OpenWithProgids"',text)
         self.assertIn('SetOverwrite off',text);self.assertIn('GetFileAttributesW',text);self.assertIn('0x400',text)
+        # Literal NSIS grammar oracle: System captures last-error before returning;
+        # pop its stack result unconditionally before branching on attributes.
+        self.assertIn("System::Call 'kernel32::GetFileAttributesW(w r1)i.r2 ?e'\n    Pop $3\n    ${If} $2 == -1",text)
+        self.assertNotIn('kernel32::GetLastError()',text)
         self.assertIn('CreateDirectoryW(w "$INSTDIR"',text)
         self.assertIn('nsDialogs::SelectFileDialog open',text)
         self.assertIn('ExecWait \'"$INSTDIR\\migration-stream-document-open.exe" "$0"\' $1',text)

@@ -46,9 +46,9 @@ Function ${PREFIX}RequireSafeAncestors
     ${If} $4 > 256
       Abort "Installation ancestor depth is unsupported."
     ${EndIf}
-    System::Call 'kernel32::GetFileAttributesW(w r1)i.r2'
+    System::Call 'kernel32::GetFileAttributesW(w r1)i.r2 ?e'
+    Pop $3
     ${If} $2 == -1
-      System::Call 'kernel32::GetLastError()i.r3'
       ${If} $3 != 2
       ${AndIf} $3 != 3
         Abort "Path metadata could not be verified."
