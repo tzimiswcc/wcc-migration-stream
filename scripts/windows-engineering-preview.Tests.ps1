@@ -130,6 +130,13 @@ try {
         New-Item -ItemType HardLink -Path $alias -Target $target | Out-Null
         try { Expect-Refusal { Get-PreviewRows $layout } } finally { [IO.File]::Delete($alias) }
     }
+    Test-Case 'pure-drive-root-containment-boundaries' {
+        Assert-Preview (Test-PreviewWithin 'C:\candidate.zip' 'C:\')
+        Assert-Preview (Test-PreviewWithin 'C:\' 'C:\')
+        Assert-Preview (Test-PreviewWithin 'c:\layout\candidate.zip' 'C:\layout')
+        Assert-Preview (-not (Test-PreviewWithin 'C:\layout2\candidate.zip' 'C:\layout'))
+        Assert-Preview (-not (Test-PreviewWithin 'D:\candidate.zip' 'C:\'))
+    }
     Test-Case 'ordinary-drive-paths-and-ads-output-refusal' {
         Assert-Preview ((Get-PreviewFullPath 'C:\') -ceq 'C:\')
         Assert-Preview ((Get-PreviewFullPath 'C:\engineering Ω space\candidate.zip') -ceq 'C:\engineering Ω space\candidate.zip')

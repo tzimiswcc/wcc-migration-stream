@@ -37,6 +37,12 @@ function Get-PreviewFullPath([string]$Path) {
     }
     return [IO.Path]::GetFullPath($Path).TrimEnd('\')
 }
+function Test-PreviewWithin([string]$Candidate, [string]$Parent) {
+    # Inputs are canonical ordinary drive paths; no filesystem access.
+    if ([string]::Equals($Candidate,$Parent,[StringComparison]::OrdinalIgnoreCase)) { return $true }
+    $boundary = $Parent.TrimEnd('\') + '\'
+    return $Candidate.StartsWith($boundary,[StringComparison]::OrdinalIgnoreCase)
+}
 function Assert-PreviewUnmarked([string]$Path) {
     # Presence only: never read, remove or rewrite browser-zone metadata.
     if ($IsWindows) {
@@ -282,7 +288,7 @@ function New-PreviewArchiveCore([string]$Root, [object]$Build, [string]$Output, 
     $Root = Get-PreviewFullPath $Root
     $Output = Get-PreviewFullPath $Output
     Assert-PreviewNative (Split-Path -Parent $Output) $true
-    Assert-Preview (-not $Output.StartsWith($Root + '\',[StringComparison]::OrdinalIgnoreCase))
+    Assert-Preview (-not (Test-PreviewWithin $Output $Root))
     $rows = Get-PreviewRows $Root
     $runtime = & $Validate $Root $Build
     $receipt = [ordered]@{ schemaVersion='migration-stream/windows-engineering-preview/v1'; build=$Build; runtime=$runtime; entries=$rows }
@@ -331,7 +337,7 @@ function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[
     Assert-PreviewNative $InputArchive $false
     Assert-PreviewNative (Split-Path -Parent $Output) $true
     Assert-Preview (-not [IO.File]::Exists($Output) -and -not [IO.Directory]::Exists($Output))
-    Assert-Preview (-not $InputArchive.StartsWith($Output + '\',[StringComparison]::OrdinalIgnoreCase))
+    Assert-Preview (-not (Test-PreviewWithin $InputArchive $Output))
     # Do not unblock or silently discard browser marking. This reference route
     # refuses marked input; browser/Explorer extraction remains unqualified.
     Assert-PreviewUnmarked $InputArchive
