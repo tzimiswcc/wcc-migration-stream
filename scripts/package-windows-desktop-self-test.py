@@ -89,6 +89,10 @@ class WindowsDesktopSourceTests(unittest.TestCase):
         self.assertIn('${IsNativeAMD64}',self.rendered);self.assertIn('${IsNativeARM64}',self.rendered)
         self.assertIn('Unicode true',self.rendered);self.assertIn('RequestExecutionLevel user',self.rendered)
         self.assertNotIn('@@',self.rendered)
+        # NSIS strips quotes only around the entire token, not after /oname=.
+        self.assertIn('File "/oname=migration-stream.exe" "',self.rendered)
+        self.assertIn('File "/oname=install-owner.txt" "',self.rendered)
+        self.assertNotIn('File /oname="',self.rendered)
         self.assertTrue(list(self.root.glob('.migration-stream-nsis-inputs-*')))
         self.assertEqual(module.file_record(self.request.output_directory/"Migration Stream Setup.exe",module.MAX_SETUP)[0]["sha256"],result["installer"]["sha256"])
 

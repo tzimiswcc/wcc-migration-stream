@@ -301,8 +301,8 @@ def render_files(layout, payload):
         parent=str(Path(name).parent).replace("/","\\")
         directory="$INSTDIR"+("\\"+parent if parent!="." else "")
         target="$INSTDIR\\"+name.replace("/","\\")
-        lines.extend([f'  Push "{directory}"',"  Call RequireSafeAncestors",f'  SetOutPath "{directory}"',f'  IfFileExists "{target}" 0 +2','    Abort "Destination file already exists."',f'  File /oname={nsis_literal(Path(name).name)} {nsis_literal(str(payload/name))}',"  IfErrors 0 +2",'    Abort "Native payload extraction failed; partial files were preserved."'])
-    lines.extend(['  SetOutPath "$INSTDIR"','  IfFileExists "$INSTDIR\\install-owner.txt" 0 +2','    Abort "Existing ownership marker was preserved."',f'  File /oname="install-owner.txt" {nsis_literal(str(payload.parent/(layout["architecture"]+"-owner.txt")))}','  IfErrors 0 +2','    Abort "Ownership marker extraction failed."'])
+        lines.extend([f'  Push "{directory}"',"  Call RequireSafeAncestors",f'  SetOutPath "{directory}"',f'  IfFileExists "{target}" 0 +2','    Abort "Destination file already exists."',f'  File {nsis_literal("/oname="+Path(name).name)} {nsis_literal(str(payload/name))}',"  IfErrors 0 +2",'    Abort "Native payload extraction failed; partial files were preserved."'])
+    lines.extend(['  SetOutPath "$INSTDIR"','  IfFileExists "$INSTDIR\\install-owner.txt" 0 +2','    Abort "Existing ownership marker was preserved."',f'  File "/oname=install-owner.txt" {nsis_literal(str(payload.parent/(layout["architecture"]+"-owner.txt")))}','  IfErrors 0 +2','    Abort "Ownership marker extraction failed."'])
     return "\n".join(lines)
 
 
