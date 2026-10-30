@@ -26,7 +26,7 @@ MAX_JSON = 1024 * 1024
 MAX_SCRIPT = 8 * 1024 * 1024
 SCHEMA = "migration-stream/windows-desktop-package/v1"
 TEMPLATE = Path(__file__).resolve().parents[1] / "native/windows/desktop-installer.nsi.in"
-EXE_ROLES = {"PLATFORM_LAUNCHER":"migration-stream-local.exe", "RUNTIME_CONTROLLER":"libexec/migration-stream-local-runtime.exe", "INTEGRITY_CLI":"migration-stream.exe", "WORKBENCH":"migration-stream-workbench.exe"}
+EXE_ROLES = {"PLATFORM_LAUNCHER":"migration-stream-local.exe", "RUNTIME_CONTROLLER":"libexec/migration-stream-local-runtime.exe", "INTEGRITY_CLI":"bin/migration-stream.exe", "WORKBENCH":"bin/migration-stream-workbench.exe"}
 ROLES = set(EXE_ROLES) | {"FRONTEND_ASSET", "POLICY", "PROFILE_SCHEMA", "MAPPING_SCHEMA", "BUNDLE_SCHEMA", "CONTROLLED_PACK", "OPERATOR_GUIDE"}
 TARGETS = {"x64":("x86_64-pc-windows-msvc",0x8664), "arm64":("aarch64-pc-windows-msvc",0xAA64)}
 

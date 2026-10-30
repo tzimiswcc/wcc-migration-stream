@@ -19,6 +19,15 @@ module=importlib.util.module_from_spec(SPEC);sys.modules[SPEC.name]=module
 assert SPEC and SPEC.loader
 SPEC.loader.exec_module(module)
 
+# Independent literal fixture contract: src/runtime_bundle.rs Windows paths.
+# Never construct these from the packager constants being tested.
+FIXTURE_EXE_ROLES = {
+    "PLATFORM_LAUNCHER": "migration-stream-local.exe",
+    "RUNTIME_CONTROLLER": "libexec/migration-stream-local-runtime.exe",
+    "INTEGRITY_CLI": "bin/migration-stream.exe",
+    "WORKBENCH": "bin/migration-stream-workbench.exe",
+}
+
 
 def fake_pe(machine,magic=0x20B):
     data=bytearray(256);data[:2]=b"MZ";struct.pack_into("<I",data,60,64);data[64:68]=b"PE\0\0";struct.pack_into("<H",data,68,machine);struct.pack_into("<H",data,88,magic);return bytes(data)
@@ -32,13 +41,13 @@ class WindowsDesktopSourceTests(unittest.TestCase):
         for architecture,(target,machine) in module.TARGETS.items():
             layout=self.root/(architecture+" layout Ω");runtime=layout/"Runtime";runtime.mkdir(parents=True)
             members=[];hashes={}
-            for role,name in module.EXE_ROLES.items():
+            for role,name in FIXTURE_EXE_ROLES.items():
                 path=runtime/name;path.parent.mkdir(parents=True,exist_ok=True);data=fake_pe(machine);path.write_bytes(data);path.chmod(0o555)
                 digest=hashlib.sha256(data).hexdigest();hashes[role]=digest
                 members.append({"path":name,"memberType":"REGULAR_FILE","role":role,"mode":"0555","size":len(data),"sha256":digest})
             asset=runtime/"web/index.html";asset.parent.mkdir();asset.write_bytes(b"synthetic frontend");asset.chmod(0o444)
             members.append({"path":"web/index.html","memberType":"REGULAR_FILE","role":"FRONTEND_ASSET","mode":"0444","size":len(asset.read_bytes()),"sha256":hashlib.sha256(asset.read_bytes()).hexdigest()})
-            manifest={"schemaVersion":"migration-stream/assisted-local-runtime-bundle/v2","canonicalJsonVersion":"migration-stream-canonical-json/v1","manifestSha256":"0"*64,"product":{"name":"migration-stream","version":"0.1.0","commit":self.commit,"sourceState":"CLEAN","sourceSnapshotSha256":self.snapshot},"target":{"os":"windows","architecture":architecture,"targetTriple":target},"entrypoints":{"launcher":module.EXE_ROLES["PLATFORM_LAUNCHER"],"runtimeController":module.EXE_ROLES["RUNTIME_CONTROLLER"],"integrityCli":module.EXE_ROLES["INTEGRITY_CLI"],"workbench":module.EXE_ROLES["WORKBENCH"]},"members":sorted(members,key=lambda row:row["path"])}
+            manifest={"schemaVersion":"migration-stream/assisted-local-runtime-bundle/v2","canonicalJsonVersion":"migration-stream-canonical-json/v1","manifestSha256":"0"*64,"product":{"name":"migration-stream","version":"0.1.0","commit":self.commit,"sourceState":"CLEAN","sourceSnapshotSha256":self.snapshot},"target":{"os":"windows","architecture":architecture,"targetTriple":target},"entrypoints":{"launcher":FIXTURE_EXE_ROLES["PLATFORM_LAUNCHER"],"runtimeController":FIXTURE_EXE_ROLES["RUNTIME_CONTROLLER"],"integrityCli":FIXTURE_EXE_ROLES["INTEGRITY_CLI"],"workbench":FIXTURE_EXE_ROLES["WORKBENCH"]},"members":sorted(members,key=lambda row:row["path"])}
             manifest["manifestSha256"]=hashlib.sha256(module.canonical(manifest)).hexdigest()
             raw=module.canonical(manifest);(runtime/"bundle-manifest.json").write_bytes(raw);(runtime/"bundle-manifest.json").chmod(0o444)
             launcher=layout/"migration-stream-document-open.exe";launcher.write_bytes(fake_pe(machine));launcher.chmod(0o555)
@@ -72,6 +81,7 @@ class WindowsDesktopSourceTests(unittest.TestCase):
         self.request=replace(self.request,**{architecture+"_receipt_sha256":digest})
 
     def test_shared_passive_flow_two_payloads_one_setup_and_no_runtime_execution(self):
+        self.assertEqual(module.EXE_ROLES,FIXTURE_EXE_ROLES)
         result=self.package();self.assertFalse(result["installerExecutionQualified"])
         self.assertEqual(result["qualification"],"PASSIVE_RECEIPT_BYTE_BINDING_ONLY")
         self.assertEqual(set(path.name for path in self.request.output_directory.iterdir()),{"Migration Stream Setup.exe","engineering-installer.json"})
