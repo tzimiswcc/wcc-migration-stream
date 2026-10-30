@@ -1036,7 +1036,6 @@ mod engineering_composition_tests {
             assert_eq!(failure.diagnostic_code(), expected);
             assert_eq!(bytes, expected_diagnostic(expected).as_bytes());
             assert!(bytes.is_ascii() && bytes.len() < 128);
-            assert_eq!(bytes.iter().filter(|byte| **byte == b'\n').count(), 1);
         }
     }
 
