@@ -88,6 +88,9 @@
     "native/linux/test_document_open_launcher.py",
     "native/linux/launcher_bootstrap.py.in",
     "native/linux/MigrationStream.desktop.in",
+    "native/linux/packaged_launcher.py",
+    "scripts/package-linux-desktop.py",
+    "scripts/package-linux-desktop-self-test.py",
     "native/linux/README.md"
   ],
   "excluded": [
