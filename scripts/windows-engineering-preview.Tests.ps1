@@ -130,6 +130,32 @@ try {
         New-Item -ItemType HardLink -Path $alias -Target $target | Out-Null
         try { Expect-Refusal { Get-PreviewRows $layout } } finally { [IO.File]::Delete($alias) }
     }
+    Test-Case 'ordinary-drive-paths-and-ads-output-refusal' {
+        Assert-Preview ((Get-PreviewFullPath 'C:\') -ceq 'C:\')
+        Assert-Preview ((Get-PreviewFullPath 'C:\engineering Ω space\candidate.zip') -ceq 'C:\engineering Ω space\candidate.zip')
+        foreach ($bad in @('C:\x:stream','C:\CON\x','C:\CON .txt','C:\x.\y','C:\x \y','C:\x\\y','C:/x','C:\x\..\y','\\?\C:\x',('C:\x'+[char]1+'y'))) {
+            Expect-Refusal { Get-PreviewFullPath $bad }
+        }
+        $sentinel=Join-Path $testRoot 'ordinary-sentinel'
+        [IO.File]::WriteAllText($sentinel,'preserve')
+        $ads=$sentinel+':preview.zip'
+        Expect-Refusal { New-PreviewArchiveCore $layout $build $ads $fakeValidator }
+        Assert-Preview ([IO.File]::ReadAllText($sentinel) -ceq 'preserve')
+        Assert-Preview (-not [IO.File]::Exists($ads))
+    }
+    Test-Case 'marked-source-refused-before-archive' {
+        foreach ($relative in @('migration-stream-document-open.exe','Runtime/bundle-manifest.json')) {
+            $source=Join-Path $layout $relative
+            $marker=$source+':Zone.Identifier'
+            [IO.File]::WriteAllText($marker,"[ZoneTransfer]`r`nZoneId=3")
+            $newArchive=Join-Path $testRoot ('marked-source-'+[Guid]::NewGuid()+'.zip')
+            try {
+                Expect-Refusal { New-PreviewArchiveCore $layout $build $newArchive $fakeValidator }
+                Assert-Preview (-not [IO.File]::Exists($newArchive))
+                Assert-Preview ([IO.File]::Exists($marker))
+            } finally { [IO.File]::Delete($marker) }
+        }
+    }
     Test-Case 'browser-marker-not-unblocked' {
         $marked=Join-Path $testRoot 'marked.zip';[IO.File]::Copy($archive,$marked)
         [IO.File]::WriteAllText($marked+':Zone.Identifier',"[ZoneTransfer]`r`nZoneId=3")

@@ -21,9 +21,29 @@ function Assert-Preview([bool]$Condition) {
     if (-not $Condition) { throw 'engineering candidate refused' }
 }
 function Get-PreviewFullPath([string]$Path) {
+    Assert-Preview (-not [string]::IsNullOrEmpty($Path) -and $Path.Length -le 32767)
     Assert-Preview ([IO.Path]::IsPathFullyQualified($Path) -and $Path -cmatch '^[A-Za-z]:\\')
-    Assert-Preview (@($Path.Split('\') | Where-Object { $_ -in @('.', '..') }).Count -eq 0)
+    Assert-Preview (-not $Path.Contains('/'))
+    if ($Path.Length -eq 3) { return $Path }
+    $tail = $Path.Substring(3)
+    if ($tail.EndsWith('\')) { $tail = $tail.Substring(0,$tail.Length-1) }
+    foreach ($part in $tail.Split('\')) {
+        Assert-Preview ($part.Length -ge 1 -and $part -cne '.' -and $part -cne '..')
+        Assert-Preview (-not $part.EndsWith('.') -and -not $part.EndsWith(' '))
+        Assert-Preview ($part.IndexOfAny([char[]]'<>:"/\|?*') -lt 0)
+        foreach ($character in $part.ToCharArray()) { Assert-Preview (-not [char]::IsControl($character)) }
+        $deviceStem = $part.Split('.')[0].TrimEnd(' ')
+        Assert-Preview ($deviceStem -notmatch '^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])$')
+    }
     return [IO.Path]::GetFullPath($Path).TrimEnd('\')
+}
+function Assert-PreviewUnmarked([string]$Path) {
+    # Presence only: never read, remove or rewrite browser-zone metadata.
+    if ($IsWindows) {
+        try { $zone = [IO.File]::Open($Path + ':Zone.Identifier',[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read) }
+        catch [IO.FileNotFoundException] { $zone = $null }
+        if ($null -ne $zone) { $zone.Dispose(); throw 'browser-marked input is outside this reference route' }
+    }
 }
 function Assert-PreviewNative([string]$Path, [bool]$Directory) {
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
@@ -128,6 +148,7 @@ function Get-PreviewRows([string]$Root) {
                 Assert-PreviewNative $path $item.PSIsContainer
                 if ($item.PSIsContainer) { $pending.Push(@($path, $relative, ($node[2] + 1))) }
                 else {
+                    Assert-PreviewUnmarked $path
                     Assert-Preview ($item.Length -le $script:PreviewMaximumMember)
                     $bytes += $item.Length
                     Assert-Preview ($bytes -le $script:PreviewMaximumExpanded)
@@ -258,6 +279,8 @@ function Assert-PreviewZipStructure([IO.Stream]$Stream) {
     return $count
 }
 function New-PreviewArchiveCore([string]$Root, [object]$Build, [string]$Output, [scriptblock]$Validate) {
+    $Root = Get-PreviewFullPath $Root
+    $Output = Get-PreviewFullPath $Output
     Assert-PreviewNative (Split-Path -Parent $Output) $true
     Assert-Preview (-not $Output.StartsWith($Root + '\',[StringComparison]::OrdinalIgnoreCase))
     $rows = Get-PreviewRows $Root
@@ -302,6 +325,8 @@ function New-PreviewArchiveCore([string]$Root, [object]$Build, [string]$Output, 
     } finally { $stream.Dispose() }
 }
 function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[string]$Output,[scriptblock]$Validate) {
+    $InputArchive = Get-PreviewFullPath $InputArchive
+    $Output = Get-PreviewFullPath $Output
     Assert-Preview ($ExpectedHash -cmatch '^[0-9a-f]{64}$')
     Assert-PreviewNative $InputArchive $false
     Assert-PreviewNative (Split-Path -Parent $Output) $true
@@ -309,11 +334,7 @@ function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[
     Assert-Preview (-not $InputArchive.StartsWith($Output + '\',[StringComparison]::OrdinalIgnoreCase))
     # Do not unblock or silently discard browser marking. This reference route
     # refuses marked input; browser/Explorer extraction remains unqualified.
-    if ($IsWindows) {
-        try { $zone = [IO.File]::Open($InputArchive + ':Zone.Identifier',[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read) }
-        catch [IO.FileNotFoundException] { $zone = $null }
-        if ($null -ne $zone) { $zone.Dispose(); throw 'browser-marked candidate is outside this reference route' }
-    }
+    Assert-PreviewUnmarked $InputArchive
     $stream = [IO.File]::Open($InputArchive,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
     try {
         Assert-Preview ((Get-PreviewStreamHash $stream $script:PreviewMaximumArchive) -ceq $ExpectedHash)
