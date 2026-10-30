@@ -31,6 +31,41 @@ def check_run_blocks(workflow):
         if len(''.join(body))>21000:raise ValueError('run size refused')
 
 
+def check_diagnostics(driver):
+    # Source-only closed contract, not a PowerShell evaluator/parser or native proof.
+    failure = "$failure=[ordered]@{status='REFUSED';stage=$script:desktopStage;guard=$script:desktopGuard;category=$script:desktopFailureCategory;exitCode=$script:desktopExitCode}"
+    if failure not in driver:raise ValueError('failure fields refused')
+    catch=driver.rsplit('} catch {',1)[1]
+    if catch.strip() != (failure+"\n  Write-Output ('DESKTOP_QUALIFICATION_FAILURE '+($failure | ConvertTo-Json -Compress))\n  Write-Output 'Desktop installer qualification refused; partials and explicitly unqualified transfer artifacts preserved'\n  exit 1\n}").strip():raise ValueError('failure output refused')
+    lines=driver.splitlines()
+    commands=[]
+    for index,line in enumerate(lines):
+        if '=@(& ' in line:
+            if lines[index+1].strip()!='$script:desktopExitCode=$LASTEXITCODE':raise ValueError('exit capture refused')
+            commands.append(line.split('=@(& ',1)[1][:-1])
+    if commands != ['git rev-parse HEAD',"git rev-parse 'HEAD^{tree}'",'git status --porcelain=v1 --untracked-files=all',
+                     '$python -c \'import sys; assert sys.version_info[:2]>=(3,11); print("%d.%d.%d"%sys.version_info[:3])\'',
+                     '$python @toolArguments','$python -B scripts/prepare-nsis-tool.py --destination $preparedDirectory',
+                     '$python @toolArguments','$python -B scripts/prepare-nsis-tool.py --validate-prepared $preparedDirectory',
+                     'git status --porcelain=v1 --untracked-files=all']:raise ValueError('commands changed')
+    pairs=[("Set-DesktopStage 'disk-probe'",'$drive=Get-PSDrive'),
+           ("Set-DesktopStage 'memory-probe'",'$memory=Get-CimInstance'),
+           ("Set-DesktopStage 'disk-admission'",'Require-Desktop ($drive.Free -ge 12GB)'),
+           ("Set-DesktopStage 'memory-admission'",'Require-Desktop (([long]$memory.TotalVisibleMemorySize * 1KB) -ge 8GB)'),
+           ("Set-DesktopStage 'private-parent'",'$parent=Join-Path'),
+           ("Set-DesktopStage 'python-selection'",'$python=(Get-Command'),
+           ("Set-DesktopStage 'python-admission'",'$pythonVersion=@(&'),
+           ("Set-DesktopStage ($arch+'-file-admission')",'$downloadInput=Join-Path'),
+           ("Set-DesktopStage ($arch+'-passive-replay')",'      $result=@(&'),
+           ("Set-DesktopStage 'nsis-preparation'",'$preparedText=@(&'),
+           ("Set-DesktopStage 'installer-compile'",'    $result=@(&'),
+           ("Set-DesktopStage 'postcompile-integrity'",'$replayedTool=@(&')]
+    for stage,operation in pairs:
+        if not re.search(re.escape(stage)+r'\n\s*'+re.escape(operation.lstrip()),driver):raise ValueError('stage ordering refused')
+    admission=driver.index("if ($desktopOperation -ceq 'AdmitTransfers')")
+    if not admission < driver.index('      return',admission) < driver.index("Set-DesktopStage 'resource-path'"):raise ValueError('admission return changed')
+
+
 class TransferTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory(prefix='desktop-transfer-synthetic-');self.root=Path(self.temp.name).resolve()
@@ -133,6 +168,25 @@ class TransferTests(unittest.TestCase):
         self.assertNotRegex(after_helper,r'if\s*\(\$Operation\b')
         self.assertIn("if ($desktopOperation -ceq 'Native')",driver)
         self.assertIn("if ($desktopOperation -ceq 'AdmitTransfers')",after_helper)
+
+    def test_fixed_diagnostic_source_order_and_private_error_mutations(self):
+        driver=(ROOT/'scripts/windows-desktop-installer-qualification.ps1').read_text()
+        check_diagnostics(driver)
+        mutations=[driver.replace('$script:desktopExitCode=$LASTEXITCODE','Write-Output "PRIVATE_SENTINEL"',1),
+                   driver.replace("status='REFUSED';stage=", "message=$_.Exception.Message;status='REFUSED';stage=",1),
+                   driver.replace("  exit 1\n}","  Write-Output $_\n  exit 1\n}",1),
+                   driver.replace("Set-DesktopStage 'disk-probe'",'Write-Output "PRIVATE_SENTINEL"',1),
+                   driver.replace('$drive.Free -ge 12GB','$drive.Free -ge 1GB',1),
+                   driver.replace('      return','      Write-Output "PRIVATE_SENTINEL"',1),
+                   driver.replace('$python -B scripts/prepare-nsis-tool.py --destination','$python -B scripts/other.py --destination',1)]
+        for mutation in mutations:
+            with self.assertRaises((ValueError,IndexError)):check_diagnostics(mutation)
+        # No exception object or uncontrolled value participates in the catch output.
+        catch=driver.rsplit('} catch {',1)[1]
+        for forbidden in ('$_.', '$_ ', '$env:', '$python', '$parent', '$result', 'PRIVATE_SENTINEL'):
+            self.assertNotIn(forbidden,catch)
+        self.assertIn("[ValidatePattern('^G[0-9]{2}$')]",driver)
+        self.assertIn("[ValidateSet('source-admission'",driver)
 
     def test_run_block_guard_rejects_unnamed_folded_flow_and_oversize_mutations(self):
         workflow=(ROOT/'.github/workflows/windows-desktop-installer-qualification.yml').read_text()
