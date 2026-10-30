@@ -4,6 +4,8 @@
 No OS installation, registration, service, application/browser or binary upload.
 The unchanged Runtime builder makes four metadata/file probes; the reviewed
 packager makes two Verify probes. Inspection adds no product process.
+Command failure evidence exposes only a fixed stage/category and numeric status;
+raw stderr, arguments and environment remain private. No automatic retry.
 """
 from __future__ import annotations
 
@@ -40,6 +42,17 @@ MAINTAINER = r"[A-Za-z][A-Za-z0-9 .'-]{0,99} <[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[
 
 class Refused(ValueError):
     pass
+
+
+class CommandFailure(Refused):
+    """Allowlisted evidence only; never retain an OS message or command payload."""
+
+    def __init__(self, stage, category, code=None):
+        require(re.fullmatch(r"[a-z-]{1,40}", stage))
+        require(category in {"deadline", "output-cap", "exit", "os-error", "wait-timeout"})
+        require(code is None or (type(code) is int and -(2**31) <= code < 2**31))
+        self.evidence = {"stage": stage, "category": category, "code": code}
+        super().__init__("Linux command refused")
 
 
 def require(value):
@@ -117,6 +130,9 @@ def command(argv, work, label, environment, *, cwd=ROOT, seconds=120,
     for stream in streams:
         os.fchmod(stream.fileno(), 0o600)
     process, selector = None, selectors.DefaultSelector()
+    def within_budget():
+        if time.monotonic() >= deadline:
+            raise CommandFailure(label, "deadline")
     try:
         process = subprocess.Popen([str(item) for item in argv], stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -127,33 +143,41 @@ def command(argv, work, label, environment, *, cwd=ROOT, seconds=120,
             selector.register(pipe, selectors.EVENT_READ, index)
         counts, caps, deadline = [0, 0], [stdout_cap, stderr_cap], time.monotonic() + seconds
         while selector.get_map():
-            require(time.monotonic() < deadline)
+            within_budget()
             exited = process.poll() is not None
             remaining = deadline - time.monotonic()
-            require(remaining > 0)
+            within_budget()
             events = selector.select(0 if exited else min(0.05, remaining))
-            require(time.monotonic() < deadline)
+            within_budget()
             for key, _ in events:
                 data = os.read(key.fileobj.fileno(), 65536)
-                require(time.monotonic() < deadline)
+                within_budget()
                 if not data:
                     selector.unregister(key.fileobj)
                     continue
                 index = key.data
                 counts[index] += len(data)
-                require(counts[index] <= caps[index])
+                if counts[index] > caps[index]:
+                    raise CommandFailure(label, "output-cap")
                 streams[index].write(data)
             if exited and not events:
                 break
         remaining = deadline - time.monotonic()
-        require(remaining > 0)
+        within_budget()
         status = process.wait(timeout=remaining)
-        require(time.monotonic() < deadline and status == 0)
+        within_budget()
+        if status != 0:
+            raise CommandFailure(label, "exit", status)
         for stream in streams:
             stream.flush()
             os.fsync(stream.fileno())
-        require(time.monotonic() < deadline)
+        within_budget()
         return output
+    except subprocess.TimeoutExpired:
+        raise CommandFailure(label, "wait-timeout") from None
+    except OSError as error:
+        code = error.errno if type(error.errno) is int and -(2**31) <= error.errno < 2**31 else None
+        raise CommandFailure(label, "os-error", code) from None
     finally:
         selector.close()
         if process is not None:
@@ -482,6 +506,9 @@ def main():
         require(len(text.encode("utf-8")) <= 16384)
         print(text)
         return 0
+    except CommandFailure as error:
+        print("LINUX_QUALIFICATION_FAILURE " + json.dumps(error.evidence, sort_keys=True, separators=(",", ":")), file=sys.stderr)
+        return 1
     except Exception:
         print("Linux package qualification refused; private job evidence retained.", file=sys.stderr)
         return 1

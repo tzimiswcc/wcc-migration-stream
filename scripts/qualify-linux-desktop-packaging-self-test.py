@@ -256,9 +256,73 @@ class SourceAndFormats(unittest.TestCase):
              patch.object(q.selectors, "DefaultSelector", Selector), \
              patch.object(q.os, "set_blocking"), patch.object(q.os, "read", side_effect=late_eof), \
              patch.object(q.time, "monotonic", side_effect=lambda: clock[0]), \
-             self.assertRaises(q.Refused):
+             self.assertRaises(q.CommandFailure) as caught:
             q.command(["synthetic-never-executed"], self.root, "deadline", {}, seconds=1)
+        self.assertEqual(caught.exception.evidence, {"stage": "deadline", "category": "deadline", "code": None})
         self.assertEqual(waits, [])
+
+    def test_command_failure_evidence_nonzero_cap_and_os_error_without_processes(self):
+        class Pipe:
+            def fileno(self):
+                return 1001
+            def close(self):
+                pass
+        class Child:
+            stdout, stderr = Pipe(), Pipe()
+            def poll(self):
+                return 17
+            def wait(self, *, timeout):
+                return 17
+        class Selector:
+            def __init__(self):
+                self.entries = {}
+            def register(self, pipe, _events, index):
+                self.entries[index] = type("Key", (), {"fileobj": pipe, "data": index})()
+            def get_map(self):
+                return self.entries
+            def select(self, _timeout):
+                return [(key, q.selectors.EVENT_READ) for key in list(self.entries.values())]
+            def unregister(self, pipe):
+                self.entries.clear()
+            def close(self):
+                self.entries.clear()
+        for label, data, category, code in [("rust-preparation", b"", "exit", 17),
+                                              ("output", b"xx", "output-cap", None)]:
+            with patch.object(q.subprocess, "Popen", return_value=Child()), \
+                 patch.object(q.selectors, "DefaultSelector", Selector), \
+                 patch.object(q.os, "set_blocking"), patch.object(q.os, "read", return_value=data), \
+                 self.assertRaises(q.CommandFailure) as caught:
+                q.command(["PRIVATE-NEVER-EXECUTED"], self.root, label, {}, stdout_cap=1)
+            self.assertEqual(caught.exception.evidence, {"stage": label, "category": category, "code": code})
+        with patch.object(q.subprocess, "Popen", side_effect=OSError(13, "PRIVATE-MESSAGE")), \
+             self.assertRaises(q.CommandFailure) as caught:
+            q.command(["PRIVATE-NEVER-EXECUTED"], self.root, "spawn", {})
+        self.assertEqual(caught.exception.evidence, {"stage": "spawn", "category": "os-error", "code": 13})
+        self.assertNotIn("PRIVATE", str(caught.exception))
+        with patch.object(q.subprocess, "Popen", return_value=Child()), \
+             patch.object(q.selectors, "DefaultSelector", Selector), \
+             patch.object(q.os, "set_blocking"), patch.object(q.os, "read", return_value=b""), \
+             patch.object(Child, "wait", side_effect=q.subprocess.TimeoutExpired("PRIVATE", 1)), \
+             self.assertRaises(q.CommandFailure) as caught:
+            q.command(["PRIVATE-NEVER-EXECUTED"], self.root, "wait", {})
+        self.assertEqual(caught.exception.evidence, {"stage": "wait", "category": "wait-timeout", "code": None})
+
+    def test_main_reports_only_allowlisted_command_failure_and_keeps_generic_unknown(self):
+        for error, expected in [(q.CommandFailure("rust-preparation", "exit", 1),
+                                 'LINUX_QUALIFICATION_FAILURE {"category":"exit","code":1,"stage":"rust-preparation"}'),
+                                (ValueError("PRIVATE-UNKNOWN"),
+                                 "Linux package qualification refused; private job evidence retained.")]:
+            output = io.StringIO()
+            with patch.object(q, "qualify", side_effect=error), \
+                 patch.object(q.signal, "signal"), patch.object(q.signal, "setitimer"), \
+                 contextlib.redirect_stderr(output):
+                self.assertEqual(q.main(), 1)
+            self.assertEqual(output.getvalue(), expected + "\n")
+            self.assertNotIn("PRIVATE", output.getvalue())
+        for stage, category, code in [("raw/path", "exit", 1), ("rust-preparation", "raw-error", 1),
+                                      ("rust-preparation", "exit", True), ("rust-preparation", "exit", 2**31)]:
+            with self.assertRaises(q.Refused):
+                q.CommandFailure(stage, category, code)
 
     def synthetic_payloads(self):
         runtime = self.root / "runtime"
