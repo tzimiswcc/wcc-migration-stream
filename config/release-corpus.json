@@ -106,7 +106,9 @@
     "scripts/qualify-linux-desktop-packaging-self-test.py",
     ".github/workflows/macos-engineering-qualification.yml",
     "scripts/macos-engineering-qualification.py",
-    "scripts/macos-engineering-qualification-self-test.py"
+    "scripts/macos-engineering-qualification-self-test.py",
+    "scripts/prepare-nsis-tool.py",
+    "scripts/prepare-nsis-tool-self-test.py"
   ],
   "excluded": [
     "config/claude/**",

@@ -109,8 +109,10 @@ class TransferTests(unittest.TestCase):
         self.assertLess(workflow.index('-Operation AdmitTransfers'),workflow.index('uses: actions/download-artifact@'))
         self.assertIn("$desktopOperation -ceq 'AdmitTransfers'",driver)
         self.assertNotIn('workflow_call:',workflow);self.assertNotIn('push:',workflow)
+        self.assertNotIn('NSIS/makensis.exe',driver)
+        self.assertIn("'Bin/makensis.exe'",driver)
         check_run_blocks(workflow)
-        for name in ('. ./scripts/windows-engineering-qualification.ps1','PASSIVE_TRANSFER_ONLY','COMPILED_PASSIVE_BYTES_ONLY','NSIS/makensis.exe','GetVersionInfo','setupUploaded=$false','installerExecuted=$false','--receipt-sha'):
+        for name in ('. ./scripts/windows-engineering-qualification.ps1','PASSIVE_TRANSFER_ONLY','COMPILED_PASSIVE_BYTES_ONLY','scripts/prepare-nsis-tool.py','GetVersionInfo','setupUploaded=$false','installerExecuted=$false','--receipt-sha'):
             self.assertIn(name,driver)
         for forbidden in ('choco ','winget ','Invoke-WebRequest','ExecWait','Start-Process','Remove-Item','--skip-verify'):
             self.assertNotIn(forbidden,driver)

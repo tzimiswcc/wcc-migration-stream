@@ -51,6 +51,7 @@ jobs:
           python3 -I -B scripts/qualify-linux-desktop-packaging-self-test.py
           python3 -I -B scripts/macos-engineering-qualification-self-test.py
           python3 -I -B scripts/windows-desktop-transfer-self-test.py
+          python3 -I -B scripts/prepare-nsis-tool-self-test.py
       - name: Run candidate-compatible source gates
         shell: bash
         run: |
@@ -118,16 +119,19 @@ jobs:
         run: |
           python -B scripts/package-windows-desktop-self-test.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Compile tiny synthetic NSIS template without installer execution
+      - name: Prepare pinned portable NSIS and compile tiny synthetic template
         if: ${{ matrix.architecture == 'x64' }}
-        timeout-minutes: 6
+        timeout-minutes: 8
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $compiler = Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe'
-          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw 'Required runner-installed NSIS is absent; no download fallback.' }
-          Write-Output ('Runner-installed NSIS product version: ' + (Get-Item -LiteralPath $compiler).VersionInfo.ProductVersion)
-          python -B scripts/package-windows-desktop-self-test.py --native-compile-only
+          $preparedDirectory = Join-Path $env:RUNNER_TEMP ('migration-stream-nsis-tool-' + $env:GITHUB_RUN_ID + '-' + $env:GITHUB_JOB)
+          $preparedText = @(& python -B scripts/prepare-nsis-tool.py --destination $preparedDirectory)
+          if ($LASTEXITCODE -ne 0 -or ($preparedText -join '').Length -gt 16384) { throw 'Explicit portable NSIS preparation failed.' }
+          $prepared = ($preparedText -join "`n") | ConvertFrom-Json
+          if ($prepared.version -isnot [string] -or $prepared.version -cne '3.13' -or $prepared.compilerSha256 -isnot [string] -or $prepared.compilerSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'Prepared compiler metadata refused.' }
+          Write-Output ('Prepared portable NSIS version=' + $prepared.version + ' compilerSha256=' + $prepared.compilerSha256 + ' archiveSha256=' + $prepared.archiveSha256)
+          python -B scripts/package-windows-desktop-self-test.py --native-compile-only --prepared-nsis $preparedDirectory
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install pinned Rust source-test toolchain
         shell: pwsh

@@ -26,10 +26,6 @@ try {
     # Intentional same-scope composition retains only the existing driver's
     # freshly created output paths. Its guards, build recipe and probes stay intact.
     Require-Desktop ($env:PUBLISH_ENGINEERING_PREVIEW -ceq 'true')
-    if ($env:QUALIFICATION_ARCHITECTURE -ceq 'x64') {
-      # Fail before expensive builds if the already installed compiler is absent.
-      Require-Desktop (Test-Path -LiteralPath (Join-Path ${env:ProgramFiles(x86)} 'NSIS/makensis.exe') -PathType Leaf)
-    }
     . ./scripts/windows-engineering-qualification.ps1
     Require-Desktop ($qualificationMetadata.status -ceq 'PASSED' -and $targetTuple.architecture -ceq $env:QUALIFICATION_ARCHITECTURE)
     $transfer=Join-Path $env:RUNNER_TEMP ('migration-stream-desktop-transfer-'+$env:QUALIFICATION_ARCHITECTURE+'-'+$env:GITHUB_RUN_ID)
@@ -79,24 +75,21 @@ try {
       $proof=($result -join "`n") | ConvertFrom-Json
       Require-Desktop ($proof.status -ceq 'PASSIVE_TRANSFER_ONLY' -and $proof.architecture -ceq $arch -and $proof.sourceSnapshotSha256 -ceq $env:X64_SNAPSHOT)
     }
-    # Existing runner NSIS only. No package manager/download/install fallback.
-    $nsisRoot=Join-Path ${env:ProgramFiles(x86)} 'NSIS'
-    Assert-PreviewNative $nsisRoot $true
-    $makensis=Join-Path $nsisRoot 'makensis.exe'
-    Assert-PreviewNative $makensis $false
+    # One explicit closed portable preparation; never use the root SubStart
+    # launcher, search PATH/ProgramFiles or install a compiler globally.
+    $preparedDirectory=Join-Path $parent 'nsis-tool'
+    $preparedText=@(& $python -B scripts/prepare-nsis-tool.py --destination $preparedDirectory)
+    Require-Desktop ($LASTEXITCODE -eq 0 -and ($preparedText -join '').Length -le 16384)
+    $prepared=($preparedText -join "`n") | ConvertFrom-Json
+    Require-Desktop ($prepared.version -is [string] -and $prepared.version -ceq '3.13' -and $prepared.compilerSha256 -is [string] -and $prepared.compilerSha256 -cmatch '^[0-9a-f]{64}$')
+    $nsisRoot=Join-Path $preparedDirectory 'nsis-3.13'
+    $makensis=Join-Path $nsisRoot 'Bin/makensis.exe'
+    Require-Desktop ($prepared.compiler -is [string] -and $prepared.compiler -ceq $makensis -and $prepared.resourceRoot -is [string] -and $prepared.resourceRoot -ceq $nsisRoot)
     $nsisHash=Hash-Desktop $makensis
-    $resourceHashes=[ordered]@{}
-    $resourceIndex=0
-    foreach ($relative in @('Include/x64.nsh','Include/LogicLib.nsh','Include/FileFunc.nsh','Include/nsDialogs.nsh','Plugins/x86-unicode/System.dll','Plugins/x86-unicode/nsDialogs.dll')) {
-      $resource=Join-Path $nsisRoot $relative
-      Assert-PreviewNative $resource $false
-      $resourceHashes['resource'+$resourceIndex]=Hash-Desktop $resource
-      $resourceIndex++
-    }
-    # Metadata-only version probe: bounded time/capture via the compiler runner's
-    # same helper is not supported. Do not invoke a separate unbounded process.
+    Require-Desktop ($nsisHash -ceq $prepared.compilerSha256)
+    $resourceHashes=$prepared.resourceSha256
     $versionInfo=[Diagnostics.FileVersionInfo]::GetVersionInfo($makensis)
-    Require-Desktop ($versionInfo.FileMajorPart -eq 3 -and $versionInfo.FileVersion -cmatch '^[0-9., ]{1,40}$')
+    Require-Desktop ($versionInfo.FileMajorPart -eq 3 -and $versionInfo.FileMinorPart -eq 13 -and $versionInfo.FileVersion -cmatch '^[0-9., ]{1,40}$')
     $product=(Get-Content -Raw -LiteralPath Cargo.toml | Select-String -Pattern '(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"$').Matches
     Require-Desktop ($product.Count -eq 1)
     $version=$product[0].Groups[1].Value
@@ -107,8 +100,10 @@ try {
     $proof=($result -join "`n") | ConvertFrom-Json
     Require-Desktop ($proof.ok -is [bool] -and $proof.ok -and $proof.installer.sha256 -cmatch '^[0-9a-f]{64}$')
     Require-Desktop ((Hash-Desktop (Join-Path $parent 'installer/Migration Stream Setup.exe')) -ceq $proof.installer.sha256)
+    $replayedTool=@(& $python -B scripts/prepare-nsis-tool.py --validate-prepared $preparedDirectory)
+    Require-Desktop ($LASTEXITCODE -eq 0 -and ($replayedTool -join '').Length -le 16384 -and ($replayedTool -join '') -ceq ($preparedText -join ''))
     Require-Desktop (@(& git status --porcelain=v1 --untracked-files=all).Count -eq 0 -and $LASTEXITCODE -eq 0)
-    $evidence=[ordered]@{schemaVersion='migration-stream/windows-desktop-installer-qualification/v1';status='COMPILED_PASSIVE_BYTES_ONLY';sourceCommit=$env:GITHUB_SHA;sourceTree=$desktopTree;sourceSnapshotSha256=$env:X64_SNAPSHOT;runId=$env:GITHUB_RUN_ID;runAttempt=1;pythonVersion=$pythonVersion[0];pythonSha256=(Hash-Desktop $python);nsisExeSha256=$nsisHash;nsisFileVersion=$versionInfo.FileVersion;nsisResourceSha256=$resourceHashes;x64ArtifactId=$env:X64_ARTIFACT_ID;x64ArtifactDigest=$env:X64_ARTIFACT_DIGEST;arm64ArtifactId=$env:ARM64_ARTIFACT_ID;arm64ArtifactDigest=$env:ARM64_ARTIFACT_DIGEST;installerSha256=$proof.installer.sha256;installerBytes=$proof.installer.bytes;installerExecuted=$false;setupUploaded=$false;transferRetentionDays=1}
+    $evidence=[ordered]@{schemaVersion='migration-stream/windows-desktop-installer-qualification/v1';status='COMPILED_PASSIVE_BYTES_ONLY';sourceCommit=$env:GITHUB_SHA;sourceTree=$desktopTree;sourceSnapshotSha256=$env:X64_SNAPSHOT;runId=$env:GITHUB_RUN_ID;runAttempt=1;pythonVersion=$pythonVersion[0];pythonSha256=(Hash-Desktop $python);nsisArchiveSha256=$prepared.archiveSha256;nsisPreparationReceiptSha256=$prepared.preparedReceiptSha256;nsisExeSha256=$nsisHash;nsisFileVersion=$versionInfo.FileVersion;nsisResourceSha256=$resourceHashes;x64ArtifactId=$env:X64_ARTIFACT_ID;x64ArtifactDigest=$env:X64_ARTIFACT_DIGEST;arm64ArtifactId=$env:ARM64_ARTIFACT_ID;arm64ArtifactDigest=$env:ARM64_ARTIFACT_DIGEST;installerSha256=$proof.installer.sha256;installerBytes=$proof.installer.bytes;installerExecuted=$false;setupUploaded=$false;transferRetentionDays=1}
     $json=$evidence | ConvertTo-Json -Compress
     Require-Desktop ($json.Length -le 8192)
     Write-Output $json
