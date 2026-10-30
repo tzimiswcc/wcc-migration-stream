@@ -263,12 +263,14 @@ class SourceAndFormats(unittest.TestCase):
 
     def test_command_failure_evidence_nonzero_cap_and_os_error_without_processes(self):
         class Pipe:
+            def __init__(self, descriptor):
+                self.descriptor = descriptor
             def fileno(self):
-                return 1001
+                return self.descriptor
             def close(self):
                 pass
         class Child:
-            stdout, stderr = Pipe(), Pipe()
+            stdout, stderr = Pipe(1001), Pipe(1002)
             def poll(self):
                 return 17
             def wait(self, *, timeout):
@@ -277,13 +279,13 @@ class SourceAndFormats(unittest.TestCase):
             def __init__(self):
                 self.entries = {}
             def register(self, pipe, _events, index):
-                self.entries[index] = type("Key", (), {"fileobj": pipe, "data": index})()
+                self.entries[pipe.fileno()] = type("Key", (), {"fileobj": pipe, "data": index})()
             def get_map(self):
                 return self.entries
             def select(self, _timeout):
                 return [(key, q.selectors.EVENT_READ) for key in list(self.entries.values())]
             def unregister(self, pipe):
-                self.entries.clear()
+                self.entries.pop(pipe.fileno())
             def close(self):
                 self.entries.clear()
         for label, data, category, code in [("rust-preparation", b"", "exit", 17),
@@ -293,7 +295,10 @@ class SourceAndFormats(unittest.TestCase):
                  patch.object(q.os, "set_blocking"), patch.object(q.os, "read", return_value=data), \
                  self.assertRaises(q.CommandFailure) as caught:
                 q.command(["PRIVATE-NEVER-EXECUTED"], self.root, label, {}, stdout_cap=1)
-            self.assertEqual(caught.exception.evidence, {"stage": label, "category": category, "code": code})
+            expected = {"stage": label, "category": category, "code": code}
+            if label == "rust-preparation":
+                expected["tool_reported_category"] = "UNKNOWN"
+            self.assertEqual(caught.exception.evidence, expected)
         with patch.object(q.subprocess, "Popen", side_effect=OSError(13, "PRIVATE-MESSAGE")), \
              self.assertRaises(q.CommandFailure) as caught:
             q.command(["PRIVATE-NEVER-EXECUTED"], self.root, "spawn", {})
@@ -306,6 +311,35 @@ class SourceAndFormats(unittest.TestCase):
              self.assertRaises(q.CommandFailure) as caught:
             q.command(["PRIVATE-NEVER-EXECUTED"], self.root, "wait", {})
         self.assertEqual(caught.exception.evidence, {"stage": "wait", "category": "wait-timeout", "code": None})
+
+        classified = self.root / "classified"
+        classified.mkdir()
+        reads = {1001: [b""], 1002: [b"error: could not download file from 'PRIVATE_SENTINEL", b""]}
+        with patch.object(q.subprocess, "Popen", return_value=Child()), \
+             patch.object(q.selectors, "DefaultSelector", Selector), \
+             patch.object(q.os, "set_blocking"), \
+             patch.object(q.os, "read", side_effect=lambda fd, _size: reads[fd].pop(0)), \
+             self.assertRaises(q.CommandFailure) as caught:
+            q.command(["PRIVATE-NEVER-EXECUTED"], classified, "rust-preparation", {})
+        self.assertEqual(caught.exception.evidence, {"stage": "rust-preparation", "category": "exit", "code": 17,
+                                                    "tool_reported_category": "DOWNLOAD_REPORTED"})
+        self.assertNotIn("PRIVATE", json.dumps(caught.exception.evidence))
+
+    def test_rustup_reported_categories_never_disclose_private_suffixes(self):
+        private = b"PRIVATE_SENTINEL https://user:secret@example.invalid/path /private/location"
+        for prefix, category in [(b"error: could not download file from '", "DOWNLOAD_REPORTED"),
+                                 (b"error: component download failed for ", "DOWNLOAD_REPORTED"),
+                                 (b"error: could not create toolchain directory: '", "FILESYSTEM_REPORTED"),
+                                 (b"error: failed to set permissions for '", "FILESYSTEM_REPORTED")]:
+            self.assertEqual(q.rustup_reported_category(prefix + private), category)
+            self.assertNotIn("PRIVATE", q.rustup_reported_category(prefix + private))
+        for data in [private, b"info: could not download file from '" + private,
+                     b"error: certificate PRIVATE_SENTINEL", b"x" * 65537,
+                     b"error: could not download file from '" + b"x" * 65536,
+                     b"error: could not download file from 'x\nerror: failed to set permissions for 'y"]:
+            self.assertEqual(q.rustup_reported_category(data), "UNKNOWN")
+        # The real capture routes only this stage's nonzero exit into classification.
+        self.assertIn('if label == "rust-preparation":', (ROOT / "scripts/qualify-linux-desktop-packaging.py").read_text())
 
     def test_main_reports_only_allowlisted_command_failure_and_keeps_generic_unknown(self):
         for error, expected in [(q.CommandFailure("rust-preparation", "exit", 1),
