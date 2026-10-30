@@ -55,6 +55,24 @@ class CommandFailure(Refused):
         super().__init__("Linux command refused")
 
 
+
+def rustup_reported_category(data):
+    """Optional producer wording, not a diagnosed cause or stable Rustup API.
+
+    Prefixes: rust-lang/rustup 1.28.2 src/errors.rs, RustupError variants
+    DownloadingFile, ComponentDownloadFailed, CreatingDirectory, SettingPermissions.
+    Other versions/wording and oversized captures deliberately remain unknown.
+    """
+    if len(data) > 65536:
+        return "UNKNOWN"
+    patterns = {
+        "DOWNLOAD_REPORTED": rb"^error: (?:could not download file from '|component download failed for )",
+        "FILESYSTEM_REPORTED": rb"^error: (?:could not create [A-Za-z ]{1,64} directory: '|failed to set permissions for ')",
+    }
+    matched = [category for category, pattern in patterns.items() if re.search(pattern, data, re.MULTILINE)]
+    return matched[0] if len(matched) == 1 else "UNKNOWN"
+
+
 def require(value):
     if not value:
         raise Refused("Linux qualification refused")
@@ -126,7 +144,7 @@ def command(argv, work, label, environment, *, cwd=ROOT, seconds=120,
     require(re.fullmatch(r"[a-z-]{1,40}", label))
     output = work / (label + ".stdout.private")
     error = work / (label + ".stderr.private")
-    streams = [output.open("xb"), error.open("xb")]
+    streams = [output.open("xb"), error.open("x+b")]
     for stream in streams:
         os.fchmod(stream.fileno(), 0o600)
     process, selector = None, selectors.DefaultSelector()
@@ -167,7 +185,12 @@ def command(argv, work, label, environment, *, cwd=ROOT, seconds=120,
         status = process.wait(timeout=remaining)
         within_budget()
         if status != 0:
-            raise CommandFailure(label, "exit", status)
+            failure = CommandFailure(label, "exit", status)
+            if label == "rust-preparation":
+                streams[1].flush()
+                streams[1].seek(0)
+                failure.evidence["tool_reported_category"] = rustup_reported_category(streams[1].read(65537))
+            raise failure
         for stream in streams:
             stream.flush()
             os.fsync(stream.fileno())
