@@ -65,7 +65,7 @@ jobs:
           $parseOnly = Join-Path $env:RUNNER_TEMP ('migration-stream-parse-only-' + [Guid]::NewGuid() + '.ps1')
           python -B scripts/windows-engineering-qualification-self-test.py --write-workflow-powershell $parseOnly
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($entry in @(@('builder','scripts/build-assisted-runtime-bundle.ps1'),@('qualification',$parseOnly))) {
+          foreach ($entry in @(@('builder','scripts/build-assisted-runtime-bundle.ps1'),@('qualification',$parseOnly),@('preview-helper','scripts/windows-engineering-preview.ps1'),@('preview-fixtures','scripts/windows-engineering-preview.Tests.ps1'))) {
             if ((Get-Item -LiteralPath $entry[1]).Length -gt 128KB) { Write-Output 'PowerShell source size refused'; exit 1 }
             $tokens = $null
             $parseErrors = $null
@@ -79,7 +79,9 @@ jobs:
               exit 1
             }
           }
-          Write-Output 'PowerShell static parse passed (two source scripts; no execution)'
+          Write-Output 'PowerShell static parse passed (builder, reviewed workflow blocks, preview helper and fixtures; no product execution)'
+          & ./scripts/windows-engineering-preview.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install pinned Rust source-test toolchain
         shell: pwsh
         run: rustup toolchain install 1.99.1 --profile minimal --component clippy
