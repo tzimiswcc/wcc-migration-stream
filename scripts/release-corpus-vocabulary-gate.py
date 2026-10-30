@@ -49,10 +49,11 @@ SWIFT_TEXT_PATHS = {
     "tests/native/macos/ApplicationBootstrapTests.swift",
     "native/macos/MigrationStreamApplication.swift",
 }
-# These uninstalled Linux templates are UTF-8 source; other .in paths stay refused.
+# Only these reviewed uninstalled templates are UTF-8; other .in paths stay refused.
 TEMPLATE_TEXT_PATHS = {
     "native/linux/launcher_bootstrap.py.in",
     "native/linux/MigrationStream.desktop.in",
+    "native/windows/desktop-installer.nsi.in",
 }
 TEXT_FILENAMES = {
     ".gitattributes",

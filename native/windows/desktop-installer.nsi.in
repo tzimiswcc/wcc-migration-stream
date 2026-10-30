@@ -1,0 +1,329 @@
+; Engineering source template; compiler and native installation remain unqualified.
+Unicode true
+RequestExecutionLevel user
+CRCCheck on
+SetCompressor /SOLID lzma
+Name "Migration Stream"
+OutFile @@OUTPUT@@
+!include "LogicLib.nsh"
+!include "FileFunc.nsh"
+!include "x64.nsh"
+!include "nsDialogs.nsh"
+!if ${NSIS_CHAR_SIZE} != 2
+  !error "Unicode NSIS is required"
+!endif
+!if ${NSIS_PTR_SIZE} != 4
+  !error "Use the standard 32-bit Unicode bootstrap"
+!endif
+!if ${NSIS_MAX_STRLEN} < 1024
+  !error "NSIS string capacity is insufficient"
+!endif
+!define VERSION "@@VERSION@@"
+!define OWNER "@@OWNER@@"
+!define PROGID "MigrationStream.Object"
+!define OWNERKEY "Software\MigrationStream"
+!define UNINSTALLKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\MigrationStream"
+Var NativeArch
+Var ExpectedRoot
+Var Parameters
+Var OwnerHandle
+Page components
+Page instfiles
+UninstPage uninstConfirm
+UninstPage instfiles
+
+!macro SAFE_FUNCTIONS PREFIX
+Function ${PREFIX}RequireSafeAncestors
+  Exch $0
+  Push $1
+  Push $2
+  Push $3
+  Push $4
+  StrCpy $4 0
+  StrCpy $1 $0
+  ancestors:
+    IntOp $4 $4 + 1
+    ${If} $4 > 256
+      Abort "Installation ancestor depth is unsupported."
+    ${EndIf}
+    System::Call 'kernel32::GetFileAttributesW(w r1)i.r2'
+    ${If} $2 == -1
+      System::Call 'kernel32::GetLastError()i.r3'
+      ${If} $3 != 2
+      ${AndIf} $3 != 3
+        Abort "Path metadata could not be verified."
+      ${EndIf}
+    ${Else}
+      IntOp $2 $2 & 0x400
+      ${If} $2 != 0
+        Abort "Linked or reparse installation paths are refused."
+      ${EndIf}
+    ${EndIf}
+    StrLen $2 $1
+    ${If} $2 <= 3
+      Goto ancestors_done
+    ${EndIf}
+    ${GetParent} "$1" $1
+    Goto ancestors
+  ancestors_done:
+  Pop $4
+  Pop $3
+  Pop $2
+  Pop $1
+  Pop $0
+FunctionEnd
+
+Function ${PREFIX}FixedRoot
+  SetShellVarContext current
+  SetRegView 64
+  ClearErrors
+  GetFullPathName $ExpectedRoot "$LOCALAPPDATA"
+  IfErrors 0 +2
+    Abort "The per-user installation path is unavailable."
+  StrCpy $ExpectedRoot "$ExpectedRoot\Programs\MigrationStream"
+  StrCpy $0 $ExpectedRoot 2 1
+  ${If} $0 != ":\"
+    Abort "An ordinary local drive is required."
+  ${EndIf}
+  StrLen $0 $ExpectedRoot
+  ${If} $0 > 200
+    Abort "The per-user installation path is too long for this engineering installer."
+  ${EndIf}
+  StrCpy $INSTDIR $ExpectedRoot
+  Push "$INSTDIR"
+  Call ${PREFIX}RequireSafeAncestors
+FunctionEnd
+
+Function ${PREFIX}OwnedInstallation
+  Call ${PREFIX}FixedRoot
+  ReadRegStr $0 HKCU "${OWNERKEY}" "Owner"
+  ${If} $0 != "${OWNER}"
+    Abort "Installation ownership could not be verified."
+  ${EndIf}
+  ReadRegStr $0 HKCU "${OWNERKEY}" "InstallRoot"
+  ${If} $0 != $ExpectedRoot
+    Abort "Installation ownership path differs."
+  ${EndIf}
+  ReadRegStr $0 HKCU "${OWNERKEY}" "Architecture"
+  ${If} $0 != $NativeArch
+    Abort "The installed native architecture differs."
+  ${EndIf}
+  Push "$INSTDIR\install-owner.txt"
+  Call ${PREFIX}RequireSafeAncestors
+  ClearErrors
+  FileOpen $OwnerHandle "$INSTDIR\install-owner.txt" r
+  IfErrors 0 +2
+    Abort "Installation marker is unavailable."
+  FileRead $OwnerHandle $0
+  StrCpy $1 ""
+  FileRead $OwnerHandle $1
+  FileClose $OwnerHandle
+  ${If} $0 != "${OWNER}:$NativeArch$\r$\n"
+  ${OrIf} $1 != ""
+    Abort "Installation marker differs."
+  ${EndIf}
+FunctionEnd
+!macroend
+!insertmacro SAFE_FUNCTIONS ""
+!insertmacro SAFE_FUNCTIONS "un."
+
+!macro SELECT_NATIVE
+  ${If} ${IsNativeAMD64}
+    StrCpy $NativeArch "x64"
+  ${ElseIf} ${IsNativeARM64}
+    StrCpy $NativeArch "arm64"
+  ${Else}
+    Abort "This engineering installer requires native Windows x64 or ARM64."
+  ${EndIf}
+!macroend
+
+Function RequireRegistryAbsent
+  Exch $0
+  System::Call 'advapi32::RegOpenKeyExW(p 0x80000001,w r0,i 0,i 0x20119,*p.r1)i.r2'
+  ${If} $2 == 0
+    System::Call 'advapi32::RegCloseKey(p r1)'
+    Abort "Existing application registration is preserved; upgrades are not supported."
+  ${ElseIf} $2 != 2
+    Abort "Application registration could not be inspected."
+  ${EndIf}
+  Pop $0
+FunctionEnd
+
+Function RequireOpenWithAbsent
+  System::Call 'advapi32::RegOpenKeyExW(p 0x80000001,w "Software\Classes\.mstream\OpenWithProgids",i 0,i 0x20119,*p.r1)i.r2'
+  ${If} $2 == 2
+    Return
+  ${ElseIf} $2 != 0
+    Abort "Open With registration could not be inspected."
+  ${EndIf}
+  System::Call 'advapi32::RegQueryValueExW(p r1,w "${PROGID}",p 0,p 0,p 0,*i.r3)i.r2'
+  System::Call 'advapi32::RegCloseKey(p r1)'
+  ${If} $2 != 2
+    Abort "Existing Open With value is preserved."
+  ${EndIf}
+FunctionEnd
+
+Function OpenOnly
+  Call OwnedInstallation
+  nsDialogs::SelectFileDialog open "$DOCUMENTS\project.mstream" "Migration Stream object|*.mstream"
+  Pop $0
+  ${If} $0 == ""
+    Quit
+  ${EndIf}
+  StrLen $1 "$INSTDIR\migration-stream-document-open.exe"
+  StrLen $2 $0
+  IntOp $1 $1 + $2
+  IntOp $1 $1 + 6
+  ${If} $1 >= 1024
+    Abort "The selected native path exceeds this engineering launcher's command capacity."
+  ${EndIf}
+  SetOutPath "$INSTDIR"
+  ClearErrors
+  ExecWait '"$INSTDIR\migration-stream-document-open.exe" "$0"' $1
+  IfErrors 0 +2
+    Abort "The native document opener could not be started."
+  SetErrorLevel $1
+  Quit
+FunctionEnd
+
+Function .onInit
+  !insertmacro SELECT_NATIVE
+  Call FixedRoot
+  ${GetParameters} $Parameters
+  ${If} $Parameters == "/open"
+    Call OpenOnly
+  ${ElseIf} $Parameters != ""
+    Abort "Only interactive install or the explicit Open Object shortcut is accepted."
+  ${EndIf}
+FunctionEnd
+
+Section "-Native application" SEC_NATIVE
+  SectionIn RO
+  Call FixedRoot
+  Push "${OWNERKEY}"
+  Call RequireRegistryAbsent
+  Push "Software\Classes\${PROGID}"
+  Call RequireRegistryAbsent
+  Push "${UNINSTALLKEY}"
+  Call RequireRegistryAbsent
+  Call RequireOpenWithAbsent
+  Push "$LOCALAPPDATA\Programs"
+  Call RequireSafeAncestors
+  CreateDirectory "$LOCALAPPDATA\Programs"
+  System::Call 'kernel32::CreateDirectoryW(w "$INSTDIR",p 0)i.r0'
+  ${If} $0 == 0
+    Abort "The installation directory must be new; existing files were preserved."
+  ${EndIf}
+  SetOverwrite off
+  ${If} $NativeArch == "x64"
+@@FILES_X64@@
+  ${ElseIf} $NativeArch == "arm64"
+@@FILES_ARM64@@
+  ${Else}
+    Abort "Native payload selection failed."
+  ${EndIf}
+  SetOutPath "$INSTDIR"
+  IfFileExists "$INSTDIR\Migration Stream.exe" 0 +2
+    Abort "Existing Open Object helper was preserved."
+  CopyFiles /SILENT "$EXEPATH" "$INSTDIR\Migration Stream.exe"
+  IfErrors 0 +2
+    Abort "Helper copy failed; partial installation was preserved."
+  ClearErrors
+  WriteUninstaller "$INSTDIR\Uninstall.exe"
+  IfErrors 0 +2
+    Abort "Uninstaller creation failed; partial installation was preserved."
+  ClearErrors
+  WriteRegStr HKCU "${OWNERKEY}" "Owner" "${OWNER}"
+  WriteRegStr HKCU "${OWNERKEY}" "InstallRoot" "$INSTDIR"
+  WriteRegStr HKCU "${OWNERKEY}" "Architecture" "$NativeArch"
+  WriteRegStr HKCU "Software\Classes\${PROGID}" "" "Migration Stream object"
+  WriteRegStr HKCU "Software\Classes\${PROGID}\shell\open\command" "" '$\"$INSTDIR\migration-stream-document-open.exe$\" $\"%1$\"'
+  WriteRegNone HKCU "Software\Classes\.mstream\OpenWithProgids" "${PROGID}"
+  WriteRegStr HKCU "${UNINSTALLKEY}" "DisplayName" "Migration Stream"
+  WriteRegStr HKCU "${UNINSTALLKEY}" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKCU "${UNINSTALLKEY}" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKCU "${UNINSTALLKEY}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
+  IfErrors 0 +2
+    Abort "Registration failed; partial installation was preserved."
+SectionEnd
+
+Section /o "Start Menu Open Object shortcut" SEC_SHORTCUT
+  Push "$SMPROGRAMS\Migration Stream"
+  Call RequireSafeAncestors
+  System::Call 'kernel32::CreateDirectoryW(w "$SMPROGRAMS\Migration Stream",p 0)i.r0'
+  ${If} $0 == 0
+    Abort "Existing Start Menu folder was preserved."
+  ${EndIf}
+  CreateShortCut "$SMPROGRAMS\Migration Stream\Open Object.lnk" "$INSTDIR\Migration Stream.exe" "/open"
+  IfErrors 0 +2
+    Abort "Shortcut creation failed; installed files were preserved."
+  WriteRegStr HKCU "${OWNERKEY}" "Shortcut" "$SMPROGRAMS\Migration Stream\Open Object.lnk"
+SectionEnd
+
+Function un.onInit
+  !insertmacro SELECT_NATIVE
+  Call un.OwnedInstallation
+FunctionEnd
+
+Function un.RemoveOwnedOpenWith
+  ReadRegStr $0 HKCU "Software\Classes\${PROGID}\shell\open\command" ""
+  ${If} $0 != '$\"$INSTDIR\migration-stream-document-open.exe$\" $\"%1$\"'
+    Return
+  ${EndIf}
+  System::Call 'advapi32::RegOpenKeyExW(p 0x80000001,w "Software\Classes\.mstream\OpenWithProgids",i 0,i 0x20119,*p.r1)i.r2'
+  ${If} $2 != 0
+    Return
+  ${EndIf}
+  System::Call 'advapi32::RegQueryValueExW(p r1,w "${PROGID}",p 0,*i.r3,p 0,*i.r4)i.r2'
+  System::Call 'advapi32::RegCloseKey(p r1)'
+  ${If} $2 == 0
+  ${AndIf} $3 == 0
+  ${AndIf} $4 == 0
+    DeleteRegValue HKCU "Software\Classes\.mstream\OpenWithProgids" "${PROGID}"
+    DeleteRegKey /ifempty HKCU "Software\Classes\.mstream\OpenWithProgids"
+  ${EndIf}
+FunctionEnd
+
+!macro DELETE_OWN_STRING KEY NAME EXPECTED
+  ReadRegStr $0 HKCU "${KEY}" "${NAME}"
+  ${If} $0 == '${EXPECTED}'
+    DeleteRegValue HKCU "${KEY}" "${NAME}"
+  ${EndIf}
+!macroend
+
+Section "Uninstall"
+  Call un.OwnedInstallation
+  ${If} $NativeArch == "x64"
+@@DELETE_X64@@
+  ${ElseIf} $NativeArch == "arm64"
+@@DELETE_ARM64@@
+  ${EndIf}
+  Call un.RemoveOwnedOpenWith
+  !insertmacro DELETE_OWN_STRING "Software\Classes\${PROGID}\shell\open\command" "" '$\"$INSTDIR\migration-stream-document-open.exe$\" $\"%1$\"'
+  !insertmacro DELETE_OWN_STRING "Software\Classes\${PROGID}" "" "Migration Stream object"
+  ReadRegStr $0 HKCU "${OWNERKEY}" "Shortcut"
+  ${If} $0 == "$SMPROGRAMS\Migration Stream\Open Object.lnk"
+    Push "$SMPROGRAMS\Migration Stream\Open Object.lnk"
+    Call un.RequireSafeAncestors
+    Delete "$SMPROGRAMS\Migration Stream\Open Object.lnk"
+    RMDir "$SMPROGRAMS\Migration Stream"
+    DeleteRegValue HKCU "${OWNERKEY}" "Shortcut"
+  ${EndIf}
+  !insertmacro DELETE_OWN_STRING "${UNINSTALLKEY}" "DisplayName" "Migration Stream"
+  !insertmacro DELETE_OWN_STRING "${UNINSTALLKEY}" "DisplayVersion" "${VERSION}"
+  !insertmacro DELETE_OWN_STRING "${UNINSTALLKEY}" "InstallLocation" "$INSTDIR"
+  !insertmacro DELETE_OWN_STRING "${UNINSTALLKEY}" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
+  !insertmacro DELETE_OWN_STRING "${OWNERKEY}" "Architecture" "$NativeArch"
+  !insertmacro DELETE_OWN_STRING "${OWNERKEY}" "InstallRoot" "$INSTDIR"
+  !insertmacro DELETE_OWN_STRING "${OWNERKEY}" "Owner" "${OWNER}"
+  DeleteRegKey /ifempty HKCU "Software\Classes\${PROGID}\shell\open\command"
+  DeleteRegKey /ifempty HKCU "Software\Classes\${PROGID}\shell\open"
+  DeleteRegKey /ifempty HKCU "Software\Classes\${PROGID}\shell"
+  DeleteRegKey /ifempty HKCU "Software\Classes\${PROGID}"
+  DeleteRegKey /ifempty HKCU "${UNINSTALLKEY}"
+  DeleteRegKey /ifempty HKCU "${OWNERKEY}"
+  Delete "$INSTDIR\install-owner.txt"
+  Delete "$INSTDIR\Migration Stream.exe"
+  Delete "$INSTDIR\Uninstall.exe"
+  RMDir "$INSTDIR"
+SectionEnd
