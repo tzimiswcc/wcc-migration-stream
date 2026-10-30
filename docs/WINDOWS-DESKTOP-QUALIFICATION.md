@@ -102,8 +102,12 @@ executes the direct compiler and retains its cleared environment and
 The preparation helper itself invokes no executable. Archive integrity and all
 copied resource bytes are revalidated after compilation; their hashes bind
 observed bytes, not publisher authentication or a supply-chain attestation.
-The final metadata includes the archive/preparation-receipt hashes, compiler
-file version/hash, nine pinned member hashes and Python version/hash. Any
+The final metadata includes the archive/preparation-receipt hashes, receipt-bound
+NSIS version and its `PINNED_ARCHIVE_RECEIPT` evidence type, compiler hash, nine
+pinned member hashes and Python version/hash. PE file-version metadata is
+optional and absent/null for this direct compiler, which has no `RT_VERSION`.
+It neither gates qualification nor triggers an executable version probe or a
+switch to the root stub. Any
 preparation/compile failure stops once and preserves explicitly unqualified
 transfer artifacts until their one-day expiry; no retry or broad deletion.
 

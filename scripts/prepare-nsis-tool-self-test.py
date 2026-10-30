@@ -62,15 +62,29 @@ class PreparationTests(unittest.TestCase):
   self.assertEqual(result['resourceRoot'],str(self.dest/m.PREFIX));self.assertFalse(result['executableInvokedByPreparation'])
   self.assertEqual(m._validate_prepared(self.dest,self.pins),result)
   self.assertEqual((self.dest/'release.zip').read_bytes(),self.data)
+ def test_unversioned_pe_uses_archive_receipt_not_optional_pe_metadata(self):
+  # Fake PE32 optional header has resource-directory RVA/size zero, just as
+  # the pinned direct compiler. It must not need an RT_VERSION to prepare.
+  result=self.prepare();compiler=self.dest/m.PREFIX/m.COMPILER
+  data=compiler.read_bytes();offset=struct.unpack_from('<I',data,60)[0]
+  self.assertEqual(struct.unpack_from('<II',data,offset+24+96+2*8),(0,0))
+  self.assertEqual(result['version'],'3.13');self.assertEqual(result['compilerSha256'],self.pins.members[m.COMPILER])
+  driver=(ROOT/'scripts/windows-desktop-installer-qualification.ps1').read_text()
+  self.assertIn("$prepared.version -ceq '3.13'",driver)
+  self.assertNotIn('FileMajorPart',driver);self.assertNotIn('FileMinorPart',driver)
+  self.assertIn('$nsisFileVersion=$null',driver)
+  self.assertIn("nsisVersion=$prepared.version;nsisVersionEvidence='PINNED_ARCHIVE_RECEIPT';nsisFileVersion=$nsisFileVersion",driver)
+  self.assertNotIn('--version',driver);self.assertNotIn('/VERSION',driver)
  def test_wrong_archive_hash_refuses_before_staging(self):
   with self.assertRaises(m.Refused):m._prepare_bytes(self.data,self.dest,replace(self.pins,sha256='0'*64))
   self.assertEqual(list(self.root.iterdir()),[])
  def test_traversal_device_ads_absolute_and_invalid_names_refuse(self):
-  for name in ('../escape','/absolute',m.PREFIX+'/../escape',m.PREFIX+'/CON.txt',m.PREFIX+'/a:stream',m.PREFIX+'/trail.',m.PREFIX+'/a\\b'):
+  for name in ('../escape','/absolute',m.PREFIX+'/../escape',m.PREFIX+'/CON.txt',m.PREFIX+'/NUL .txt',m.PREFIX+'/CON .txt',m.PREFIX+'/a:stream',m.PREFIX+'/trail.',m.PREFIX+'/a\\b'):
    with self.subTest(name=name):
     data,pins=fixture(extra=[(name,b'fake',stat.S_IFREG<<16)])
     with self.assertRaises(m.Refused):m._prepare_bytes(data,self.dest,pins)
     self.assertFalse(self.dest.exists())
+  m._component('ordinary .txt');m._component('Δοκιμή όνομα.txt')
  def test_case_aliases_and_links_refuse(self):
   for name,attributes in ((m.PREFIX+'/include/LOGICLIB.NSH',stat.S_IFREG<<16),(m.PREFIX+'/link',stat.S_IFLNK<<16)):
    data,pins=fixture(extra=[(name,b'fake',attributes)])

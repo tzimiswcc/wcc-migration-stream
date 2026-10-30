@@ -69,7 +69,8 @@ def _ordinary(path):
 def _component(part):
  require(type(part) is str and 1<=len(part)<=255 and part not in ('.','..') and not part.endswith(('.', ' ')))
  require(not any(c in part for c in '<>:"/\\|?*') and all(c.isprintable() for c in part))
- require(re.fullmatch(r'(?i:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])(?:\..*)?',part) is None)
+ device_stem=part.split('.',1)[0].rstrip(' ')
+ require(re.fullmatch(r'(?i:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])',device_stem) is None)
 def _plain(path,directory=False,absent=False):
  _ordinary(path)
  for entry in (*reversed(path.parents),path):
