@@ -381,7 +381,10 @@ comments or extra fields. It bounds the archive to 1 GiB, expanded contents to
 642 MiB, each member to 128 MiB, receipt to 1 MiB and layout to 4096 entries with
 bounded depth and names. It refuses ambiguous/case-colliding names, traversal,
 Windows device/drive/UNC/ADS paths, links, reparse points, special entries,
-overwrite and overlap. Fresh extraction stages beside the destination and moves
+overwrite and overlap. Public paths require an ordinary fully qualified drive
+spelling with valid unambiguous components; Unicode and interior spaces remain
+valid, while ADS, device names and trailing dots/spaces refuse before output
+creation. Fresh extraction stages beside the destination and moves
 without replacement; failed partials and visible outputs are preserved rather
 than recursively deleting uncertain ownership.
 
@@ -407,7 +410,7 @@ the workflow does not delete other artifacts or announce a qualified preview.
 
 Windows readonly/archive/normal attributes are not Runtime verification gates;
 this route does not restore attributes, ACLs, SIDs or original file identities.
-It does not promise Explorer/Unix-mode fidelity. It refuses a ZIP carrying a
+It does not promise Explorer/Unix-mode fidelity. It refuses any regular source-layout file or input ZIP carrying a
 `Zone.Identifier` stream instead of removing or silently discarding that marker.
 Browser downloads, MOTW propagation, SmartScreen, URI completion, application
 launch, installer behavior, signing and public platform support remain unqualified.
