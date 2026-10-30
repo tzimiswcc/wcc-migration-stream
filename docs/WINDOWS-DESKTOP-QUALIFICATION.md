@@ -188,3 +188,64 @@ fixed Python transfer CLI over newly generated temporary fake ZIP/JSON only.
 They never invoke a Runtime, controller, app, installer or product binary. Local
 portable tests model named/descriptor views independently; actual Windows native
 file semantics require the hosted changed-head source check.
+
+
+## Optional retained engineering candidate
+
+The fixed-pair workflow retains its default-off compile input and adds a separate
+`publish_engineering_candidate` boolean, also false by default. A fresh, exact
+reviewed-main approval is required before either operation. The earlier successful
+Setup qualification did not upload its ephemeral output; those bytes cannot now
+be recovered or relabeled as a downloadable candidate. A new Setup-only compile
+can reuse the same original native pair only while its fixed expiry and 20-minute
+admission margin still pass. It performs no native-product rebuild.
+
+With the separate publication input enabled, successful compile evidence is
+written create-only to `qualification-compile.json`. Its `setupUploaded: false`
+is the prepublication fact and remains unchanged. Exactly three fixed files are
+copied into a fresh stage: `Migration Stream Setup.exe`,
+`engineering-installer.json`, and `qualification-compile.json`. Both receipts are
+bounded to 16 KiB; source/receipt/tooling/compiler/product pins, ordinary-file
+identity, links, reparse points, alternate streams and PE/hash/size are checked.
+No compiler inputs, native layouts, logs or surrounding directories are uploaded.
+
+One pinned upload action publishes the flat engineering candidate for seven days,
+without overwrite. GitHub users with repository read access can download it after
+signing in. The same job verifies the returned artifact ID/digest against the exact
+run's single-artifact inventory, downloads only that immutable ID with digest
+mismatch set to error, and passively replays the three files. It rechecks retained
+source/staging freshness and emits separate
+`ENGINEERING_CANDIDATE_PUBLISHED_PASSIVE_REPLAY` evidence only after all checks
+pass. The outer artifact digest and Setup hash are different identities. A fresh
+compile may produce a different Setup hash; byte-for-byte reproducibility is not
+claimed. Publication evidence includes actual expiry, original product/native-pair
+identity and current tooling/run identity.
+
+If upload succeeds but later metadata/download/replay fails, the workflow fails
+and that candidate remains explicitly **unqualified**, possibly for seven days.
+There is no automatic retry, replacement or deletion. If original inputs are
+expired, unavailable or inside the safety margin, stop; a newly approved native
+pair and reviewed new pins are required. There is no fallback to arbitrary runs,
+URLs, artifact IDs, filenames or retention choices.
+
+After a successful published-candidate run, use that exact run's artifact link,
+ID, expiry and Setup hash. Download the artifact from GitHub Actions and extract
+it into a new folder. Compare the Setup SHA-256 with the publication evidence
+before deciding whether to run it. This is an unsigned engineering candidate,
+not a signed release or installer-execution qualification. The workflow never
+launches the Setup or product and performs no installation, uninstallation,
+file-association, Yoga/NUC/M1 operation, signing, security-policy change or GitHub
+Release. No SmartScreen, Mark-of-the-Web, native architecture-selection or installed
+Open With behavior is claimed. Any later manual evaluation is a separate human
+action; do not disable operating-system protections to make it pass.
+
+Offline source checks use tiny fake PE/JSON files only:
+
+```sh
+python3 -I -B scripts/windows-engineering-candidate-self-test.py
+python3 -I -B scripts/windows-combine-fixed-inputs-self-test.py
+```
+
+These tests forbid subprocess and HTTP operations. Windows source CI runs the same
+synthetic helper cases on both native architectures and parses the PowerShell
+source. It does not select the real compile/publication workflow.

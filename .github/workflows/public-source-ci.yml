@@ -52,6 +52,7 @@ jobs:
           python3 -I -B scripts/macos-engineering-qualification-self-test.py
           python3 -I -B scripts/windows-desktop-transfer-self-test.py
           python3 -I -B scripts/windows-combine-fixed-inputs-self-test.py
+          python3 -I -B scripts/windows-engineering-candidate-self-test.py
           python3 -I -B scripts/prepare-nsis-tool-self-test.py
       - name: Run candidate-compatible source gates
         shell: bash
@@ -123,6 +124,8 @@ jobs:
           python -I -B scripts/windows-desktop-transfer-self-test.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -I -B scripts/windows-desktop-transfer-self-test.py --native-cli-only
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -I -B scripts/windows-engineering-candidate-self-test.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prepare pinned portable NSIS and compile tiny synthetic template
         if: ${{ matrix.architecture == 'x64' }}

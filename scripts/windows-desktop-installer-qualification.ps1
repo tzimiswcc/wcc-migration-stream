@@ -231,6 +231,15 @@ try {
     }
     $json=$evidence | ConvertTo-Json -Depth 6 -Compress
     Require-Desktop ($json.Length -le 8192) 'G35'
+    # Create-only prepublication proof; its setupUploaded=false remains a fact
+    # even if the separately authorized optional publication later succeeds.
+    $compileReceipt=Join-Path $parent 'qualification-compile.json'
+    $receiptBytes=[Text.UTF8Encoding]::new($false).GetBytes($json+"`n")
+    $receiptStream=[IO.File]::Open($compileReceipt,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
+    try { $receiptStream.Write($receiptBytes,0,$receiptBytes.Length) } finally { $receiptStream.Dispose() }
+    $receiptHash=Hash-Desktop $compileReceipt
+    Output-Desktop 'compile_receipt_sha' $receiptHash
+    Output-Desktop 'compile_passed' 'true'
     Write-Output $json
   }
 } catch {
