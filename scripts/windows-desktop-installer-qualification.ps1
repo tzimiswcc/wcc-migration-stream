@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][ValidateSet('Native','AdmitTransfers','Combine')][string]$Operation)
+param([Parameter(Mandatory)][ValidateSet('Native','AdmitTransfers','Combine')][string]$Operation,[switch]$ReuseFixedNativePair)
 $desktopOperation = $Operation
 $ErrorActionPreference='Stop'
 $PSNativeCommandUseErrorActionPreference=$false
@@ -47,6 +47,33 @@ try {
   $script:desktopExitCode=$LASTEXITCODE
   Require-Desktop ($desktopStatus.Count -eq 0 -and $script:desktopExitCode -eq 0) 'G08'
   Require-Desktop (Test-Path -LiteralPath './scripts/package-windows-desktop.py' -PathType Leaf) 'G09'
+  # Default path retains same-source behavior. Only the closed reuse workflow
+  # can admit old product bytes, with independently recorded tooling provenance.
+  $productCommit=$env:GITHUB_SHA
+  $productTree=$desktopTree
+  $fixedPairAdmission=$null
+  if ($ReuseFixedNativePair) {
+    Set-DesktopStage 'source-admission'
+    Require-Desktop ($desktopOperation -cin @('AdmitTransfers','Combine')) 'G37'
+    $admissionPython=(Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1).Path
+    $admissionText = @(& $admissionPython -I -B scripts/windows-combine-fixed-inputs.py --admit)
+    $script:desktopExitCode=$LASTEXITCODE
+    $env:GH_TOKEN=$null
+    Require-Desktop ($script:desktopExitCode -eq 0 -and ($admissionText -join '').Length -le 16384) 'G38'
+    $fixedPairAdmission=($admissionText -join "`n") | ConvertFrom-Json
+    Require-Desktop ($fixedPairAdmission.status -ceq 'FIXED_NATIVE_PAIR_ADMITTED' -and $fixedPairAdmission.tooling.commit -ceq $env:GITHUB_SHA -and $fixedPairAdmission.tooling.tree -ceq $desktopTree) 'G39'
+    $productCommit=$fixedPairAdmission.productBuild.sourceCommit
+    $productTree=$fixedPairAdmission.productBuild.sourceTree
+    foreach ($arch in @('x64','arm64')) {
+      $pin=$fixedPairAdmission.inputs.$arch
+      $prefix=$arch.ToUpperInvariant()
+      foreach ($pair in @(@('ARTIFACT_ID',[string]$pin.id),@('ARTIFACT_DIGEST',$pin.digest),@('ARCHIVE_SHA',$pin.archive),@('RECEIPT_SHA',$pin.receipt),@('TREE',$productTree),@('SNAPSHOT',$fixedPairAdmission.productBuild.sourceSnapshotSha256))) {
+        Require-Desktop ([Environment]::GetEnvironmentVariable($prefix+'_'+$pair[0]) -ceq $pair[1]) 'G40'
+      }
+    }
+  } else {
+    Require-Desktop ($env:REUSE_FIXED_NATIVE_PAIR -cne 'true') 'G41'
+  }
   if ($desktopOperation -ceq 'Native') {
     # Intentional same-scope composition retains only the existing driver's
     # freshly created output paths. Its guards, build recipe and probes stay intact.
@@ -74,7 +101,7 @@ try {
     $tuple=Get-PreviewTarget 'x64'
     Assert-PreviewNativeHost $tuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())
     Set-DesktopStage 'transfer-metadata'
-    Require-Desktop ($env:X64_TREE -ceq $desktopTree -and $env:ARM64_TREE -ceq $desktopTree -and $env:X64_SNAPSHOT -ceq $env:ARM64_SNAPSHOT -and $env:X64_SNAPSHOT -cmatch '^[0-9a-f]{64}$') 'G14'
+    Require-Desktop ($env:X64_TREE -ceq $productTree -and $env:ARM64_TREE -ceq $productTree -and $env:X64_SNAPSHOT -ceq $env:ARM64_SNAPSHOT -and $env:X64_SNAPSHOT -cmatch '^[0-9a-f]{64}$') 'G14'
     foreach ($arch in @('X64','ARM64')) {
       Require-Desktop ([Environment]::GetEnvironmentVariable($arch+'_ARTIFACT_ID') -cmatch '^[0-9]{1,20}$') 'G15'
       foreach ($field in @('ARTIFACT_DIGEST','ARCHIVE_SHA','RECEIPT_SHA')) { Require-Desktop ([Environment]::GetEnvironmentVariable($arch+'_'+$field) -cmatch '^[0-9a-f]{64}$') 'G36' }
@@ -109,7 +136,13 @@ try {
       $items=@(Get-ChildItem -LiteralPath $downloadInput -Force)
       Require-Desktop ($items.Count -eq 2 -and @($items | Where-Object { $_.PSIsContainer -or ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) }).Count -eq 0) 'G21'
       Require-Desktop (@($items.Name | Where-Object { $_ -cnotin @('native-layout.zip','qualification.json') }).Count -eq 0) 'G22'
-      $toolArguments=@('-B','scripts/windows-desktop-transfer.py','--archive',(Join-Path $downloadInput 'native-layout.zip'),'--archive-sha',[Environment]::GetEnvironmentVariable($arch.ToUpperInvariant()+'_ARCHIVE_SHA'),'--receipt',(Join-Path $downloadInput 'qualification.json'),'--receipt-sha',[Environment]::GetEnvironmentVariable($arch.ToUpperInvariant()+'_RECEIPT_SHA'),'--destination',(Join-Path $parent $arch),'--architecture',$arch,'--source-commit',$env:GITHUB_SHA,'--source-tree',$desktopTree)
+      if ($ReuseFixedNativePair) {
+        $receiptItem=Get-Item -LiteralPath (Join-Path $downloadInput 'qualification.json') -Force
+        Require-Desktop ($receiptItem.Length -le 1MB) 'G42'
+        $nativeReceipt=Get-Content -Raw -LiteralPath $receiptItem.FullName | ConvertFrom-Json
+        Require-Desktop ($nativeReceipt.runId -is [string] -and $nativeReceipt.runId -ceq $fixedPairAdmission.productBuild.nativeRunId -and ($nativeReceipt.runAttempt -is [long] -or $nativeReceipt.runAttempt -is [int]) -and $nativeReceipt.runAttempt -eq 1) 'G43'
+      }
+      $toolArguments=@('-B','scripts/windows-desktop-transfer.py','--archive',(Join-Path $downloadInput 'native-layout.zip'),'--archive-sha',[Environment]::GetEnvironmentVariable($arch.ToUpperInvariant()+'_ARCHIVE_SHA'),'--receipt',(Join-Path $downloadInput 'qualification.json'),'--receipt-sha',[Environment]::GetEnvironmentVariable($arch.ToUpperInvariant()+'_RECEIPT_SHA'),'--destination',(Join-Path $parent $arch),'--architecture',$arch,'--source-commit',$productCommit,'--source-tree',$productTree)
       Set-DesktopStage ($arch+'-passive-replay')
       $result=@(& $python @toolArguments)
       $script:desktopExitCode=$LASTEXITCODE
@@ -144,7 +177,7 @@ try {
     $product=(Get-Content -Raw -LiteralPath Cargo.toml | Select-String -Pattern '(?m)^version = "([0-9]+\.[0-9]+\.[0-9]+)"$').Matches
     Require-Desktop ($product.Count -eq 1) 'G29'
     $version=$product[0].Groups[1].Value
-    $toolArguments=@('-B','scripts/package-windows-desktop.py','--source-commit',$env:GITHUB_SHA,'--source-tree',$desktopTree,'--source-snapshot-sha256',$env:X64_SNAPSHOT,'--product-version',$version,'--makensis',$makensis,'--makensis-sha256',$nsisHash,'--output-directory',(Join-Path $parent 'installer'))
+    $toolArguments=@('-B','scripts/package-windows-desktop.py','--source-commit',$productCommit,'--source-tree',$productTree,'--source-snapshot-sha256',$env:X64_SNAPSHOT,'--product-version',$version,'--makensis',$makensis,'--makensis-sha256',$nsisHash,'--output-directory',(Join-Path $parent 'installer'))
     foreach ($arch in @('x64','arm64')) { $toolArguments+=@(('--'+$arch+'-layout'),(Join-Path $parent ($arch+'/engineering-layout')),('--'+$arch+'-receipt'),(Join-Path $env:RUNNER_TEMP ('migration-stream-desktop-download-'+$arch+'-'+$env:GITHUB_RUN_ID+'/qualification.json')),('--'+$arch+'-receipt-sha256'),[Environment]::GetEnvironmentVariable($arch.ToUpperInvariant()+'_RECEIPT_SHA')) }
     Set-DesktopStage 'installer-compile'
     $result=@(& $python @toolArguments)
@@ -161,8 +194,13 @@ try {
     $script:desktopExitCode=$LASTEXITCODE
     Require-Desktop ($desktopStatus.Count -eq 0 -and $script:desktopExitCode -eq 0) 'G34'
     Set-DesktopStage 'final-evidence'
-    $evidence=[ordered]@{schemaVersion='migration-stream/windows-desktop-installer-qualification/v1';status='COMPILED_PASSIVE_BYTES_ONLY';sourceCommit=$env:GITHUB_SHA;sourceTree=$desktopTree;sourceSnapshotSha256=$env:X64_SNAPSHOT;runId=$env:GITHUB_RUN_ID;runAttempt=1;pythonVersion=$pythonVersion[0];pythonSha256=(Hash-Desktop $python);nsisArchiveSha256=$prepared.archiveSha256;nsisPreparationReceiptSha256=$prepared.preparedReceiptSha256;nsisExeSha256=$nsisHash;nsisVersion=$prepared.version;nsisVersionEvidence='PINNED_ARCHIVE_RECEIPT';nsisFileVersion=$nsisFileVersion;nsisResourceSha256=$resourceHashes;x64ArtifactId=$env:X64_ARTIFACT_ID;x64ArtifactDigest=$env:X64_ARTIFACT_DIGEST;arm64ArtifactId=$env:ARM64_ARTIFACT_ID;arm64ArtifactDigest=$env:ARM64_ARTIFACT_DIGEST;installerSha256=$proof.installer.sha256;installerBytes=$proof.installer.bytes;installerExecuted=$false;setupUploaded=$false;transferRetentionDays=1}
-    $json=$evidence | ConvertTo-Json -Compress
+    $evidence=[ordered]@{schemaVersion='migration-stream/windows-desktop-installer-qualification/v1';status='COMPILED_PASSIVE_BYTES_ONLY';sourceCommit=$productCommit;sourceTree=$productTree;sourceSnapshotSha256=$env:X64_SNAPSHOT;runId=$env:GITHUB_RUN_ID;runAttempt=1;pythonVersion=$pythonVersion[0];pythonSha256=(Hash-Desktop $python);nsisArchiveSha256=$prepared.archiveSha256;nsisPreparationReceiptSha256=$prepared.preparedReceiptSha256;nsisExeSha256=$nsisHash;nsisVersion=$prepared.version;nsisVersionEvidence='PINNED_ARCHIVE_RECEIPT';nsisFileVersion=$nsisFileVersion;nsisResourceSha256=$resourceHashes;x64ArtifactId=$env:X64_ARTIFACT_ID;x64ArtifactDigest=$env:X64_ARTIFACT_DIGEST;arm64ArtifactId=$env:ARM64_ARTIFACT_ID;arm64ArtifactDigest=$env:ARM64_ARTIFACT_DIGEST;installerSha256=$proof.installer.sha256;installerBytes=$proof.installer.bytes;installerExecuted=$false;setupUploaded=$false;transferRetentionDays=1}
+    if ($ReuseFixedNativePair) {
+      $evidence['reusedInputs']=$true
+      $evidence['productBuild']=$fixedPairAdmission.productBuild
+      $evidence['tooling']=$fixedPairAdmission.tooling
+    }
+    $json=$evidence | ConvertTo-Json -Depth 6 -Compress
     Require-Desktop ($json.Length -le 8192) 'G35'
     Write-Output $json
   }

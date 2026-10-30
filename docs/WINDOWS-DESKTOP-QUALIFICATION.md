@@ -138,3 +138,28 @@ contracts. Windows source CI also parses the new PowerShell driver without
 executing it. Local Mac tests do not qualify Windows publication semantics,
 PowerShell parsing, portable NSIS preparation/compilation, real artifact transport or
 same-source native builds. Preserve first failures; no automatic retry.
+
+
+## One fixed old native pair: proposed Combine-only lane
+
+`windows-combine-fixed-inputs.yml` is manual/default-off, main-only and first-attempt
+only. It requires a separately approved exact tooling SHA and one15-minute run.
+It admits only original run41057681963's two fixed artifact IDs, hashes, native
+jobs and a61 product commit/tree/snapshot. The earlier native builds are not
+relabeled with the newer diagnostic tooling commit. Both identities appear in
+final evidence. Source admission refuses any changed product, transfer, packager
+or NSIS template; only the explicit reviewed diagnostics/lane paths may differ.
+
+Admission checks producer metadata and requires20minutes remaining before BOTH
+fixed expiries (earliest2026-10-31T12:55:37Z), before downloads and again before
+Combine. Missing/expired/deleted/changed inputs refuse; no fallback or rebuild.
+This deliberately time-limited lane is not a generic artifact reuse service.
+Existing pinned exact-ID downloads, passive archive/receipt/PE/graph checks,
+12GB disk/8GB memory gates and pinned portable NSIS preparation remain. Only x64
+compiler runs; ARM payload is passive. Setup remains ephemeral and is never run
+or uploaded. No installer/app/runtime, registry or device operation is admitted.
+
+Source/synthetic tests do not approve a run. The workflow must first be reviewed
+and present on the default branch; a fresh concrete execution decision remains
+required. Prior native qualification grants are consumed. Command failures may
+still refuse; reuse does not establish or repair the old Combine failure cause.
