@@ -37,7 +37,32 @@ def require(condition):
     if not condition: raise PackagingError("desktop packaging input refused")
 
 def signature(info):
-    return (info.st_dev,info.st_ino,info.st_size,stat.S_IMODE(info.st_mode),info.st_mtime_ns,info.st_ctime_ns)
+    # A fingerprint is compared only within the same stat interface. CPython's
+    # Windows path and descriptor APIs intentionally synthesize different mode
+    # and ctime values; neither field is discarded from its own freshness cut.
+    return (info.st_dev,info.st_ino,info.st_size,info.st_mode,info.st_mtime_ns,info.st_ctime_ns,
+            info.st_nlink,getattr(info,"st_birthtime_ns",None),
+            getattr(info,"st_file_attributes",None),getattr(info,"st_reparse_tag",None))
+
+def bind_file_interfaces(named,opened, *, windows=None):
+    if windows is None: windows=os.name=="nt"
+    for info in (named,opened):
+        require(stat.S_ISREG(info.st_mode) and info.st_nlink==1 and info.st_ino!=0)
+        require(not (getattr(info,"st_file_attributes",0)&0x400) and not getattr(info,"st_reparse_tag",0))
+    if not windows:
+        require(signature(named)==signature(opened))
+        return
+    # CPython 3.12 update_st_mode_from_path adds 0111 by extension; fstat
+    # does not. Keep readonly/write bits and all other mode/type bits bound.
+    require((named.st_mode & ~0o111)==(opened.st_mode & ~0o111))
+    require((named.st_dev,named.st_ino,named.st_size,named.st_mtime_ns,named.st_nlink)==
+            (opened.st_dev,opened.st_ino,opened.st_size,opened.st_mtime_ns,opened.st_nlink))
+    for field in ("st_birthtime_ns","st_file_attributes","st_reparse_tag"):
+        left,right=getattr(named,field,None),getattr(opened,field,None)
+        require(left==right)  # Missing on only one interface is unknown/refusal.
+        if field=="st_file_attributes": require(left is not None)
+    # Path ctime is legacy creation time in CPython 3.12; descriptor ctime is
+    # FileBasicInfo.ChangeTime. Each remains checked against its own end read.
 
 def no_streams(path):
     if os.name != "nt": return  # Portable synthetic files have no NTFS stream API.
@@ -90,15 +115,18 @@ def file_record(path, maximum=MAX_FILE):
     real_path(path);info=path.lstat()
     require(stat.S_ISREG(info.st_mode) and info.st_nlink==1 and 0<=info.st_size<=maximum)
     no_streams(path)
-    flags=os.O_RDONLY | getattr(os,"O_NOFOLLOW",0) | getattr(os,"O_NONBLOCK",0)
+    flags=os.O_RDONLY | getattr(os,"O_NOFOLLOW",0) | getattr(os,"O_NONBLOCK",0) | getattr(os,"O_BINARY",0)
     fd=os.open(path,flags)
     try:
-        before=os.fstat(fd);require(signature(before)==signature(info) and before.st_nlink==1)
+        before=os.fstat(fd);bind_file_interfaces(info,before)
         data=bytearray()
         while chunk:=os.read(fd,65536):
             require(len(data)+len(chunk)<=maximum);data.extend(chunk)
-        require(len(data)==before.st_size and signature(before)==signature(os.fstat(fd)) and signature(before)==signature(path.lstat()))
+        require(len(data)==before.st_size and signature(before)==signature(os.fstat(fd)))
         no_streams(path)
+        current=path.lstat()
+        require(signature(info)==signature(current))
+        bind_file_interfaces(current,before)
         return {"bytes":len(data),"sha256":hashlib.sha256(data).hexdigest(),"mode":stat.S_IMODE(before.st_mode),"identity":signature(before)},bytes(data)
     finally: os.close(fd)
 
