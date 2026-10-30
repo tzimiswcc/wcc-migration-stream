@@ -338,9 +338,24 @@ def source_identity(source, expected, runner):
     return actual
 
 
+def publication_handoff(work):
+    """Export only a successful private result's path/hash to the opt-in step."""
+    require(os.environ.get("PUBLISH_MACOS_ENGINEERING_CANDIDATE") == "true"
+            and os.environ.get("GITHUB_REF") == "refs/heads/main"
+            and os.environ.get("GITHUB_REPOSITORY") == "tzimiswcc/wcc-migration-stream",
+            "publication handoff requires the explicit main-only option")
+    value = str(work)
+    require("\n" not in value and "\r" not in value and len(value) <= 4096,
+            "publication workspace path refused")
+    sha = a._file_record(work / "qualification.json")[3]
+    with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
+        stream.write("qualified_work=" + value + "\nqualification_sha=" + sha + "\n")
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-source-commit", required=True)
+    parser.add_argument("--publication-handoff", action="store_true")
     args = parser.parse_args(argv)
     work = None
     try:
@@ -351,6 +366,11 @@ def main(argv=None):
         require(os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
                 and os.environ.get("GITHUB_RUN_ATTEMPT") == "1"
                 and os.environ.get("GITHUB_SHA") == expected, "one exact manual workflow attempt required")
+        if args.publication_handoff:
+            require(os.environ.get("PUBLISH_MACOS_ENGINEERING_CANDIDATE") == "true"
+                    and os.environ.get("GITHUB_REF") == "refs/heads/main"
+                    and os.environ.get("GITHUB_REPOSITORY") == "tzimiswcc/wcc-migration-stream",
+                    "publication requires explicit main-only option")
         source = Path(__file__).resolve().parents[1]
         parent = Path(os.environ.get("RUNNER_TEMP", ""))
         directory_id(parent)
@@ -415,6 +435,8 @@ def main(argv=None):
                       privateCopyRuntimeVerifyCalls=1, appLaunched=False, installed=False, signed=False,
                       notarized=False, uploaded=False)
         write_json(work / "qualification.json", result)
+        if args.publication_handoff:
+            publication_handoff(work)
         print(json.dumps(result, sort_keys=True, separators=(",", ":")))
         print("Retained runner-private qualification workspace: " + str(work))
         return 0
