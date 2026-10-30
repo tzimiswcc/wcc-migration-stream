@@ -2,6 +2,7 @@
 """Pure/synthetic packaging proof; no native product/tools/desktop operations."""
 import contextlib
 from dataclasses import replace
+import gzip
 import hashlib
 import importlib.util
 import io
@@ -62,6 +63,28 @@ def tar_members(data):
             assert member.uid == member.gid == 0
             result[member.name] = (member.mode, None if member.isdir() else archive.extractfile(member).read())
     return result
+
+
+def raw_tar_headers(data, *, partial=False):
+    """Check actual 512-byte headers, without tarfile's transparent PAX reader."""
+    decoded = gzip.decompress(data)
+    headers, offset = [], 0
+    while offset < len(decoded):
+        header = decoded[offset:offset + 512]
+        assert len(header) == 512
+        if header == bytes(512):
+            assert decoded[offset:] == bytes(len(decoded) - offset)
+            assert partial or len(decoded) - offset >= 1024
+            return headers
+        assert header[257:263] == b"ustar\0" and header[263:265] == b"00"
+        assert header[156:157] in (b"0", b"5")  # No PAX x/g or link/special types.
+        checksum = int(header[148:156].strip(b" \0"), 8)
+        assert checksum == sum(header[:148] + b" " * 8 + header[156:])
+        size = int(header[124:136].strip(b" \0"), 8)
+        headers.append(header)
+        offset += 512 + ((size + 511) // 512) * 512
+    assert partial and offset == len(decoded)
+    return headers
 
 
 class PackagingTests(unittest.TestCase):
@@ -138,6 +161,8 @@ class PackagingTests(unittest.TestCase):
                 ar = ar_members(artifact)
                 self.assertEqual(list(ar), ["debian-binary", "control.tar.gz", "data.tar.gz"])
                 self.assertEqual(ar["debian-binary"], b"2.0\n")
+                self.assertTrue(raw_tar_headers(ar["control.tar.gz"]))
+                self.assertTrue(raw_tar_headers(ar["data.tar.gz"]))
                 control = tar_members(ar["control.tar.gz"])
                 self.assertEqual(set(control), {"control"})  # No maintainer/autostart scripts.
                 text = control["control"][1].decode()
@@ -150,6 +175,7 @@ class PackagingTests(unittest.TestCase):
                 self.assertIn("NoDisplay=true\n", entry)
                 self.assertIn("*.mstream", data["usr/share/mime/packages/migration-stream.xml"][1].decode())
             else:
+                self.assertTrue(raw_tar_headers(artifact))
                 data = tar_members(artifact)
                 prefix = "migration-stream-0.1.0+git111111111111-1-linux-x64-gnu/Runtime/"
             captured = {name[len(prefix):]: value for name, value in data.items() if name.startswith(prefix)}
@@ -303,6 +329,18 @@ class PackagingTests(unittest.TestCase):
         with patch.object(p, "MAX_ARCHIVE", 20), self.assertRaises(p.PackagingError):
             self.package()
         self.assertFalse(self.request.destination.exists())
+
+    def test_ustar_refuses_unrepresentable_long_name_without_pax_fallback(self):
+        source = self.root / "long-name-input"
+        source.mkdir()
+        # One basename over USTAR's 100-byte field cannot use its prefix split.
+        (source / ("n" * 101)).write_bytes(b"synthetic source member")
+        output = self.root / "private-partial.tar.gz"
+        with self.assertRaises(ValueError):
+            p._tar(output, source, p._snapshot(source), "portable")
+        headers = raw_tar_headers(output.read_bytes(), partial=True)
+        self.assertEqual(len(headers), 1)  # Only the ordinary root header preceded refusal.
+        self.assertEqual(headers[0][156:157], b"5")
 
     def test_dependency_control_injection_is_refused(self):
         with self.assertRaises(p.PackagingError):

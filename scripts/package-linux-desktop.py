@@ -384,7 +384,9 @@ def _tar(path, root, rows, prefix=""):
             self.output.flush()
 
     with path.open("xb") as output, gzip.GzipFile(filename="", mode="wb", fileobj=BoundedOutput(output), mtime=0) as compressed:
-        with tarfile.open(fileobj=compressed, mode="w|", format=tarfile.PAX_FORMAT) as archive:
+        # Debian deb(5) admits USTAR, not PAX x/g extension headers. Use the
+        # same explicit subset for portable output; unrepresentable names refuse.
+        with tarfile.open(fileobj=compressed, mode="w|", format=tarfile.USTAR_FORMAT) as archive:
             for name, row in rows.items():
                 target = root if name == "." else root / name
                 member = prefix if name == "." else (prefix + "/" + name if prefix else name)
