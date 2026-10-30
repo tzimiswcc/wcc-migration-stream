@@ -299,8 +299,13 @@ Repository Actions policy must also explicitly allow every exact action pin in
 this workflow, including the upload/download pins when preview steps exist.
 Neither source CI nor a reviewed merge changes that policy or admits a build.
 
-The intended lane is one ephemeral `windows-2025` x64 job, with Node 24.22.1,
-npm 12.2.1 and Rust 1.99.1. It selects existing runner Python 3.10 or later in
+The engineering operator selects exactly `x64` (default) or `arm64`. This selects
+one ephemeral 45-minute native job: `windows-2025` / AMD64 / X64 /
+`x86_64-pc-windows-msvc`, or `windows-11-arm` / ARM64 / Arm64 /
+`aarch64-pc-windows-msvc`. Both retain Node 24.22.1, npm 12.2.1 and Rust 1.99.1.
+Setup selects native Node explicitly; admission checks its actual `process.arch`,
+the OS, PowerShell process and processor tuple, and the exact pinned Rust host.
+Emulated or mixed tool/OS tuples refuse. Runner image labels alone are not proof. It selects existing runner Python 3.10 or later in
 the 3.x series and records its actual version and byte hash; it does not install
 or infer a product Python requirement. Native architecture checks, at least
 12 GiB free on the temporary drive and 8 GiB physical memory precede building.
@@ -376,9 +381,14 @@ A future real build, archive, upload and download replay need separate concrete
 execution approval; source review and synthetic CI do not admit that operation.
 
 The purpose-only `scripts/windows-engineering-preview.ps1` accepts `Pack` with
-explicit `-Layout`, `-BuildReceipt` and create-only `-Archive`, or `Extract` with
-`-Archive`, trusted external `-ExpectedArchiveSha256` and nonexistent
-`-Destination`. Production commands have no verifier-skip option. The caller must
+explicit `-Architecture x64|arm64`, `-Layout`, `-BuildReceipt` and create-only
+`-Archive`, or `Extract` with the explicit expected `-Architecture`, `-Archive`,
+trusted external `-ExpectedArchiveSha256` and nonexistent `-Destination`.
+The expected lane is never selected from the archive. A valid archive hash still
+refuses a mismatched architecture/target receipt before extraction. Source,
+manifest, native PE target and byte/graph gates remain in the existing builder
+and Runtime verifier. Candidate names, step exports, replay results and final
+evidence carry the same closed architecture and target tuple. Production commands have no verifier-skip option. The caller must
 already trust the same-source engineering build; SHA-256 identifies bytes rather
 than publisher, compiler or signing provenance. Extraction checks the closed ZIP
 hash before opening its member catalog. The ZIP's bounded receipt binds public
@@ -425,6 +435,11 @@ It does not promise Explorer/Unix-mode fidelity. It refuses any regular source-l
 Browser downloads, MOTW propagation, SmartScreen, URI completion, application
 launch, installer behavior, signing and public platform support remain unqualified.
 
+Windows source CI retains x64 coverage and adds a native ARM64 matrix lane. Each
+lane checks the actual OS/process/processor tuple and pinned `rustc -vV` host
+before using its native test projection. Positive engineering PE fixtures follow
+the native Windows host; the wrong-architecture fixture uses the opposite PE
+machine. Explicit both-architecture parser accept/refusal pairs remain.
 Windows source CI parses the builder, external qualification driver, embedded
 workflow blocks, preview helper and test script, then runs only tiny fake
 ZIP fixtures via `scripts/windows-engineering-preview.Tests.ps1`. The private
@@ -435,3 +450,12 @@ behavior require the Windows source run; static Python/YAML checks alone do not
 prove them.
 
 [run-limit]: https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsrun
+
+
+The delivery goal is **one Windows download with automatic native architecture
+selection**, potentially an MSIX bundle containing x64 and ARM64 packages. This
+patch only prepares the underlying native engineering builds and source tests;
+it does not implement or qualify MSIX, signing, installation, distribution or
+an end-user architecture picker. Engineering ZIP candidates are internal proof
+outputs, not the final delivery UX. Native ARM64 source preparation does not
+claim that a real ARM64 artifact or the Yoga has been tested.

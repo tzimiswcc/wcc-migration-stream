@@ -12,7 +12,8 @@ $qualificationMetadata = [ordered]@{
   commandExitCode = $null
   sourceCommit = $null
   sourceTree = $null
-  target = 'x86_64-pc-windows-msvc'
+  architecture = $null
+  target = $null
   runnerImageVersion = $null
   nodeVersion = '24.22.1'
   npmVersion = '12.2.1'
@@ -99,11 +100,12 @@ try {
   if ($env:EXPECTED_SOURCE_COMMIT -cnotmatch '^[0-9a-f]{40}$' -or $env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT) {
     throw 'exact reviewed source commit required'
   }
-  if ($env:PROCESSOR_ARCHITECTURE -cne 'AMD64' -or
-      [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -cne 'X64' -or
-      [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString() -cne 'X64') {
-    throw 'native Windows x64 required'
-  }
+  . (Join-Path (Get-Location).Path 'scripts/windows-engineering-preview.ps1')
+  $targetTuple=Get-PreviewTarget $env:QUALIFICATION_ARCHITECTURE
+  Assert-PreviewNativeHost $targetTuple $env:PROCESSOR_ARCHITECTURE ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())
+  if ($env:RUSTUP_TOOLCHAIN -cne $targetTuple.toolchain) { throw 'exact native Rust selection required' }
+  $qualificationMetadata.architecture=$targetTuple.architecture
+  $qualificationMetadata.target=$targetTuple.target
   foreach ($name in @('RUSTC_WRAPPER','RUSTC_WORKSPACE_WRAPPER','RUSTFLAGS','CARGO_ENCODED_RUSTFLAGS','CARGO_TARGET_DIR','CARGO_BUILD_TARGET')) {
     if ([Environment]::GetEnvironmentVariable($name, 'Process')) { throw 'unplanned build override refused' }
   }
@@ -154,7 +156,7 @@ try {
   $env:CARGO_BUILD_JOBS = '2'
   $qualificationNode = Get-QualificationTool 'node.exe'
   $qualificationBootstrapNpm = Get-QualificationTool 'npm.cmd'
-  if ((@(& $qualificationNode --version 2>&1) -join '').Trim() -cne 'v24.22.1' -or $LASTEXITCODE -ne 0 -or
+  if ((@(& $qualificationNode -p "'v'+process.versions.node+' '+process.arch" 2>&1) -join '').Trim() -cne ('v24.22.1 '+$targetTuple.node) -or $LASTEXITCODE -ne 0 -or
       (Get-Content -Raw web/.node-version).Trim() -cne '24.22.1' -or
       (Read-QualificationJson 'web/package.json' 64KB).packageManager -cne 'npm@12.2.1') {
     throw 'pinned Node/npm source contract differs'
@@ -171,16 +173,14 @@ try {
   if ($pythonNumber.Major -ne 3 -or $pythonNumber.Minor -lt 10) { throw 'runner Python3.10 or later required' }
   $qualificationMetadata.pythonVersion = $pythonNumber.ToString()
   $qualificationRustup = Get-QualificationTool 'rustup.exe'
-  Invoke-QualificationTool 'rust-preparation' $qualificationRustup @('toolchain','install','1.99.1','--profile','minimal')
-  $qualificationCargo = (@(& $qualificationRustup which --toolchain 1.99.1 cargo 2>&1) -join '').Trim()
+  Invoke-QualificationTool 'rust-preparation' $qualificationRustup @('toolchain','install',$targetTuple.toolchain,'--profile','minimal')
+  $qualificationCargo = (@(& $qualificationRustup which --toolchain $targetTuple.toolchain cargo 2>&1) -join '').Trim()
   if ($LASTEXITCODE -ne 0) { throw 'pinned Cargo unavailable' }
-  $qualificationRustc = (@(& $qualificationRustup which --toolchain 1.99.1 rustc 2>&1) -join '').Trim()
+  $qualificationRustc = (@(& $qualificationRustup which --toolchain $targetTuple.toolchain rustc 2>&1) -join '').Trim()
   if ($LASTEXITCODE -ne 0) { throw 'pinned rustc unavailable' }
   $rustVersion = @(& $qualificationRustc -vV 2>&1)
-  if ($LASTEXITCODE -ne 0 -or $rustVersion[0] -cnotmatch '^rustc 1\.99\.1 ' -or
-      @($rustVersion | Where-Object { $_ -ceq 'host: x86_64-pc-windows-msvc' }).Count -ne 1) {
-    throw 'pinned Rust native host differs'
-  }
+  if ($LASTEXITCODE -ne 0) { throw 'pinned Rust unavailable' }
+  Assert-PreviewRustHost $targetTuple $rustVersion
   $npmPrefix = Join-Path $qualificationParent 'npm-tool'
   Invoke-QualificationTool 'npm-preparation' $qualificationBootstrapNpm @('install','--prefix',$npmPrefix,'--ignore-scripts','--no-audit','--no-fund','npm@12.2.1')
   $qualificationNpm = Join-Path $npmPrefix 'node_modules/.bin/npm.cmd'
@@ -191,11 +191,11 @@ try {
   }
   # Online locked cache preparation is explicit. No product command yet.
   Invoke-QualificationTool 'npm-cache' $qualificationNpm @('--prefix','web','ci','--ignore-scripts','--no-audit','--no-fund')
-  Invoke-QualificationTool 'cargo-cache' $qualificationCargo @('fetch','--locked','--target','x86_64-pc-windows-msvc')
+  Invoke-QualificationTool 'cargo-cache' $qualificationCargo @('fetch','--locked','--target',$targetTuple.target)
   $env:CARGO_NET_OFFLINE = 'true'
   $env:npm_config_offline = 'true'
   $env:MIGRATION_STREAM_ENABLE_WINDOWS_NATIVE_ACCEPTANCE_CANDIDATE = '1'
-  $qualificationRuntime = Join-Path $qualificationParent 'migration-stream-local-windows-x64'
+  $qualificationRuntime = Join-Path $qualificationParent $targetTuple.artifact
   $qualificationRetained = Join-Path $qualificationParent 'migration-stream-private-bundle-build'
   $qualificationRuntimeResult = Join-Path $qualificationParent 'runtime-assembly.json'
   # This executes the existing mandatory metadata/Verify probes, including
@@ -207,7 +207,7 @@ try {
   $reservation = [IO.File]::Open($buildLog, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
   $reservation.Dispose()
   & (Join-Path $qualificationRepository 'scripts/build-assisted-runtime-bundle.ps1') `
-    -Output $qualificationRuntime -Target 'x86_64-pc-windows-msvc' -NoArchive `
+    -Output $qualificationRuntime -Target $targetTuple.target -NoArchive `
     -RetainedBuildRoot $qualificationRetained -AssemblerResultFile $qualificationRuntimeResult -RetainEngineeringTools *>> $buildLog
   $qualificationMetadata.commandExitCode = $LASTEXITCODE
   if ($LASTEXITCODE -ne 0 -or (Get-Item -LiteralPath $buildLog).Length -gt 64MB) { throw 'runtime build refused or failed' }
@@ -245,8 +245,8 @@ try {
   Assert-QualificationResultPath $verified.bundleRoot (Join-Path $qualificationOutput 'Runtime')
   if ($verified.productCommit -cne $head -or $verified.sourceState -cne 'CLEAN' -or
       $verified.sourceSnapshotSha256 -cne $qualificationMetadata.sourceSnapshotSha256 -or
-      $verified.target.os -cne 'windows' -or $verified.target.architecture -cne 'x64' -or
-      $verified.target.targetTriple -cne 'x86_64-pc-windows-msvc' -or
+      $verified.target.os -cne 'windows' -or $verified.target.architecture -cne $targetTuple.architecture -or
+      $verified.target.targetTriple -cne $targetTuple.target -or
       $verified.manifestSha256 -cne $runtimeResult.result.manifestSha256 -or
       $verified.memberCount -ne $runtimeResult.result.memberCount -or
       $verified.totalMemberBytes -ne $runtimeResult.result.totalMemberBytes -or
@@ -305,18 +305,18 @@ if ($previewEnabled -eq $true) {
     $candidateParent = Join-Path $env:RUNNER_TEMP ('migration-stream-engineering-candidate-' + $env:GITHUB_RUN_ID)
     New-Item -ItemType Directory -Path $candidateParent | Out-Null
     [IO.FileSystemAclExtensions]::SetAccessControl([IO.DirectoryInfo]$candidateParent, $security)
-    $candidateName = 'migration-stream-engineering-candidate-x64-' + $head + '-' + $env:GITHUB_RUN_ID + '.zip'
+    $candidateName = ('migration-stream-engineering-candidate-'+$targetTuple.architecture+'-') + $head + '-' + $env:GITHUB_RUN_ID + '.zip'
     $candidateArchive = Join-Path $candidateParent $candidateName
     $previewHelper = Join-Path $qualificationRepository 'scripts/windows-engineering-preview.ps1'
-    $candidateText = @(& $previewHelper -Operation Pack -Layout $qualificationOutput -BuildReceipt $evidencePath -Archive $candidateArchive)
+    $candidateText = @(& $previewHelper -Operation Pack -Architecture $targetTuple.architecture -Layout $qualificationOutput -BuildReceipt $evidencePath -Archive $candidateArchive)
     if ($LASTEXITCODE -ne 0 -or ($candidateText -join '').Length -gt 8192) { throw 'candidate pack refused' }
     $candidate = ($candidateText -join "`n") | ConvertFrom-Json
-    if ($candidate.status -cne 'CANDIDATE_LOCAL' -or $candidate.sourceCommit -cne $head -or $candidate.archiveSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'candidate metadata refused' }
-    $replayText = @(& $previewHelper -Operation Extract -Archive $candidateArchive -ExpectedArchiveSha256 $candidate.archiveSha256 -Destination (Join-Path $qualificationParent 'candidate-local-replay'))
+    if ($candidate.status -cne 'CANDIDATE_LOCAL' -or $candidate.architecture -cne $targetTuple.architecture -or $candidate.target -cne $targetTuple.target -or $candidate.sourceCommit -cne $head -or $candidate.archiveSha256 -cnotmatch '^[0-9a-f]{64}$') { throw 'candidate metadata refused' }
+    $replayText = @(& $previewHelper -Operation Extract -Architecture $targetTuple.architecture -Archive $candidateArchive -ExpectedArchiveSha256 $candidate.archiveSha256 -Destination (Join-Path $qualificationParent 'candidate-local-replay'))
     if ($LASTEXITCODE -ne 0 -or ($replayText -join '').Length -gt 8192) { throw 'candidate local replay refused' }
     $replay = ($replayText -join "`n") | ConvertFrom-Json
-    if ($replay.status -cne 'CANDIDATE_REPLAY_PASSED' -or $replay.archiveSha256 -cne $candidate.archiveSha256) { throw 'candidate replay differs' }
-    [IO.File]::AppendAllText($env:GITHUB_OUTPUT, ('preview_sha256=' + $candidate.archiveSha256 + "`npreview_candidate_ready=true`n"))
+    if ($replay.status -cne 'CANDIDATE_REPLAY_PASSED' -or $replay.architecture -cne $targetTuple.architecture -or $replay.target -cne $targetTuple.target -or $replay.archiveSha256 -cne $candidate.archiveSha256) { throw 'candidate replay differs' }
+    [IO.File]::AppendAllText($env:GITHUB_OUTPUT, ('preview_sha256=' + $candidate.archiveSha256 + "`npreview_target="+$targetTuple.target+"`npreview_architecture="+$targetTuple.architecture+"`npreview_candidate_ready=true`n"))
     Write-Output 'Engineering candidate prepared; publication qualification pending download replay'
   } catch { Write-Output 'Engineering candidate preparation refused or failed'; exit 1 }
 }
