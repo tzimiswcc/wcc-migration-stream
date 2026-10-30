@@ -4,6 +4,7 @@ import contextlib
 from dataclasses import replace
 import importlib.util
 import io
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -173,6 +174,15 @@ class DesktopPackagingTests(unittest.TestCase):
         with self.assertRaises(module.PackagingError): self.package(image_maker=imager)
         self.assertFalse(self.output.exists())
 
+    def test_mutation_after_successful_checksum_never_reanchors_digest(self):
+        def imager(source, image):
+            verified = self.imager(source, image)
+            image.write_bytes(b"mutation after successful checksum")
+            return verified
+        with self.assertRaises(module.PackagingError): self.package(image_maker=imager)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(self.commands[-1][0], "verify")
+
     def test_imaging_must_not_mutate_application(self):
         def imager(source, image):
             value = self.imager(source, image)
@@ -196,14 +206,14 @@ class DesktopPackagingTests(unittest.TestCase):
         sentinel = self.root / "image sentinel";sentinel.write_bytes(b"retained");sentinel.chmod(0o644)
         def imager(_source, image):
             image.symlink_to(sentinel)
-            return {"format":"UDZO", "filesystem":"HFS+", "checksumVerification":"hdiutil-exit-zero"}
+            return {**module.IMAGE_INFO, "image":{"bytes":8,"sha256":hashlib.sha256(b"retained").hexdigest()}}
         with self.assertRaises(a.AssemblyError): self.package(image_maker=imager)
         self.assertEqual(stat.S_IMODE(sentinel.stat().st_mode), 0o644)
         with mock.patch.object(module, "MAX_IMAGE", 2), self.assertRaises(module.PackagingError):
             module._image_record(sentinel)
         def hardlink(_source, image):
             os.link(sentinel, image)
-            return {"format":"UDZO", "filesystem":"HFS+", "checksumVerification":"hdiutil-exit-zero"}
+            return {**module.IMAGE_INFO, "image":{"bytes":8,"sha256":hashlib.sha256(b"retained").hexdigest()}}
         with self.assertRaises(module.PackagingError): self.package(image_maker=hardlink)
         self.assertEqual(stat.S_IMODE(sentinel.stat().st_mode), 0o644)
 

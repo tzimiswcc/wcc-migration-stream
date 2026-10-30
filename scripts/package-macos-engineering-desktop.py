@@ -32,6 +32,7 @@ RECEIPT_NAME = "engineering-package.json"
 MAX_IMAGE = 1024 * 1024 * 1024
 MAX_RECEIPT = 1024 * 1024
 SCHEMA = "migration-stream/macos-engineering-package/v1"
+IMAGE_INFO = {"format": "UDZO", "filesystem": "HFS+", "checksumVerification": "hdiutil-exit-zero"}
 
 
 class PackagingError(ValueError):
@@ -125,7 +126,7 @@ def _create_image(source: Path, image: Path, *, runner=_run_image_tool):
     runner(verify)
     if _image_record(image) != captured:
         raise PackagingError("image bytes changed during checksum verification")
-    return {"format": "UDZO", "filesystem": "HFS+", "checksumVerification": "hdiutil-exit-zero"}
+    return {**IMAGE_INFO, "image": captured}
 
 
 def _package_names(root: Path):
@@ -179,9 +180,14 @@ def package(request: assembler.Request, *, validator=assembler._verify_runtime,
     original_app = assembler._contents(assembler._snapshot(staged_app))
     image = stage / IMAGE_NAME
     image_result = image_maker(image_root, image)
-    if image_result != {"format": "UDZO", "filesystem": "HFS+", "checksumVerification": "hdiutil-exit-zero"}:
+    if not isinstance(image_result, dict) or set(image_result) != set(IMAGE_INFO) | {"image"} or any(image_result[key] != value for key, value in IMAGE_INFO.items()):
         raise PackagingError("image tool result contract differs")
-    _image_record(image)  # Refuse links/aliases before any metadata write.
+    verified = image_result["image"]
+    if not isinstance(verified, dict) or set(verified) != {"bytes", "sha256"} or type(verified["bytes"]) is not int or not 0 < verified["bytes"] <= MAX_IMAGE or not isinstance(verified["sha256"], str) or len(verified["sha256"]) != 64 or any(char not in "0123456789abcdef" for char in verified["sha256"]):
+        raise PackagingError("verified image byte identity is invalid")
+    image_record = {"bytes": verified["bytes"], "sha256": verified["sha256"]}
+    if _image_record(image) != image_record:
+        raise PackagingError("image changed after checksum verification")
     image_fd = os.open(image, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(image_fd)
@@ -190,7 +196,8 @@ def package(request: assembler.Request, *, validator=assembler._verify_runtime,
         os.fchmod(image_fd, 0o444)
     finally:
         os.close(image_fd)
-    image_record = _image_record(image)
+    if _image_record(image) != image_record:
+        raise PackagingError("image changed during sealing")
     if assembler._contents(assembler._snapshot(staged_app)) != original_app:
         raise PackagingError("application bytes or modes changed during imaging")
     app = stage / APP_NAME
@@ -208,7 +215,7 @@ def package(request: assembler.Request, *, validator=assembler._verify_runtime,
         "schemaVersion": SCHEMA, "policy": assembler.POLICY,
         "architecture": "arm64", "runtime": reports[0],
         "app": {"name": APP_NAME, "entries": original_app, "wrapperSha256": original_wrapper[3]},
-        "image": {"name": IMAGE_NAME, **image_record, **image_result},
+        "image": {"name": IMAGE_NAME, **image_record, **IMAGE_INFO},
         "signingPerformed": False, "inputSignatures": "preserved; not inspected",
         "notarizationPerformed": False, "installationPerformed": False,
         "explicitImageAttachment": False, "mountedContentsQualified": False,
