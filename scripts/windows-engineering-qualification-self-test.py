@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUILDER = ROOT / "scripts/build-assisted-runtime-bundle.ps1"
 WORKFLOW = ROOT / ".github/workflows/windows-engineering-layout-qualification.yml"
 CORPUS = ROOT / "config/release-corpus.json"
+DRIVER = ROOT / "scripts/windows-engineering-qualification.ps1"
 DEFAULT_BINARIES = [
     "migration-stream-local-runtime.exe", "migration-stream.exe",
     "migration-stream-workbench.exe", "migration-stream-bundle.exe",
@@ -37,7 +38,17 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def check_contract(builder, workflow, corpus):
+def check_contract(builder, workflow, corpus, driver):
+    # Validate the actual server-evaluated bodies before reconstructing the
+    # external driver at its original indentation for unchanged semantic guards.
+    bodies = workflow_powershell_bodies(workflow)
+    require(bodies[0] == QUALIFICATION_WRAPPER, "fixed external driver wrapper required")
+    require(len(driver.encode("utf-8")) <= 64 * 1024, "bounded external driver source")
+    require(driver.startswith("$ErrorActionPreference"), "driver admission marker required")
+    wrapper_indented = "".join("          " + line for line in QUALIFICATION_WRAPPER.splitlines(keepends=True))
+    driver_indented = "".join("          " + line for line in driver.splitlines(keepends=True))
+    require(workflow.count(wrapper_indented) == 1, "unambiguous driver invocation required")
+    workflow = workflow.replace(wrapper_indented, driver_indented, 1)
     selector = re.search(
         r"(?ms)^function Get-PrivateReleaseBinaryNames\(\[switch\]\$IncludeEngineeringTools\) \{(.*?)^\}",
         builder,
@@ -139,6 +150,7 @@ def check_contract(builder, workflow, corpus):
     for path in (
         ".github/workflows/windows-engineering-layout-qualification.yml",
         "scripts/windows-engineering-qualification-self-test.py",
+        "scripts/windows-engineering-qualification.ps1",
         "scripts/windows-engineering-preview.ps1",
         "scripts/windows-engineering-preview.Tests.ps1",
     ):
@@ -146,6 +158,20 @@ def check_contract(builder, workflow, corpus):
 
 
 MAXIMUM_WORKFLOW_BYTES = 64 * 1024
+MAXIMUM_RUN_CHARACTERS = 21000
+QUALIFICATION_WRAPPER = (
+    "$ErrorActionPreference = 'Stop'\n"
+    "& ./scripts/windows-engineering-qualification.ps1\n"
+    "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\n"
+)
+
+
+def validate_run_body(body):
+    # Conservatively count astral Unicode as two units; reviewed blocks are ASCII.
+    require(len(body.encode("utf-16-le")) // 2 <= MAXIMUM_RUN_CHARACTERS,
+            "GitHub run block exceeds 21000 characters")
+
+
 RUN_DELIMITER = (
     "      - name: One private build and file-only engineering assembly\n"
     "        id: qualify\n"
@@ -154,7 +180,7 @@ RUN_DELIMITER = (
 )
 
 
-def extract_workflow_powershell(workflow):
+def workflow_powershell_bodies(workflow):
     require(len(workflow.encode("utf-8")) <= MAXIMUM_WORKFLOW_BYTES, "workflow size bound")
     workflow = workflow.replace("\r\n", "\n")
     require("\r" not in workflow and workflow.count(RUN_DELIMITER) == 1,
@@ -174,10 +200,16 @@ def extract_workflow_powershell(workflow):
                 break
             lines.append(line[10:] if line else "")
         require(lines, "empty reviewed source body")
-        bodies.append("\n".join(lines) + "\n")
-    require(bodies[0].startswith("$ErrorActionPreference") and bodies[1].startswith("# PREVIEW_DOWNLOAD_REPLAY"),
+        body = "\n".join(lines) + "\n"
+        validate_run_body(body)
+        bodies.append(body)
+    require(bodies[0] == QUALIFICATION_WRAPPER and bodies[1].startswith("# PREVIEW_DOWNLOAD_REPLAY"),
             "exact reviewed run block order required")
-    require("$qualificationMetadata = [ordered]@{" in bodies[0], "qualification body marker required")
+    return bodies
+
+
+def extract_workflow_powershell(workflow):
+    bodies = workflow_powershell_bodies(workflow)
     # The source contract checker separately validates exact actions and guards.
     body = bodies[0] + "\n# Separate download replay source body; parse only.\n" + bodies[1]
     return body
@@ -200,13 +232,14 @@ class QualificationContractTests(unittest.TestCase):
         cls.builder = BUILDER.read_text(encoding="utf-8")
         cls.workflow = WORKFLOW.read_text(encoding="utf-8")
         cls.corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
+        cls.driver = DRIVER.read_text(encoding="utf-8")
 
-    def reject(self, *, builder=None, workflow=None, corpus=None):
+    def reject(self, *, builder=None, workflow=None, corpus=None, driver=None):
         with self.assertRaises(ValueError):
-            check_contract(builder or self.builder, workflow or self.workflow, corpus or self.corpus)
+            check_contract(builder or self.builder, workflow or self.workflow, corpus or self.corpus, driver or self.driver)
 
     def test_current_source_contract(self):
-        check_contract(self.builder, self.workflow, self.corpus)
+        check_contract(self.builder, self.workflow, self.corpus, self.driver)
 
     def test_default_and_optional_names_are_distinct_closed_lists(self):
         self.reject(builder=self.builder.replace("'migration-stream-workbench.exe'", "'unexpected.exe'", 1))
@@ -229,26 +262,26 @@ class QualificationContractTests(unittest.TestCase):
         self.reject(workflow=self.workflow + "\n      - uses: actions/upload-artifact@fixed\n")
 
     def test_commit_and_tool_prerequisites_are_not_silent_fallbacks(self):
-        self.reject(workflow=self.workflow.replace("$env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT", "$false", 1))
-        self.reject(workflow=self.workflow.replace("$env:GITHUB_RUN_ATTEMPT -cne '1'", "$false", 1))
-        self.reject(workflow=self.workflow.replace("'v24.22.1'", "'unknown'", 1))
-        self.reject(workflow=self.workflow.replace("$pythonNumber.Minor -lt 10", "$pythonNumber.Minor -lt 0", 1))
+        self.reject(driver=self.driver.replace("$env:GITHUB_SHA -cne $env:EXPECTED_SOURCE_COMMIT", "$false", 1))
+        self.reject(driver=self.driver.replace("$env:GITHUB_RUN_ATTEMPT -cne '1'", "$false", 1))
+        self.reject(driver=self.driver.replace("'v24.22.1'", "'unknown'", 1))
+        self.reject(driver=self.driver.replace("$pythonNumber.Minor -lt 10", "$pythonNumber.Minor -lt 0", 1))
 
     def test_offline_phase_and_no_retry_are_explicit(self):
-        self.reject(workflow=self.workflow.replace("$env:CARGO_NET_OFFLINE = 'true'", "$env:CARGO_NET_OFFLINE = 'false'", 1))
-        self.reject(workflow=self.workflow.replace("$env:CARGO_NET_RETRY = '0'", "$env:CARGO_NET_RETRY = '3'", 1))
+        self.reject(driver=self.driver.replace("$env:CARGO_NET_OFFLINE = 'true'", "$env:CARGO_NET_OFFLINE = 'false'", 1))
+        self.reject(driver=self.driver.replace("$env:CARGO_NET_RETRY = '0'", "$env:CARGO_NET_RETRY = '3'", 1))
 
     def test_no_archive_or_verification_bypass(self):
-        self.reject(workflow=self.workflow.replace("-NoArchive `", "`", 1))
-        self.reject(workflow=self.workflow.replace("'local-unsigned-engineering'", "'release'", 1))
+        self.reject(driver=self.driver.replace("-NoArchive `", "`", 1))
+        self.reject(driver=self.driver.replace("'local-unsigned-engineering'", "'release'", 1))
 
     def test_raw_output_and_extra_metadata_are_refused(self):
         self.reject(workflow=self.workflow + "\n          Write-Output $env:PATH\n")
-        self.reject(workflow=self.workflow.replace("            stage = 'admission'", "            stage = 'admission'\n            rawPath = $env:RUNNER_TEMP", 1))
+        self.reject(driver=self.driver.replace("  stage = 'admission'", "  stage = 'admission'\n  rawPath = $env:RUNNER_TEMP", 1))
 
     def test_evidence_bound_and_first_use_reservation_remain(self):
-        self.reject(workflow=self.workflow.replace("$qualificationEvidence.Length -gt 8192", "$false", 1))
-        self.reject(workflow=self.workflow.replace("[IO.FileMode]::CreateNew", "[IO.FileMode]::Create"))
+        self.reject(driver=self.driver.replace("$qualificationEvidence.Length -gt 8192", "$false", 1))
+        self.reject(driver=self.driver.replace("[IO.FileMode]::CreateNew", "[IO.FileMode]::Create"))
 
     def test_exact_new_paths_must_be_in_corpus(self):
         corpus = {**self.corpus, "include": [p for p in self.corpus["include"] if p != WORKFLOW.relative_to(ROOT).as_posix()]}
@@ -258,7 +291,9 @@ class QualificationContractTests(unittest.TestCase):
     def test_exact_workflow_body_extraction_is_source_only(self):
         body = extract_workflow_powershell(self.workflow)
         self.assertTrue(body.startswith("$ErrorActionPreference"))
-        self.assertIn("-RetainEngineeringTools", body)
+        self.assertIn("& ./scripts/windows-engineering-qualification.ps1", body)
+        self.assertNotIn("-RetainEngineeringTools", body)
+        self.assertIn("-RetainEngineeringTools", self.driver)
         self.assertNotIn("runs-on:", body)
         self.assertEqual(extract_workflow_powershell(self.workflow.replace("\n", "\r\n")), body)
 
@@ -288,9 +323,29 @@ class QualificationContractTests(unittest.TestCase):
                 write_workflow_powershell(source, Path("relative.ps1"))
 
 
+    def test_server_run_character_limit_boundary_and_oversize(self):
+        validate_run_body("x" * 21000)
+        with self.assertRaises(ValueError):
+            validate_run_body("x" * 21001)
+        validate_run_body("😀" * 10500)
+        with self.assertRaises(ValueError):
+            validate_run_body("😀" * 10500 + "x")
+        replay = workflow_powershell_bodies(self.workflow)[1]
+        padded = replay + "#" * (21000 - len(replay) - 1) + "\n"
+        self.assertEqual(len(padded), 21000)
+        old = "".join("          " + line for line in replay.splitlines(keepends=True))
+        replacement = "".join("          " + line for line in padded.splitlines(keepends=True))
+        self.assertEqual(len(workflow_powershell_bodies(self.workflow.replace(old, replacement))[1]), 21000)
+        with self.assertRaises(ValueError):
+            workflow_powershell_bodies(self.workflow.replace(old, replacement + "          #\n"))
+
+    def test_external_driver_invocation_is_fixed(self):
+        self.reject(workflow=self.workflow.replace("& ./scripts/windows-engineering-qualification.ps1", "& ./scripts/other.ps1", 1))
+        self.reject(driver=self.driver.replace("$ErrorActionPreference", "$other", 1))
+
     def test_preview_cannot_lose_default_false_or_transport_guards(self):
         self.reject(workflow=self.workflow.replace("        default: false", "        default: true", 1))
-        self.reject(workflow=self.workflow.replace("if ($previewEnabled -eq $true)", "if ($true)", 1))
+        self.reject(driver=self.driver.replace("if ($previewEnabled -eq $true)", "if ($true)", 1))
         self.reject(workflow=self.workflow.replace("inputs.publish_engineering_preview == true", "true", 1))
         self.reject(workflow=self.workflow.replace("skip-decompress: true", "skip-decompress: false", 1))
         self.reject(workflow=self.workflow.replace("digest-mismatch: error", "digest-mismatch: warn", 1))
