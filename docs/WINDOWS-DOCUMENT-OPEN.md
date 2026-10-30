@@ -289,6 +289,16 @@ review, merge, and earlier synthetic CI do not qualify this new build workflow
 or admit an executable run. The first real run needs a separate concrete
 execution admission after review.
 
+The fixed first step invokes `scripts/windows-engineering-qualification.ps1`
+from the checked-out repository, preserving its working directory, environment,
+step outputs and failure handling. The Python contract checks the driver as well
+as the wrapper, and bounds every embedded `run` block to GitHub's
+[21,000-character limit][run-limit]. Source CI separately parses the external
+driver and both embedded blocks without executing the qualification driver.
+Repository Actions policy must also explicitly allow every exact action pin in
+this workflow, including the upload/download pins when preview steps exist.
+Neither source CI nor a reviewed merge changes that policy or admits a build.
+
 The intended lane is one ephemeral `windows-2025` x64 job, with Node 24.22.1,
 npm 12.2.1 and Rust 1.99.1. It selects existing runner Python 3.10 or later in
 the 3.x series and records its actual version and byte hash; it does not install
@@ -415,10 +425,13 @@ It does not promise Explorer/Unix-mode fidelity. It refuses any regular source-l
 Browser downloads, MOTW propagation, SmartScreen, URI completion, application
 launch, installer behavior, signing and public platform support remain unqualified.
 
-Windows source CI parses the helper and test script, then runs only tiny fake
+Windows source CI parses the builder, external qualification driver, embedded
+workflow blocks, preview helper and test script, then runs only tiny fake
 ZIP fixtures via `scripts/windows-engineering-preview.Tests.ps1`. The private
 fixture seam injects a synthetic verifier; no product executable, real Runtime,
 browser, build or artifact publication is selected. Local Python contract tests
 protect default-off/action/extraction guards. Actual PowerShell parsing and ZIP
 behavior require the Windows source run; static Python/YAML checks alone do not
 prove them.
+
+[run-limit]: https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsrun

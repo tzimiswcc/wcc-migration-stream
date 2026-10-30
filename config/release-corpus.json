@@ -69,6 +69,7 @@
     ".github/workflows/public-source-ci.yml",
     ".github/workflows/windows-engineering-layout-qualification.yml",
     "scripts/windows-engineering-qualification-self-test.py",
+    "scripts/windows-engineering-qualification.ps1",
     "scripts/windows-engineering-preview.ps1",
     "scripts/windows-engineering-preview.Tests.ps1",
     "native/macos/DocumentOpenAdapter.swift",
