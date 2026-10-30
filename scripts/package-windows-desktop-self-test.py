@@ -202,4 +202,49 @@ class WindowsDesktopSourceTests(unittest.TestCase):
         self.assertNotIn('Delete "$DOCUMENTS',text)
         self.assertNotIn('Delete "$LOCALAPPDATA\\migration-stream-runtime',text)
 
-if __name__=='__main__':unittest.main()
+def native_compile_fixture():
+    """Compile tiny fake payloads once; never execute the generated installer."""
+    if os.name != "nt":
+        print(json.dumps({"ok": False, "code": "NATIVE_WINDOWS_REQUIRED"}))
+        return 1
+    case = None
+    initialized = False
+    try:
+        compiler = Path(os.environ["ProgramFiles(x86)"]) / "NSIS/makensis.exe"
+        compiler_record, _ = module.file_record(compiler)
+        case = WindowsDesktopSourceTests("test_shared_passive_flow_two_payloads_one_setup_and_no_runtime_execution")
+        case.setUp()
+        initialized = True
+        # Default tests retain their Popen guard. Only this explicit route uses
+        # the bounded real compiler with the same tiny synthetic inputs.
+        case.guard.stop()
+        request = replace(case.request, makensis=compiler,
+                          makensis_sha256=compiler_record["sha256"])
+        result = module.package(request, compiler=module.compile_nsis)
+        case.assertFalse(result["installerExecutionQualified"])
+        case.assertEqual(result["qualification"], "PASSIVE_RECEIPT_BYTE_BINDING_ONLY")
+        print(json.dumps({"schemaVersion": "migration-stream/synthetic-nsis-compile/v1",
+                          "ok": True, "qualification": "SYNTHETIC_TEMPLATE_COMPILATION_ONLY",
+                          "compilerSha256": compiler_record["sha256"],
+                          "installer": result["installer"],
+                          "installerExecuted": False, "productPayload": False}, sort_keys=True))
+        return 0
+    except Exception as error:
+        # Only compiler logs from this freshly generated fake-input namespace;
+        # never product receipts, user files, environment or arbitrary paths.
+        if case is not None and hasattr(case, "root"):
+            for log in sorted(case.root.glob(".migration-stream-nsis-inputs-*/compiler.*.log")):
+                print(log.read_bytes()[-2048:].decode("utf-8", "replace"), file=sys.stderr)
+        print(json.dumps({"schemaVersion": "migration-stream/synthetic-nsis-compile/v1",
+                          "ok": False, "code": "SYNTHETIC_COMPILATION_FAILED",
+                          "errorType": type(error).__name__, "installerExecuted": False}))
+        return 1
+    finally:
+        if initialized:
+            case.tearDown()
+
+
+if __name__ == '__main__':
+    if sys.argv[1:] == ["--native-compile-only"]:
+        raise SystemExit(native_compile_fixture())
+    unittest.main()

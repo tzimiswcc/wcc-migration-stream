@@ -37,12 +37,13 @@ jobs:
         run: rustup default 1.99.1
       - name: Test source-only Linux document-open launcher with synthetic fixtures
         run: python3 -B -m unittest discover -s native/linux -p test_document_open_launcher.py
-      - name: Test Mac and Linux packaging with synthetic payloads only
+      - name: Test desktop packaging with synthetic payloads only
         shell: bash
         run: |
           set -euo pipefail
           python3 -B scripts/package-macos-engineering-desktop-self-test.py
           python3 -B scripts/package-linux-desktop-self-test.py
+          python3 -B scripts/package-windows-desktop-self-test.py
       - name: Run candidate-compatible source gates
         shell: bash
         run: |
@@ -104,6 +105,22 @@ jobs:
           }
           Write-Output 'PowerShell static parse passed (builder, qualification driver, reviewed workflow blocks, preview helper and fixtures; no product execution)'
           & ./scripts/windows-engineering-preview.Tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test Windows installer with synthetic files only
+        shell: pwsh
+        run: |
+          python -B scripts/package-windows-desktop-self-test.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile tiny synthetic NSIS template without installer execution
+        if: ${{ matrix.architecture == 'x64' }}
+        timeout-minutes: 6
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe'
+          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw 'Required runner-installed NSIS is absent; no download fallback.' }
+          Write-Output ('Runner-installed NSIS product version: ' + (Get-Item -LiteralPath $compiler).VersionInfo.ProductVersion)
+          python -B scripts/package-windows-desktop-self-test.py --native-compile-only
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install pinned Rust source-test toolchain
         shell: pwsh
