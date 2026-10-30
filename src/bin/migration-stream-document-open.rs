@@ -9,7 +9,7 @@ fn main() -> std::process::ExitCode {
     {
         use std::os::windows::ffi::OsStrExt;
         let result = std::env::current_exe()
-            .map_err(|_| ())
+            .map_err(|_| document_open::LauncherFailure::Layout)
             .and_then(|executable| {
                 let operands = std::env::args_os()
                     .skip(1)
@@ -23,12 +23,13 @@ fn main() -> std::process::ExitCode {
                     document_open::WindowsProcessRunner::default(),
                     document_open::WindowsLoopbackBrowser,
                 )
-                .map_err(|_| ())
             });
-        if result.is_ok() {
-            return std::process::ExitCode::SUCCESS;
+        match result {
+            Ok(()) => return std::process::ExitCode::SUCCESS,
+            Err(failure) => {
+                let _ = failure.write_diagnostic(&mut std::io::stderr().lock());
+            }
         }
-        eprintln!("{}", document_open::ENGINEERING_LAUNCH_ERROR);
     }
     #[cfg(not(windows))]
     eprintln!("This engineering launcher requires Windows.");

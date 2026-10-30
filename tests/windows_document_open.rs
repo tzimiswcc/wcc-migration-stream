@@ -997,6 +997,134 @@ mod engineering_composition_tests {
             "Migration Stream could not open the selected document."
         );
     }
+    fn expected_diagnostic(code: &str) -> String {
+        format!("Migration Stream could not open the selected document. [{code}]\n")
+    }
+
+    #[test]
+    fn diagnostic_discriminants_write_exact_fixed_private_lines() {
+        for (failure, expected) in [
+            (LauncherFailure::Arguments, "DOCUMENT_OPEN_ARGUMENTS"),
+            (LauncherFailure::Layout, "DOCUMENT_OPEN_LAYOUT"),
+            (
+                LauncherFailure::Open(Failure::Controller),
+                "DOCUMENT_OPEN_CONTROLLER",
+            ),
+            (
+                LauncherFailure::Open(Failure::InvalidResponse),
+                "DOCUMENT_OPEN_INVALID_RESPONSE",
+            ),
+            (
+                LauncherFailure::Open(Failure::Browser),
+                "DOCUMENT_OPEN_BROWSER",
+            ),
+            (
+                LauncherFailure::Open(Failure::InvalidPath),
+                "DOCUMENT_OPEN_INVALID_PATH",
+            ),
+            (
+                LauncherFailure::Open(Failure::InvalidDocument),
+                "DOCUMENT_OPEN_INVALID_DOCUMENT",
+            ),
+            (
+                LauncherFailure::Open(Failure::DifferentDocument),
+                "DOCUMENT_OPEN_DIFFERENT_DOCUMENT",
+            ),
+        ] {
+            let mut bytes = Vec::new();
+            failure.write_diagnostic(&mut bytes).unwrap();
+            assert_eq!(failure.diagnostic_code(), expected);
+            assert_eq!(bytes, expected_diagnostic(expected).as_bytes());
+            assert!(bytes.is_ascii() && bytes.len() < 128);
+            assert_eq!(bytes.iter().filter(|byte| **byte == b'\n').count(), 1);
+        }
+    }
+
+    #[test]
+    fn composition_diagnostics_preserve_phase_without_private_values() {
+        let secret = "SYNTHETIC_PRIVATE_DIAGNOSTIC_SENTINEL";
+        for (phase, expected) in [
+            (0, "DOCUMENT_OPEN_ARGUMENTS"),
+            (1, "DOCUMENT_OPEN_LAYOUT"),
+            (2, "DOCUMENT_OPEN_CONTROLLER"),
+            (3, "DOCUMENT_OPEN_INVALID_RESPONSE"),
+            (4, "DOCUMENT_OPEN_BROWSER"),
+        ] {
+            let (mut checks, calls) = setup();
+            checks.fail = phase == 1;
+            let mut response = output(&envelope());
+            response.stderr = secret.as_bytes().to_vec();
+            match phase {
+                2 => {
+                    response.exit_code = 17;
+                    response.stdout = secret.as_bytes().to_vec();
+                }
+                3 => response.stdout = secret.as_bytes().to_vec(),
+                4 => calls.borrow_mut().browser_fails = true,
+                _ => {}
+            }
+            calls.borrow_mut().outputs = VecDeque::from([Ok(response)]);
+            let documents = if phase == 0 {
+                vec![]
+            } else {
+                vec![units(r"D:\Synthetic private context\project.mstream")]
+            };
+            let failure = launch(executable(), documents, &mut checks, &calls).unwrap_err();
+            let mut bytes = Vec::new();
+            failure.write_diagnostic(&mut bytes).unwrap();
+            let text = String::from_utf8(bytes).unwrap();
+            assert_eq!(text, expected_diagnostic(expected));
+            for forbidden in [secret, "D:", "C:", "http:", "project.mstream"] {
+                assert!(!text.contains(forbidden));
+            }
+            assert_eq!(calls.borrow().processes.len(), usize::from(phase >= 2));
+            assert_eq!(calls.borrow().browsers.len(), usize::from(phase == 4));
+            assert!(!checks.held.get());
+        }
+    }
+
+    #[test]
+    fn diagnostic_sink_failure_has_no_retry_or_raw_error_fallback() {
+        struct RefusingSink(usize);
+        impl std::io::Write for RefusingSink {
+            fn write(&mut self, _bytes: &[u8]) -> std::io::Result<usize> {
+                self.0 += 1;
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "SYNTHETIC_PRIVATE_SINK_ERROR",
+                ))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut sink = RefusingSink(0);
+        assert_eq!(
+            LauncherFailure::Layout
+                .write_diagnostic(&mut sink)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
+        assert_eq!(sink.0, 1);
+    }
+
+    #[test]
+    fn console_entrypoint_retains_category_and_writes_only_fixed_stderr_projection() {
+        let source = include_str!("../src/bin/migration-stream-document-open.rs");
+        assert!(source.contains(".map_err(|_| document_open::LauncherFailure::Layout)"));
+        assert!(source.contains("failure.write_diagnostic(&mut std::io::stderr().lock())"));
+        assert!(!source.contains(".map_err(|_| ())"));
+        assert!(
+            !source
+                .lines()
+                .any(|line| line.trim_start().starts_with("println!"))
+        );
+        assert!(source.contains(".skip(1)") && source.contains(".take(2)"));
+        assert!(source.contains("Ok(()) => return std::process::ExitCode::SUCCESS"));
+        assert!(source.contains("std::process::ExitCode::FAILURE"));
+    }
+
     #[cfg(windows)]
     #[test]
     fn composition_native_bindings_reject_empty_operands_before_operations() {
