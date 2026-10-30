@@ -343,6 +343,7 @@ jobs:
           Write-Output $qualificationEvidence
           if ($qualificationMetadata.status -ne 'PASSED') { exit 1 }
           # Default false remains private/ephemeral. Never cast the string 'false' to [bool].
+          # Preview adds five fixed Verify calls: pack, local stage/final, download stage/final.
           if ($previewEnabled -eq $true) {
             try {
               $candidateParent = Join-Path $env:RUNNER_TEMP ('migration-stream-engineering-candidate-' + $env:GITHUB_RUN_ID)

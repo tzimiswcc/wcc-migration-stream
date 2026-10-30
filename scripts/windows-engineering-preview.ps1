@@ -305,6 +305,7 @@ function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[
     Assert-Preview ($ExpectedHash -cmatch '^[0-9a-f]{64}$')
     Assert-PreviewNative $InputArchive $false
     Assert-PreviewNative (Split-Path -Parent $Output) $true
+    Assert-Preview (-not [IO.File]::Exists($Output) -and -not [IO.Directory]::Exists($Output))
     Assert-Preview (-not $InputArchive.StartsWith($Output + '\',[StringComparison]::OrdinalIgnoreCase))
     # Do not unblock or silently discard browser marking. This reference route
     # refuses marked input; browser/Explorer extraction remains unqualified.
@@ -362,6 +363,8 @@ function Expand-PreviewArchiveCore([string]$InputArchive,[string]$ExpectedHash,[
             }
             $layout = Join-Path $stage 'engineering-layout'
             Assert-Preview ((ConvertTo-PreviewStableJson (Get-PreviewRows $layout)) -ceq (ConvertTo-PreviewStableJson $receipt.entries))
+            # Validate the unpublished layout before it can become visible.
+            Assert-Preview ((ConvertTo-PreviewStableJson (& $Validate $layout $receipt.build)) -ceq (ConvertTo-PreviewStableJson $receipt.runtime))
             # Same-parent no-replace publication; no recursive cleanup on failure.
             [IO.Directory]::Move($stage,$Output)
             $layout = Join-Path $Output 'engineering-layout'

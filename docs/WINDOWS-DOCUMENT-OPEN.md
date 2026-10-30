@@ -386,10 +386,11 @@ without replacement; failed partials and visible outputs are preserved rather
 than recursively deleting uncertain ownership.
 
 Every graph entry and file length/hash is replayed. The fixed Runtime launcher
-runs read-only `verify` before packing and after each local/download extraction;
+runs read-only `verify` before packing and on both unpublished stage and final
+output of each local/download extraction;
 its actual verification identity must match except the relocated bundle root.
 The outer launcher digest stays distinct from Runtime's platform launcher and
-controller digests. These three additional Verify invocations start product
+controller digests. These five additional Verify invocations start product
 processes/threads, selecting no Start/Open/server/project/browser operation.
 Their post-return capture checks share the existing finite job timeout; this is
 not a streaming capture or OS network-isolation claim.
