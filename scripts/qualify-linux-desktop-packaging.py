@@ -6,6 +6,8 @@ The unchanged Runtime builder makes four metadata/file probes; the reviewed
 packager makes two Verify probes. Inspection adds no product process.
 Command failure evidence exposes only a fixed stage/category and numeric status;
 raw stderr, arguments and environment remain private. No automatic retry.
+Rust and Cargo state live in job-owned RUSTUP_HOME and CARGO_HOME directories.
+Toolchain install passes rustup's documented --no-self-update flag.
 An explicit publication handoff exports only the private workspace path and
 the public evidence hash. It does not upload, retry, or change that evidence.
 """
@@ -61,18 +63,34 @@ class CommandFailure(Refused):
 def rustup_reported_category(data):
     """Optional producer wording, not a diagnosed cause or stable Rustup API.
 
-    Prefixes: rust-lang/rustup 1.28.2 src/errors.rs, RustupError variants
-    DownloadingFile, ComponentDownloadFailed, CreatingDirectory, SettingPermissions.
-    Other versions/wording and oversized captures deliberately remain unknown.
+    Prefixes from published rustup error text only:
+    rust-lang/rustup 1.28.2 src/errors.rs DownloadingFile, ComponentDownloadFailed,
+    CreatingDirectory, SettingPermissions; rust-lang/rustup 1.29.2
+    src/cli/errors.rs CliError::NotSelfInstalled. Other versions/wording and
+    oversized captures remain UNKNOWN. This does not diagnose a consumed run.
     """
     if len(data) > 65536:
         return "UNKNOWN"
     patterns = {
         "DOWNLOAD_REPORTED": rb"^error: (?:could not download file from '|component download failed for )",
         "FILESYSTEM_REPORTED": rb"^error: (?:could not create [A-Za-z ]{1,64} directory: '|failed to set permissions for ')",
+        "NOT_SELF_INSTALLED_REPORTED": rb"^error: rustup is not installed at '",
     }
     matched = [category for category, pattern in patterns.items() if re.search(pattern, data, re.MULTILINE)]
     return matched[0] if len(matched) == 1 else "UNKNOWN"
+
+
+def rustup_toolchain_install_argv(rustup, triple):
+    """Pinned host-toolchain install into the job-owned rustup home.
+
+    --no-self-update is rustup's documented per-invocation flag on
+    `rustup toolchain install` (rustup book; rustup 1.29.2 UpdateOpts).
+    It is not `rustup set`, not a global rustup configuration, and not a
+    download-root or mirror override.
+    """
+    require(triple in {lane[1] for lane in LANES.values()})
+    return [str(rustup), "toolchain", "install", "1.99.1-" + triple, "--profile", "minimal",
+            "--no-self-update"]
 
 
 def require(value):
@@ -408,7 +426,7 @@ def qualify(environment):
     require(temp.is_dir() and temp.stat().st_uid == os.geteuid() and shutil.disk_usage(temp).free >= 8 * 1024**3)
     require(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") >= 8 * 1024**3)
     work = Path(tempfile.mkdtemp(prefix="migration-stream-linux-qualification-", dir=temp))
-    for child in ("npm-cache", "cargo-home", "tmp"):
+    for child in ("npm-cache", "cargo-home", "rustup-home", "tmp"):
         (work / child).mkdir(mode=0o700)
     for child in ("user.npmrc", "global.npmrc"):
         (work / child).touch(mode=0o600, exist_ok=False)
@@ -421,7 +439,8 @@ def qualify(environment):
     _, shlibs_sha = executable("/usr/bin/dpkg-shlibdeps")
     env = {"PATH": str(node.parent) + ":" + str(rustup.parent) + ":/usr/bin:/bin",
            "HOME": environment["HOME"], "LC_ALL": "C", "RUSTUP_TOOLCHAIN": "1.99.1-" + triple,
-           "CARGO_HOME": str(work / "cargo-home"), "CARGO_NET_RETRY": "0", "CARGO_BUILD_JOBS": "2",
+           "CARGO_HOME": str(work / "cargo-home"), "RUSTUP_HOME": str(work / "rustup-home"),
+           "CARGO_NET_RETRY": "0", "CARGO_BUILD_JOBS": "2",
            "TMPDIR": str(work / "tmp"), "NPM_CONFIG_USERCONFIG": str(work / "user.npmrc"),
            "NPM_CONFIG_GLOBALCONFIG": str(work / "global.npmrc"), "npm_config_cache": str(work / "npm-cache"),
            "npm_config_fetch_retries": "0", "npm_config_progress": "false", "GIT_CONFIG_NOSYSTEM": "1"}
@@ -439,7 +458,7 @@ def qualify(environment):
     require(small([node, "-p", "'v'+process.versions.node+' '+process.arch"], "node-admission") == "v24.22.1 " + architecture)
     require((ROOT / "web/.node-version").read_text().strip() == "24.22.1")
     require(json.loads((ROOT / "web/package.json").read_text())["packageManager"] == "npm@12.2.1")
-    run([rustup, "toolchain", "install", "1.99.1-" + triple, "--profile", "minimal"], "rust-preparation", seconds=300)
+    run(rustup_toolchain_install_argv(rustup, triple), "rust-preparation", seconds=300)
     cargo, cargo_sha = executable(small([rustup, "which", "--toolchain", "1.99.1-" + triple, "cargo"], "cargo-path"), elf)
     rustc, rustc_sha = executable(small([rustup, "which", "--toolchain", "1.99.1-" + triple, "rustc"], "rustc-path"), elf)
     rust_version = small([rustc, "-vV"], "rust-admission").splitlines()

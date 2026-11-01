@@ -330,7 +330,8 @@ class SourceAndFormats(unittest.TestCase):
         for prefix, category in [(b"error: could not download file from '", "DOWNLOAD_REPORTED"),
                                  (b"error: component download failed for ", "DOWNLOAD_REPORTED"),
                                  (b"error: could not create toolchain directory: '", "FILESYSTEM_REPORTED"),
-                                 (b"error: failed to set permissions for '", "FILESYSTEM_REPORTED")]:
+                                 (b"error: failed to set permissions for '", "FILESYSTEM_REPORTED"),
+                                 (b"error: rustup is not installed at '", "NOT_SELF_INSTALLED_REPORTED")]:
             self.assertEqual(q.rustup_reported_category(prefix + private), category)
             self.assertNotIn("PRIVATE", q.rustup_reported_category(prefix + private))
         for data in [private, b"info: could not download file from '" + private,
@@ -340,6 +341,23 @@ class SourceAndFormats(unittest.TestCase):
             self.assertEqual(q.rustup_reported_category(data), "UNKNOWN")
         # The real capture routes only this stage's nonzero exit into classification.
         self.assertIn('if label == "rust-preparation":', (ROOT / "scripts/qualify-linux-desktop-packaging.py").read_text())
+
+    def test_rustup_toolchain_install_uses_owned_homes_and_no_self_update(self):
+        for architecture, triple in ((lane, q.LANES[lane][1]) for lane in q.LANES):
+            argv = q.rustup_toolchain_install_argv("/synthetic/rustup", triple)
+            self.assertEqual(argv, ["/synthetic/rustup", "toolchain", "install",
+                                    "1.99.1-" + triple, "--profile", "minimal", "--no-self-update"])
+            self.assertNotIn("--default-toolchain", argv)
+        with self.assertRaises(q.Refused):
+            q.rustup_toolchain_install_argv("/synthetic/rustup", "stable")
+        text = (ROOT / "scripts/qualify-linux-desktop-packaging.py").read_text()
+        self.assertIn('run(rustup_toolchain_install_argv(rustup, triple), "rust-preparation", seconds=300)', text)
+        self.assertIn('"RUSTUP_HOME": str(work / "rustup-home")', text)
+        self.assertIn('"CARGO_HOME": str(work / "cargo-home")', text)
+        self.assertIn('("npm-cache", "cargo-home", "rustup-home", "tmp")', text)
+        for forbidden in ("RUSTUP_DIST_SERVER", "RUSTUP_UPDATE_ROOT", "RUSTUP_DIST_ROOT",
+                          "rustup set ", "auto-self-update"):
+            self.assertNotIn(forbidden, text)
 
     def test_main_reports_only_allowlisted_command_failure_and_keeps_generic_unknown(self):
         for error, expected in [(q.CommandFailure("rust-preparation", "exit", 1),
