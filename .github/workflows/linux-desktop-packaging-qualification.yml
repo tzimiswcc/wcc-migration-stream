@@ -11,9 +11,15 @@ on:
         description: Explicit reviewed Debian Maintainer name and email
         required: true
         type: string
+      publish_engineering_candidate:
+        description: Separate approval for one seven-day unsigned engineering archive per architecture and exact-ID replay
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: linux-desktop-packaging-qualification-${{ github.ref }}
@@ -22,7 +28,7 @@ concurrency:
 jobs:
   linux-packaging:
     name: Native Linux packaging files (${{ matrix.architecture }})
-    if: ${{ github.event_name == 'workflow_dispatch' && github.run_attempt == 1 && github.sha == inputs.expected_source_commit }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.run_attempt == 1 && github.sha == inputs.expected_source_commit && (!inputs.publish_engineering_candidate || github.ref == 'refs/heads/main') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
@@ -40,6 +46,7 @@ jobs:
       DEBIAN_MAINTAINER: ${{ inputs.debian_maintainer }}
       QUALIFICATION_ARCHITECTURE: ${{ matrix.architecture }}
       RUSTUP_TOOLCHAIN: ${{ matrix.rustup_toolchain }}
+      PUBLISH_LINUX_ENGINEERING_CANDIDATE: ${{ inputs.publish_engineering_candidate && 'true' || 'false' }}
     steps:
       - name: Check out the exact reviewed source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -54,7 +61,57 @@ jobs:
           architecture: ${{ matrix.architecture }}
           package-manager-cache: false
       - name: Build once and inspect Linux package files offline
+        id: qualification
         shell: bash
         run: |
           set -euo pipefail
-          python3 -I -B scripts/qualify-linux-desktop-packaging.py
+          if [ "${PUBLISH_LINUX_ENGINEERING_CANDIDATE}" = true ]; then
+            python3 -I -B scripts/qualify-linux-desktop-packaging.py --publication-handoff
+          else
+            python3 -I -B scripts/qualify-linux-desktop-packaging.py
+          fi
+      - name: Stage the verified deb, portable archive and receipts
+        id: candidate
+        if: ${{ inputs.publish_engineering_candidate == true }}
+        env:
+          QUALIFIED_WORKSPACE: ${{ steps.qualification.outputs.qualified_work }}
+          QUALIFICATION_SHA: ${{ steps.qualification.outputs.qualification_sha }}
+        run: python3 -I -B scripts/linux-engineering-candidate.py --stage
+      - name: Upload one unsigned Linux engineering candidate for seven days
+        id: upload_candidate
+        if: ${{ inputs.publish_engineering_candidate == true && steps.candidate.outputs.candidate_ready == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: migration-stream-linux-engineering-candidate-${{ matrix.architecture }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/migration-stream-linux-candidate-${{ matrix.architecture }}-${{ github.run_id }}/candidate
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: false
+          include-hidden-files: false
+          archive: true
+      - name: Admit only the returned artifact in this exact run
+        id: artifact
+        if: ${{ inputs.publish_engineering_candidate == true && steps.candidate.outputs.candidate_ready == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_ARTIFACT_ID: ${{ steps.upload_candidate.outputs.artifact-id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.upload_candidate.outputs.artifact-digest }}
+        run: python3 -I -B scripts/linux-engineering-candidate.py --admit-artifact
+      - name: Download only the returned Linux artifact by immutable ID
+        if: ${{ inputs.publish_engineering_candidate == true && steps.candidate.outputs.candidate_ready == 'true' }}
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ steps.upload_candidate.outputs.artifact-id }}
+          repository: tzimiswcc/wcc-migration-stream
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/migration-stream-linux-candidate-${{ matrix.architecture }}-${{ github.run_id }}/download
+          digest-mismatch: error
+      - name: Replay downloaded bytes and receipts without installing them
+        if: ${{ inputs.publish_engineering_candidate == true && steps.candidate.outputs.candidate_ready == 'true' }}
+        env:
+          CANDIDATE_ARTIFACT_ID: ${{ steps.upload_candidate.outputs.artifact-id }}
+          CANDIDATE_ARTIFACT_DIGEST: ${{ steps.upload_candidate.outputs.artifact-digest }}
+          CANDIDATE_AUTHORITY_SHA: ${{ steps.candidate.outputs.authority_sha }}
+          CANDIDATE_METADATA_SHA: ${{ steps.artifact.outputs.artifact_metadata_sha }}
+        run: python3 -I -B scripts/linux-engineering-candidate.py --replay

@@ -104,6 +104,8 @@
     ".github/workflows/linux-desktop-packaging-qualification.yml",
     "scripts/qualify-linux-desktop-packaging.py",
     "scripts/qualify-linux-desktop-packaging-self-test.py",
+    "scripts/linux-engineering-candidate.py",
+    "scripts/linux-engineering-candidate-self-test.py",
     ".github/workflows/macos-engineering-qualification.yml",
     "scripts/macos-engineering-qualification.py",
     "scripts/macos-engineering-qualification-self-test.py",

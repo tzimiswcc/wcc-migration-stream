@@ -423,7 +423,7 @@ class SourceAndFormats(unittest.TestCase):
             q.inspect_payload(p, p._snapshot(runtime), portable, installed, adapter,
                               "1" * 40, version, "x64")
 
-    def test_workflow_is_manual_native_bounded_and_has_no_upload_or_install(self):
+    def test_workflow_is_manual_native_bounded_and_install_free(self):
         text = (ROOT / ".github/workflows/linux-desktop-packaging-qualification.yml").read_text()
         self.assertIn("workflow_dispatch:", text)
         self.assertIn("github.run_attempt == 1", text)
@@ -432,8 +432,13 @@ class SourceAndFormats(unittest.TestCase):
         self.assertIn("ubuntu-24.04-arm", text)
         self.assertIn("1.99.1-aarch64-unknown-linux-gnu", text)
         self.assertIn("python3 -I -B scripts/qualify-linux-desktop-packaging.py", text)
-        self.assertEqual(text.count("uses:"), 2)
-        for forbidden in ("upload-artifact", "download-artifact", "workflow_run:", "schedule:", "sudo ", "apt-get", "dpkg -i"):
+        self.assertIn("publish_engineering_candidate:", text)
+        self.assertIn("default: false", text)
+        self.assertEqual(text.count("uses: actions/checkout@"), 1)
+        self.assertEqual(text.count("uses: actions/setup-node@"), 1)
+        self.assertEqual(text.count("uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"), 1)
+        self.assertEqual(text.count("uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333"), 1)
+        for forbidden in ("workflow_run:", "schedule:", "sudo ", "apt-get", "dpkg -i", "actions: write"):
             self.assertNotIn(forbidden, text)
 
 
