@@ -6,6 +6,8 @@ The unchanged Runtime builder makes four metadata/file probes; the reviewed
 packager makes two Verify probes. Inspection adds no product process.
 Command failure evidence exposes only a fixed stage/category and numeric status;
 raw stderr, arguments and environment remain private. No automatic retry.
+An explicit publication handoff exports only the private workspace path and
+the public evidence hash. It does not upload, retry, or change that evidence.
 """
 from __future__ import annotations
 
@@ -504,29 +506,128 @@ def qualify(environment):
     require(artifact_state(package, output, ("package-receipt.json", deb_name, tar_name)) == artifact_rows and package._snapshot(runtime) == source)
     require(small([git, "rev-parse", "HEAD"], "final-head") == commit and
             not small([git, "status", "--porcelain=v1", "--untracked-files=all"], "final-clean"))
-    return {"schemaVersion": "migration-stream/linux-package-qualification/v1", "status": "QUALIFIED_OFFLINE_PACKAGE_PAYLOAD",
-            "runId": environment["GITHUB_RUN_ID"], "runAttempt": 1, "sourceCommit": commit, "sourceTree": tree,
-            "architecture": architecture, "target": triple, "ubuntuSeries": "24.04", "pythonVersion": platform.python_version(),
-            "nodeVersion": "24.22.1", "npmVersion": "12.2.1", "rustVersion": "1.99.1", "dpkgDebVersion": dpkg_version,
-            "maintainerSha256": hashlib.sha256(environment["DEBIAN_MAINTAINER"].encode("ascii")).hexdigest(),
-            "toolSha256": {"python": python_sha, "node": node_sha, "rustup": rustup_sha, "cargo": cargo_sha,
-                           "rustc": rustc_sha, "git": git_sha, "dpkgDeb": dpkg_sha, "dpkgShlibdeps": shlibs_sha,
-                           "bootstrapNpm": bootstrap_npm_sha, "npmCli": npm_sha},
-            "runtimeManifestSha256": assembly["manifestSha256"], "sourceSnapshotSha256": snapshot,
-            "runtimeMemberCount": assembly["memberCount"], "runtimeMemberBytes": assembly["totalMemberBytes"],
-            "artifacts": receipt["artifacts"], "inspectedPayloadFiles": payload_files, "productMetadataVerifyCalls": 6,
-            "osInstallation": False, "appBrowserRegistration": False, "binaryUpload": False}
+    evidence = {"schemaVersion": "migration-stream/linux-package-qualification/v1", "status": "QUALIFIED_OFFLINE_PACKAGE_PAYLOAD",
+                "runId": environment["GITHUB_RUN_ID"], "runAttempt": 1, "sourceCommit": commit, "sourceTree": tree,
+                "architecture": architecture, "target": triple, "ubuntuSeries": "24.04", "pythonVersion": platform.python_version(),
+                "nodeVersion": "24.22.1", "npmVersion": "12.2.1", "rustVersion": "1.99.1", "dpkgDebVersion": dpkg_version,
+                "maintainerSha256": hashlib.sha256(environment["DEBIAN_MAINTAINER"].encode("ascii")).hexdigest(),
+                "toolSha256": {"python": python_sha, "node": node_sha, "rustup": rustup_sha, "cargo": cargo_sha,
+                               "rustc": rustc_sha, "git": git_sha, "dpkgDeb": dpkg_sha, "dpkgShlibdeps": shlibs_sha,
+                               "bootstrapNpm": bootstrap_npm_sha, "npmCli": npm_sha},
+                "runtimeManifestSha256": assembly["manifestSha256"], "sourceSnapshotSha256": snapshot,
+                "runtimeMemberCount": assembly["memberCount"], "runtimeMemberBytes": assembly["totalMemberBytes"],
+                "artifacts": receipt["artifacts"], "inspectedPayloadFiles": payload_files, "productMetadataVerifyCalls": 6,
+                "osInstallation": False, "appBrowserRegistration": False, "binaryUpload": False}
+    return evidence, work
 
 
-def main():
+def publication_requested(environment):
+    """True only for the explicit main-only delivery option. This is not an upload."""
+    return (environment.get("PUBLISH_LINUX_ENGINEERING_CANDIDATE") == "true"
+            and environment.get("GITHUB_REF") == "refs/heads/main"
+            and environment.get("GITHUB_REPOSITORY") == "tzimiswcc/wcc-migration-stream"
+            and environment.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
+            and environment.get("GITHUB_RUN_ATTEMPT") == "1")
+
+
+def package_names(evidence):
+    """Bind the public artifact names to one lane tuple and the clean commit."""
+    architecture = evidence.get("architecture")
+    commit = evidence.get("sourceCommit")
+    require(architecture in LANES and type(commit) is str and re.fullmatch(r"[0-9a-f]{40}", commit))
+    require(evidence.get("target") == LANES[architecture][1])
+    artifacts = evidence.get("artifacts")
+    require(type(artifacts) is dict and len(artifacts) == 2)
+    deb_arch = LANES[architecture][2]
+    deb_pattern = re.compile(r"migration-stream_([0-9]+\.[0-9]+\.[0-9]+)\+git" + commit[:12] + r"-1_" + deb_arch + r"\.deb\Z")
+    tar_pattern = re.compile(r"migration-stream-([0-9]+\.[0-9]+\.[0-9]+)\+git" + commit[:12] + r"-1-linux-" + architecture + r"-gnu\.tar\.gz\Z")
+    found, version = {}, None
+    for name, row in artifacts.items():
+        require(type(name) is str and type(row) is dict and set(row) == {"bytes", "sha256"})
+        require(type(row["bytes"]) is int and 0 < row["bytes"] <= MAX_ARCHIVE and re.fullmatch(r"[0-9a-f]{64}", row["sha256"]))
+        deb_match, tar_match = deb_pattern.fullmatch(name), tar_pattern.fullmatch(name)
+        require((deb_match is None) != (tar_match is None))
+        kind = "deb" if deb_match else "tar"
+        require(kind not in found)
+        candidate = deb_match.group(1) if deb_match else tar_match.group(1)
+        require(version in (None, candidate))
+        version, found[kind] = candidate, name
+    require(set(found) == {"deb", "tar"} and version is not None)
+    return found["deb"], found["tar"], version
+
+
+def publication_handoff(work, evidence):
+    """Export the qualified directory after the same successful build. No second build or upload."""
+    environment = dict(os.environ)
+    require(publication_requested(environment))
+    require(type(evidence) is dict and evidence.get("schemaVersion") == "migration-stream/linux-package-qualification/v1")
+    require(evidence.get("status") == "QUALIFIED_OFFLINE_PACKAGE_PAYLOAD" and evidence.get("runAttempt") == 1)
+    require(evidence.get("binaryUpload") is False and evidence.get("osInstallation") is False
+            and evidence.get("appBrowserRegistration") is False)
+    require(evidence.get("sourceCommit") == environment.get("GITHUB_SHA") == environment.get("EXPECTED_SOURCE_COMMIT"))
+    require(evidence.get("runId") == environment.get("GITHUB_RUN_ID"))
+    require(evidence.get("architecture") == environment.get("QUALIFICATION_ARCHITECTURE"))
+    deb_name, tar_name, version = package_names(evidence)
+    cargo = tomllib.loads((ROOT / "Cargo.toml").read_text())["package"]
+    require(cargo["name"] == "migration-stream" and cargo["version"] == version)
+    temporary = Path(environment["RUNNER_TEMP"])
+    require(work.is_absolute() and work.parent == temporary and ROOT not in work.parents and work not in ROOT.parents)
+    require(re.fullmatch(r"migration-stream-linux-qualification-[A-Za-z0-9_]{6,32}", work.name))
+    value = str(work)
+    require(re.fullmatch(r"/[A-Za-z0-9_./-]{1,4095}", value))
+    package = helpers("linux_publication_packager", "scripts/package-linux-desktop.py")
+    output = work / "packages"
+    state = artifact_state(package, output, ("package-receipt.json", deb_name, tar_name))
+    for name in (deb_name, tar_name):
+        require(evidence["artifacts"][name] == {"bytes": state[name][2], "sha256": state[name][3]})
+    receipt = package._json(package._bytes(output / "package-receipt.json", state["package-receipt.json"], 1024 * 1024))
+    debian_version = version + "+git" + evidence["sourceCommit"][:12] + "-1"
+    require(receipt.get("schemaVersion") == "migration-stream/linux-desktop-package/v1"
+            and receipt.get("engineeringPolicy") == package.POLICY and receipt.get("version") == debian_version
+            and receipt.get("architecture") == LANES[evidence["architecture"]][2]
+            and receipt.get("nativeUbuntuSeries") == "24.04" and receipt.get("productionVerifyCalls") == 2
+            and receipt.get("supportedPlatformClaim") is False and receipt.get("artifacts") == evidence["artifacts"])
+    runtime = receipt.get("runtime")
+    require(type(runtime) is dict and runtime.get("productCommit") == evidence["sourceCommit"]
+            and runtime.get("productVersion") == version and runtime.get("sourceState") == "CLEAN"
+            and runtime.get("target") == {"os": "linux", "architecture": evidence["architecture"],
+                                           "targetTriple": evidence["target"]})
+    text = json.dumps(evidence, sort_keys=True, separators=(",", ":"))
+    require(len(text.encode("utf-8")) <= 16384)
+    body = (text + "\n").encode("utf-8")
+    path = work / "qualification.json"
+    descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
+    try:
+        os.write(descriptor, body)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    require(path.read_bytes() == body)
+    digest = hashlib.sha256(body).hexdigest()
+    with open(environment["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
+        stream.write("qualified_work=" + value + "\nqualification_sha=" + digest + "\n")
+
+
+def main(argv=None):
+    # Callers and unit tests omit argv. The process entry point passes the real arguments.
+    arguments = [] if argv is None else list(argv)
+    if arguments not in ([], ["--publication-handoff"]):
+        print("Linux package qualification refused; private job evidence retained.", file=sys.stderr)
+        return 1
+    handoff = arguments == ["--publication-handoff"]
+    if handoff and not publication_requested(dict(os.environ)):
+        print("Linux package qualification refused; private job evidence retained.", file=sys.stderr)
+        return 1
     def expired(_signum, _frame):
         raise Refused("qualification whole-operation deadline")
     previous = signal.signal(signal.SIGALRM, expired)
     signal.setitimer(signal.ITIMER_REAL, 2600)
     try:
-        evidence = qualify(dict(os.environ))
+        evidence, work = qualify(dict(os.environ))
         text = json.dumps(evidence, sort_keys=True, separators=(",", ":"))
         require(len(text.encode("utf-8")) <= 16384)
+        if handoff:
+            publication_handoff(work, evidence)
         print(text)
         return 0
     except CommandFailure as error:
@@ -541,4 +642,4 @@ def main():
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

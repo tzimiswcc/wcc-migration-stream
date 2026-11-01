@@ -230,12 +230,23 @@ invented publisher default. The driver independently admits the native host,
 tool paths and versions before doing work.
 
 This is qualification source only; adding it performs no build or packaging
-run. The new workflow must first be registered on the default branch, and a
+run. The workflow must first be registered on the default branch, and a
 separate grant for the exact reviewed source and execution is required before
-dispatch. It uses only the existing pinned checkout and Node setup Actions;
-there is no automatic retry, package installation, artifact upload, output
-publication, signing or release step. Generated files remain ephemeral on the
-hosted runner.
+dispatch. It uses the existing pinned checkout and Node setup actions. There
+is no automatic retry, package installation, signing or release step.
+
+`publish_engineering_candidate` defaults to false. Leaving it false keeps the
+qualification-only behavior: generated files stay on the hosted runner and
+nothing is uploaded. Setting it true is a separate approval for one seven-day
+engineering download. That lane still builds and qualifies exactly once, and
+only on the exact reviewed `main` commit's first attempt. After success,
+[the candidate helper](../../scripts/linux-engineering-candidate.py) copies the
+already verified `.deb`, portable `.tar.gz`, package receipt and qualification
+evidence. It uploads one fixed artifact for that architecture with the existing
+pinned artifact actions, then checks the returned artifact ID, transport digest
+and downloaded file bytes. It does not install, sign or start the package. A
+later failure leaves that artifact until its seven-day expiry; the job stops
+and does not retry or delete it.
 
 The future driver prepares the pinned, locked dependency caches, invokes the
 unchanged native shell Runtime builder once, and invokes the reviewed Linux
