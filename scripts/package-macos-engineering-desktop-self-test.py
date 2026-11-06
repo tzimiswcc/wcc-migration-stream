@@ -98,7 +98,11 @@ class DesktopPackagingTests(unittest.TestCase):
         self.assertEqual(stat.S_IMODE((app / "Contents/Resources/Runtime/data").stat().st_mode), 0o444)
         info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
         self.assertEqual(info["CFBundleExecutable"], "MigrationStream")
-        self.assertNotIn("CFBundleDocumentTypes", info)
+        document, = info["CFBundleDocumentTypes"]
+        exported_type, = info["UTExportedTypeDeclarations"]
+        self.assertEqual(document["LSHandlerRank"], "Alternate")
+        self.assertEqual(document["LSItemContentTypes"], [exported_type["UTTypeIdentifier"]])
+        self.assertEqual(exported_type["UTTypeTagSpecification"]["public.filename-extension"], ["mstream"])
         self.assertEqual(len(self.verifications), 4)
         receipt = json.loads((self.output / module.RECEIPT_NAME).read_bytes())
         self.assertFalse(receipt["signingPerformed"])

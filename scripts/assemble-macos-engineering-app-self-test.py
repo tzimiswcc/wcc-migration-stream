@@ -99,7 +99,23 @@ class EngineeringAssemblyTests(unittest.TestCase):
         info = plistlib.loads((self.destination / "Contents/Info.plist").read_bytes())
         self.assertEqual(info["CFBundleIdentifier"], "test.synthetic.migration-stream")
         self.assertEqual(info["LSMinimumSystemVersion"], "27.0")
-        self.assertEqual(set(info), {"CFBundleExecutable", "CFBundleIdentifier", "CFBundleName", "CFBundlePackageType", "CFBundleVersion", "CFBundleShortVersionString", "LSMinimumSystemVersion"})
+        self.assertEqual(set(info), {
+            "CFBundleExecutable", "CFBundleIdentifier", "CFBundleName", "CFBundlePackageType",
+            "CFBundleVersion", "CFBundleShortVersionString", "LSMinimumSystemVersion",
+            "CFBundleDocumentTypes", "UTExportedTypeDeclarations",
+        })
+        self.assertEqual(info["CFBundleDocumentTypes"], [{
+            "CFBundleTypeName": "Migration Stream Project",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": ["local.migrationstream.project"],
+        }])
+        self.assertEqual(info["UTExportedTypeDeclarations"], [{
+            "UTTypeIdentifier": "local.migrationstream.project",
+            "UTTypeDescription": "Migration Stream Project",
+            "UTTypeConformsTo": ["public.data", "public.content"],
+            "UTTypeTagSpecification": {"public.filename-extension": ["mstream"]},
+        }])
         self.assert_no_stage()
 
     def test_plist_serializer_escapes_synthetic_values_without_new_metadata_fields(self):

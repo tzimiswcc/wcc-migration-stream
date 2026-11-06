@@ -407,11 +407,24 @@ def assemble(request: Request, *, validator=_verify_runtime, wrapper_inspector=_
         _copy_file(request.wrapper, macos / "MigrationStream", wrapper)
         staged_runtime = resources / "Runtime"
         _copy_runtime(request.runtime, staged_runtime, original)
+        document_type = "local.migrationstream.project"
         _write_plist(contents / "Info.plist", {
             "CFBundleExecutable": "MigrationStream", "CFBundleIdentifier": request.bundle_identifier,
             "CFBundleName": "Migration Stream", "CFBundlePackageType": "APPL",
             "CFBundleVersion": request.bundle_version, "CFBundleShortVersionString": request.short_version,
             "LSMinimumSystemVersion": request.minimum_os,
+            "CFBundleDocumentTypes": [{
+                "CFBundleTypeName": "Migration Stream Project",
+                "CFBundleTypeRole": "Viewer",
+                "LSHandlerRank": "Alternate",
+                "LSItemContentTypes": [document_type],
+            }],
+            "UTExportedTypeDeclarations": [{
+                "UTTypeIdentifier": document_type,
+                "UTTypeDescription": "Migration Stream Project",
+                "UTTypeConformsTo": ["public.data", "public.content"],
+                "UTTypeTagSpecification": {"public.filename-extension": ["mstream"]},
+            }],
         })
         staged = _report(validator(staged_runtime), staged_runtime)
         if staged != source or _contents(_snapshot(staged_runtime)) != _contents(original):
