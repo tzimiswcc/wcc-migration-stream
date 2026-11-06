@@ -45,8 +45,10 @@ The assembler's existing thin ARM64 Mach-O, deployment, real-file/directory,
 no-link, bounded graph, byte/hash/mode and Runtime report checks remain intact.
 The package requires a CLEAN Runtime. It preserves `Contents/Resources/Runtime`
 without rewriting its manifest or compiled identity. The existing Swift app
-entry, retained bootstrap, Open Object coordinator and adapter are reused; this
-adds no document UTI, automatic association, application menu or lifecycle code.
+entry, retained bootstrap, Open Object coordinator and adapter handle both Finder
+document events and the Open Object picker. The bundle declares `.mstream` as
+`local.migrationstream.project` and advertises the app as an alternate viewer in
+Finder's Open With menu. Finder event delivery remains a native validation step.
 
 A private sibling stage receives the application. The package calls the fixed
 trusted Runtime controller's read-only `verify` through the existing bounded
